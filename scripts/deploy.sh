@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Push code from this Mac to the Pi and restart the hub. Never copies .env or data/.
+#   bash scripts/deploy.sh pi@deskhub.local
+set -euo pipefail
+TARGET="${1:?usage: deploy.sh user@host}"
+DIR="${2:-desk-hub}"
+
+rsync -az --delete \
+  --exclude node_modules --exclude .env --exclude data --exclude .git --exclude .claude --exclude .DS_Store \
+  "$(cd "$(dirname "$0")/.." && pwd)/" "$TARGET:$DIR/"
+
+ssh "$TARGET" "cd $DIR && npm ci --omit=dev --silent && (systemctl is-enabled desk-hub >/dev/null 2>&1 && sudo systemctl restart desk-hub || echo 'First time? Run: bash scripts/install-pi.sh')"
+echo "Deployed. The screen picks up UI changes on its next reload (Settings → Reload)."
