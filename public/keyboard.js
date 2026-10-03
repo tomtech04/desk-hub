@@ -14,7 +14,39 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
  * openKeyboard({ title, value, options: [{ key, choices: [[value, label]], value }], onDone(text, opts) })
  * `options` render as chip rows above the keys (tag, due date, ...).
  */
-export function openKeyboard({ title, value = '', options = [], onDone }) {
+export function openKeyboard(opts) {
+  return window.HUB_REMOTE ? openNative(opts) : openOnScreen(opts);
+}
+
+/** Phones and laptops: a real text field, so the device's own keyboard is used. */
+function openNative({ title, value = '', options = [], onDone }) {
+  const el = document.getElementById('keyboard');
+  const opts = Object.fromEntries(options.map((o) => [o.key, o.value ?? null]));
+  el.classList.add('native');
+  const chips = () => options.map((o) => `<div class="chips">${o.choices.map(([v, label]) => `<button type="button" class="chip ${opts[o.key] === v ? 'on' : ''}" data-opt="${o.key}" data-v="${esc(JSON.stringify(v))}">${esc(label)}</button>`).join('')}</div>`).join('');
+  el.innerHTML = `<form class="top">
+      <h1 style="font-size:22px">${esc(title)}</h1>
+      <input class="field" name="text" maxlength="200" placeholder="Type here…" autocomplete="off" enterkeyhint="done" value="${esc(value)}">
+      <div class="opts">${chips()}</div>
+      <div class="row" style="justify-content:flex-end"><button type="button" class="btn ghost" data-k="cancel">Cancel</button><button class="btn primary" type="submit">Save</button></div>
+    </form>`;
+  const input = el.querySelector('input');
+  const close = (save) => {
+    el.hidden = true; el.classList.remove('native'); el.onclick = null; el.innerHTML = '';
+    if (save) onDone?.(input.value.trim(), opts);
+  };
+  el.querySelector('form').onsubmit = (e) => { e.preventDefault(); close(true); };
+  el.onclick = (e) => {
+    const b = e.target.closest('button');
+    if (b?.dataset.opt) { opts[b.dataset.opt] = JSON.parse(b.dataset.v); el.querySelector('.opts').innerHTML = chips(); }
+    else if (b?.dataset.k === 'cancel' || e.target === el) close(false);
+  };
+  input.onkeydown = (e) => { if (e.key === 'Escape') close(false); };
+  el.hidden = false;
+  input.focus();
+}
+
+function openOnScreen({ title, value = '', options = [], onDone }) {
   const el = document.getElementById('keyboard');
   let text = value;
   let layer = text ? 'lower' : 'upper'; // auto-capitalize the first letter

@@ -33,7 +33,13 @@ Open http://localhost:8080 (size the window to 720×1280 to match the display).
 
 After that, `deploy.sh` pushes updates. Logs: `journalctl -u desk-hub -f`.
 
-The server listens on your LAN, so you can also open `http://deskhub.local:8080` on your phone to add tasks with a real keyboard.
+## Use it from your phone or laptop
+
+Open `http://deskhub.local:8080` on any device on the same Wi-Fi. Off the desk screen the hub switches to remote mode: a single-column phone layout, your device's own keyboard, and the moon button becomes a remote control for the desk display instead of dimming your phone. On a phone, "Add to Home Screen" makes it open like an app.
+
+Set `HUB_PASSWORD` in `.env` to require a sign-in from every device except the desk screen itself (remembered for 30 days; five wrong tries locks that address out for 15 minutes). That's required before exposing the hub through a tunnel or public URL: without a password, anything arriving through a proxy is refused.
+
+The focus timer runs in each browser, so a timer started on your phone isn't the one on the desk.
 
 ## Connecting your stuff (`.env`)
 

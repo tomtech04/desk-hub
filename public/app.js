@@ -4,6 +4,14 @@ import { openKeyboard } from './keyboard.js';
 // Basics
 // ---------------------------------------------------------------------------
 
+// The desk screen loads the hub from localhost; anything else (a phone, a
+// laptop, a tunnel URL) is a remote: it uses the device's own keyboard, never
+// blacks out for sleep mode, and treats sleep/wake as a remote control.
+// (?remote=1 forces remote mode on localhost, for testing.)
+const KIOSK = ['localhost', '127.0.0.1'].includes(location.hostname) && !new URLSearchParams(location.search).has('remote');
+window.HUB_REMOTE = !KIOSK;
+document.documentElement.classList.toggle('remote', !KIOSK);
+
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -71,6 +79,11 @@ function wx(code) {
 
 async function api(method, url, body) {
   const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  if (res.status === 401 && url !== '/api/login') {
+    const info = await res.json().catch(() => ({}));
+    showLogin(info.canSignIn);
+    throw new Error('Sign in required');
+  }
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
   return res.json();
 }
@@ -499,7 +512,8 @@ const VIEWS = {
           <div class="card-h" style="margin-top:16px">Pi</div>
           <div class="set-row"><label>${esc(sys.host)}<span>${sys.tempC != null ? `${sys.tempC.toFixed(0)}°C · ` : ''}load ${sys.load.toFixed(2)} · mem ${sys.memUsedPct}% · up ${sys.uptimeH}h</span></label>
             <button class="btn small ghost" data-act="refresh">Refresh data</button><button class="btn small ghost" data-act="reload">Reload</button></div>
-          <div class="set-row"><label>Add tasks from your phone<span>Open http://${esc(sys.host.includes(".") ? sys.host : sys.host + ".local")}:${esc(location.port || 80)} on the same Wi-Fi</span></label></div>
+          ${D.signedIn ? `<div class="set-row"><label>Signed in on this device</label><button class="btn small ghost" data-act="logout">Sign out</button></div>` : ''}
+          <div class="set-row"><label>Use it from your phone or laptop<span>Open http://${esc(sys.host.includes(".") ? sys.host : sys.host + ".local")}:${esc(location.port || 80)} on the same Wi-Fi</span></label></div>
         </section>
       </div>`;
   },
@@ -558,6 +572,10 @@ function renderDrawer() {
 // Wind-down banner: 30 minutes before sleep mode kicks in.
 function renderBanner() {
   const el = $('#banner');
+  if (!KIOSK && D && D.mode !== 'day') {
+    el.innerHTML = `<div class="b">${icon('moon')} Desk display is ${D.mode === 'off' ? 'off' : 'asleep'} <button class="btn small" data-act="mode" data-mode="day">Wake it</button></div>`;
+    return;
+  }
   if (!D?.settings.autoSleep || D.mode !== 'day') { el.innerHTML = ''; return; }
   const [h, m] = D.settings.sleepAt.split(':').map(Number);
   const now = new Date(), mins = now.getHours() * 60 + now.getMinutes();
@@ -578,7 +596,7 @@ function nextMorningLine() {
 
 function renderSleep() {
   const el = $('#sleep');
-  el.hidden = D.mode === 'day';
+  el.hidden = !KIOSK || D.mode === 'day'; // a phone shouldn't go dark because the desk did
   if (el.hidden) return;
   el.classList.toggle('off', D.mode === 'off');
   el.classList.toggle('sim', !D.hasBacklight);
@@ -608,6 +626,31 @@ $('#sleep').addEventListener('pointerdown', (e) => {
   clearTimeout(revealTimer);
   revealTimer = setTimeout(() => el.classList.remove('reveal'), 6000);
 });
+
+// ---------------------------------------------------------------------------
+// Sign-in (remote devices only; the desk screen is always trusted)
+// ---------------------------------------------------------------------------
+
+function showLogin(canSignIn) {
+  const el = $('#login');
+  if (!el.hidden) return;
+  el.hidden = false;
+  el.innerHTML = canSignIn
+    ? `<form class="login-card"><h1>Desk Hub</h1><p class="muted">Enter the hub password to continue.</p>
+        <input type="password" name="password" placeholder="Password" autocomplete="current-password" autofocus>
+        <div class="err" role="alert"></div><button class="btn primary" type="submit">Sign in</button></form>`
+    : `<div class="login-card"><h1>Desk Hub</h1><p class="muted">Remote access isn't turned on. Set HUB_PASSWORD in the Pi's .env, then reload.</p></div>`;
+  el.querySelector('form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = el.querySelector('.err');
+    err.textContent = '';
+    try {
+      await api('POST', '/api/login', { password: new FormData(e.target).get('password') });
+      el.hidden = true; el.innerHTML = '';
+      load();
+    } catch (ex) { err.textContent = ex.message; }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Alerts -> toasts
@@ -731,6 +774,7 @@ document.addEventListener('click', async (e) => {
       case 'mode':
         D.mode = el.dataset.mode; syncMode(); renderBanner();
         await api('POST', '/api/mode', { mode: el.dataset.mode });
+        if (!KIOSK) toast({ level: 'info', title: el.dataset.mode === 'day' ? 'Desk display is awake' : el.dataset.mode === 'off' ? 'Desk display is off' : 'Desk display is asleep' });
         if (el.dataset.mode === 'day') load();
         break;
       case 'alerts': $('#drawer').hidden = false; renderDrawer(); break;
@@ -753,6 +797,7 @@ document.addEventListener('click', async (e) => {
       }
       case 'refresh': await api('POST', '/api/refresh'); setTimeout(load, 3000); toast({ level: 'info', title: 'Refreshing…' }); break;
       case 'reload': location.reload(); break;
+      case 'logout': await api('POST', '/api/logout'); location.reload(); break;
     }
   } catch (err) {
     toast({ level: 'error', title: 'Something went wrong', body: err.message });
@@ -761,7 +806,7 @@ document.addEventListener('click', async (e) => {
 });
 
 // Long-press on a touchscreen opens the browser's context menu; never useful in a kiosk.
-document.addEventListener('contextmenu', (e) => e.preventDefault());
+if (KIOSK) document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 document.addEventListener('change', (e) => {
   const el = e.target.closest('[data-act="set-range"]');
@@ -772,7 +817,7 @@ document.addEventListener('change', (e) => {
 let lastTouch = Date.now();
 document.addEventListener('pointerdown', () => (lastTouch = Date.now()), true);
 setInterval(() => {
-  if (view !== 'home' && Date.now() - lastTouch > 3 * 60e3 && !(view === 'focus' && T.running) && $('#keyboard').hidden) go('home');
+  if (KIOSK && view !== 'home' && Date.now() - lastTouch > 3 * 60e3 && !(view === 'focus' && T.running) && $('#keyboard').hidden) go('home');
 }, 15e3);
 
 window.addEventListener('resize', () => drawCharts());
@@ -780,4 +825,4 @@ window.addEventListener('resize', () => drawCharts());
 load();
 setInterval(load, 20e3);
 // Midnight rollover and long-running kiosk hygiene: full reload once a day at 4am.
-setInterval(() => { const d = new Date(); if (d.getHours() === 4 && d.getMinutes() === 0) location.reload(); }, 60e3);
+if (KIOSK) setInterval(() => { const d = new Date(); if (d.getHours() === 4 && d.getMinutes() === 0) location.reload(); }, 60e3);

@@ -15,6 +15,7 @@ import * as demo from './demo.js';
 const PORT = Number(process.env.PORT || 8080);
 const DEMO = process.env.DEMO === '1';
 const NOTIFY_TOKEN = process.env.HUB_NOTIFY_TOKEN || '';
+const HUB_PASSWORD = process.env.HUB_PASSWORD || '';
 
 // ---------------------------------------------------------------------------
 // Persistent state (data/state.json)
@@ -26,6 +27,7 @@ const DEFAULT_STATE = {
   suggestedFrom: {}, // emailId -> at, so an email is only ever suggested once
   focusLog: [], // { at, minutes, label }
   notifications: [], // pushed via POST /api/notify
+  sessions: {}, // sha256(session token) -> expiry; for signed-in phones/laptops
   dismissed: {}, // alertId -> dismissedAt
   mode: 'day', // day | sleep | off
   settings: {
@@ -240,6 +242,71 @@ function dashboard() {
 // HTTP
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Who's asking? The desk screen itself (loopback) is always trusted. Phones and
+// laptops sign in with HUB_PASSWORD. If no password is set, devices on the
+// home network are let in as before, but anything arriving through a tunnel
+// or proxy (i.e. from the internet) is refused outright.
+// ---------------------------------------------------------------------------
+
+const SESSION_DAYS = 30;
+const sha = (v) => crypto.createHash('sha256').update(v).digest('hex');
+
+function client(req) {
+  const addr = (req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  // A tunnel daemon on the Pi connects from loopback too, so loopback only
+  // counts as "the desk screen" when no proxy headers are present.
+  const proxied = Boolean(req.headers['x-forwarded-for'] || req.headers['cf-connecting-ip'] || req.headers.forwarded);
+  const loopback = addr === '127.0.0.1' || addr === '::1';
+  const privateNet = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|f[cd][0-9a-f]{2}:|fe80:)/i.test(addr);
+  return { kiosk: loopback && !proxied, lan: (loopback || privateNet) && !proxied, proxied, ip: String(req.headers['cf-connecting-ip'] || addr) };
+}
+
+function sessionOf(req) {
+  const m = /(?:^|;\s*)hub_session=([a-f0-9]{64})/.exec(req.headers.cookie || '');
+  if (!m) return null;
+  const key = sha(m[1]);
+  return state.sessions[key] > Date.now() ? key : null;
+}
+
+function allowed(req) {
+  const c = client(req);
+  if (c.kiosk) return true;
+  if (HUB_PASSWORD) return Boolean(sessionOf(req));
+  return c.lan;
+}
+
+// Five wrong passwords from one address locks that address out for 15 minutes.
+const failures = new Map();
+function login(req, res, body) {
+  const { ip, proxied } = client(req);
+  if (!HUB_PASSWORD) return send(res, 400, { error: 'Set HUB_PASSWORD in .env on the Pi to enable sign-in.' });
+  const f = failures.get(ip) || { count: 0, until: 0 };
+  if (f.until > Date.now()) return send(res, 429, { error: 'Too many attempts. Try again in a few minutes.' });
+  const given = sha(String(body.password || '')), want = sha(HUB_PASSWORD);
+  if (!crypto.timingSafeEqual(Buffer.from(given), Buffer.from(want))) {
+    f.count++;
+    if (f.count >= 5) { f.until = Date.now() + 15 * 60e3; f.count = 0; }
+    failures.set(ip, f);
+    return send(res, 401, { error: 'Wrong password.' });
+  }
+  failures.delete(ip);
+  const token = crypto.randomBytes(32).toString('hex');
+  for (const [k, exp] of Object.entries(state.sessions)) if (exp < Date.now()) delete state.sessions[k];
+  state.sessions[sha(token)] = Date.now() + SESSION_DAYS * 86400e3;
+  save();
+  const secure = proxied || req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `hub_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_DAYS * 86400}${secure}`);
+  return send(res, 200, { ok: true });
+}
+
+function logout(req, res) {
+  const key = sessionOf(req);
+  if (key) { delete state.sessions[key]; save(); }
+  res.setHeader('Set-Cookie', 'hub_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+  return send(res, 200, { ok: true });
+}
+
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
 const PUBLIC = path.join(ROOT, 'public');
 
@@ -255,7 +322,7 @@ async function readBody(req) {
 }
 
 const routes = {
-  'GET /api/dashboard': () => dashboard(),
+  'GET /api/dashboard': ({ req }) => ({ ...dashboard(), kiosk: client(req).kiosk, signedIn: Boolean(sessionOf(req)) }),
 
   'POST /api/todos': ({ body }) => {
     const text = String(body.text || '').trim().slice(0, 200);
@@ -337,6 +404,11 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
     if (url.pathname.startsWith('/api/')) {
+      if (url.pathname === '/api/login' && req.method === 'POST') return login(req, res, await readBody(req));
+      if (url.pathname === '/api/logout' && req.method === 'POST') return logout(req, res);
+      // /api/notify can also be reached with its own bearer token (scripts, webhooks).
+      const viaNotifyToken = url.pathname === '/api/notify' && NOTIFY_TOKEN && req.headers.authorization === `Bearer ${NOTIFY_TOKEN}`;
+      if (!viaNotifyToken && !allowed(req)) return send(res, 401, { error: 'sign in required', canSignIn: Boolean(HUB_PASSWORD) });
       const found = match(req.method, url.pathname);
       if (!found) return send(res, 404, { error: 'not found' });
       const body = ['POST', 'PATCH'].includes(req.method) ? await readBody(req) : {};
