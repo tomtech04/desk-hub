@@ -1,34 +1,42 @@
 #!/usr/bin/env bash
 # Switch the hub from the Supabase service-role key to the read-only
 # `deskhub_reader` Postgres role. Run once, from this Mac:
-#   bash scripts/setup-readonly-db.sh
+#   PAYIT_TEST_EMAILS="a@x.com b@y.com" bash scripts/setup-readonly-db.sh
 #
-# 1. Applies POS-App migration 20261002000001_deskhub_reader_role.sql to the
-#    linked project (only that file — not `db push`, which would also apply
-#    any other pending migration) and records it in the migration history.
+# THIS CHANGES PAYIT'S PRODUCTION DATABASE (adds one role and four SELECT-only
+# policies for it; see sql/deskhub_reader_role.sql). Get the team's sign-off
+# first. It does not touch the PayIt git repo or its migration history; the
+# repo's Supabase link is only read to know which project to talk to.
+#
+# 1. Runs sql/deskhub_reader_role.sql against the linked project.
 # 2. Gives the role a random password. It's never printed or written to git;
 #    it goes straight into the Pi's .env.
 # 3. Points the hub at the role and removes the service key from the Pi.
 set -euo pipefail
 
-POS=${POS_APP:-$HOME/Developer/POS-App}
+HUB="$(cd "$(dirname "$0")/.." && pwd)"
+POS=${POS_APP:-$HOME/Developer/POS-App}   # read-only: used for its Supabase link
 PI=${PI:-pi@deskhub.local}
-MIGRATION=20261002000001
-FILE="$POS/supabase/migrations/${MIGRATION}_deskhub_reader_role.sql"
-TEST_EMAILS="a@example.com b@example.com"
+FILE="$HUB/sql/deskhub_reader_role.sql"
+# Team/test accounts whose businesses don't count as revenue (space-separated).
+TEST_EMAILS=${PAYIT_TEST_EMAILS:?set PAYIT_TEST_EMAILS to the team/test account emails}
 
 cd "$POS"
 REF=$(cat supabase/.temp/project-ref)
 POOLER_HOST=$(sed -E 's#.*@([^:/]+).*#\1#' supabase/.temp/pooler-url)
 echo "Project $REF via $POOLER_HOST"
+echo
+echo "This will create the deskhub_reader role and its read-only policies in the"
+echo "PRODUCTION database of project $REF."
+read -r -p "Type the project ref to continue: " CONFIRM
+[ "$CONFIRM" = "$REF" ] || { echo "Cancelled; nothing was changed."; exit 1; }
 
 echo "==> Creating the read-only role"
 if supabase db query --linked "select 'ROLE_PRESENT' as marker from pg_roles where rolname = 'deskhub_reader'" --output-format json | grep -q ROLE_PRESENT; then
-  echo "   deskhub_reader already exists — skipping the migration"
+  echo "   deskhub_reader already exists; leaving it as is"
 else
   supabase db query --linked -f "$FILE" >/dev/null
-  supabase migration repair --status applied "$MIGRATION" --linked >/dev/null
-  echo "   applied and recorded $MIGRATION"
+  echo "   created"
 fi
 
 echo "==> Setting its password"

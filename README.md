@@ -37,7 +37,12 @@ The server listens on your LAN, so you can also open `http://deskhub.local:8080`
 
 ## Connecting your stuff (`.env`)
 
-**PayIt.** Run `bash scripts/setup-readonly-db.sh` from your Mac. It creates the `deskhub_reader` Postgres role (POS-App migration `20261002000001_deskhub_reader_role.sql`), which can read only the columns the hub uses and can't write anything. It then sets `PAYIT_DATABASE_URL` and `PAYIT_TEST_OWNER_IDS` on the Pi and removes the service key. Revenue follows the admin panel's rules: businesses owned by team/test accounts and admin-ignored transactions are left out. The admin panel's service key (`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`) still works as a fallback, but it has full database access.
+**PayIt.** The hub can read PayIt two ways:
+
+- *Read-only role (preferred).* `sql/deskhub_reader_role.sql` defines a `deskhub_reader` Postgres login that can read only the columns the hub uses and can't write anything. `scripts/setup-readonly-db.sh` applies it, sets `PAYIT_DATABASE_URL` and `PAYIT_TEST_OWNER_IDS` on the Pi, and removes the service key. **This adds a role and policies to PayIt's production database, so get the team's sign-off before running it.** It never touches the PayIt git repo or its migration history.
+- *Service key (fallback).* `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Works with no database change, but that key has full read/write access, so it shouldn't live on the Pi long-term.
+
+Either way the screen only receives totals, and revenue follows the admin panel's rules: businesses owned by team/test accounts and admin-ignored transactions are left out.
 
 **Personal Gmail.** Turn on 2-Step Verification, create an App Password, and put it in `MAIL_1_PASS`.
 

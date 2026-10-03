@@ -2,8 +2,7 @@
 // leaves the Pi; the screen only ever sees totals.
 //
 // Preferred: PAYIT_DATABASE_URL, a Postgres login as `deskhub_reader` — a role
-// that can SELECT only the columns used below (POS-App migration
-// 20261002000001_deskhub_reader_role.sql). Fallback: the service-role key
+// that can SELECT only the columns used below (sql/deskhub_reader_role.sql). Fallback: the service-role key
 // over PostgREST, which works but can read and write everything.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +13,7 @@ const DATABASE_URL = process.env.PAYIT_DATABASE_URL;
 const URL_BASE = process.env.SUPABASE_URL?.replace(/\/$/, '');
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const list = (v) => (v || '').split(',').map((s) => s.trim()).filter(Boolean);
-// Mirrors the admin panel's reporting rules (apps/admin/lib/ledger.ts): any
+// Mirrors the PayIt admin panel's reporting rules: any
 // business owned by a team/test account is left out of revenue, as is any
 // transaction marked ignored in admin_ignored_transactions. The read-only role
 // can't look users up by email, so it takes the owners' user ids directly.
