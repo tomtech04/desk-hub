@@ -104,3 +104,16 @@ export function digest() {
     errors: [],
   };
 }
+
+export function recap() {
+  return {
+    headline: 'A solid lab-and-PayIt day: the report is nearly done and payouts are unblocked.',
+    bullets: [
+      'You finished the acoustics data for Lab 2 and said the uncertainty section is the only part left.',
+      'Stripe tax ID updated, so Friday payouts are no longer at risk.',
+      '100 minutes of focus across 3 sessions, mostly on the lab report.',
+      'You noted the merchant onboarding call went well and they want a demo next week.',
+    ],
+    tomorrow: ['Finish the Lab 2 uncertainty section (due 11:59pm)', 'Problem set 4 (Dynamics)', 'Schedule the merchant demo'],
+  };
+}

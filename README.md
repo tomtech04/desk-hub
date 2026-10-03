@@ -10,6 +10,7 @@ A touchscreen desk dashboard for a Raspberry Pi 5 + Raspberry Pi Touch Display 2
 | **PayIt** | Gross volume vs. this time yesterday, sales, avg ticket, declines, active merchants, by-hour and 7-day charts, payment-method split, live status from `admin_system_checks` |
 | **Mail** | A daily digest from Claude (7:30 by default) of the last 24 hours across all accounts, which is also what Home shows. Below it, unread mail per account, each summarized in one line with an urgency flag and a suggested action. Mail is never marked read. |
 | **Suggested tasks** | Urgent emails and the digest's picks become *suggested* tasks in To do, each with Keep / Dismiss. Nothing counts as a real task until you keep it, and each email is suggested at most once. |
+| **Journal** | Voice notes from the ring (or typed on your phone) and an evening recap of your day from Claude, built from your notes, finished tasks and focus time. Anything you say you need to do is added to To do. |
 | **Schedule** | Next 7 days from Canvas / Google / Outlook calendar feeds |
 | **Settings** | Brightness, sleep schedule, timer lengths, Pi health |
 | **Sleep** | Moon button or schedule: backlight drops to ~4% with a dim warm clock and tomorrow's first event; "Screen off" kills the backlight entirely. Tap to wake. A wind-down banner appears 30 min before. |
@@ -59,6 +60,8 @@ Either way the screen only receives totals, and revenue follows the admin panel'
 **Summaries and digest.** Set `ANTHROPIC_API_KEY` (starts with `sk-ant-`). Both use Claude Haiku 4.5 by default, the cheapest current model; for a sharper digest only, set `DIGEST_MODEL=claude-sonnet-5-5`. Each email is summarized once and cached by Message-ID. Without a key, mail still shows with a plain preview and there's no digest.
 
 **Calendars.** Set `CALENDAR_FEEDS=Canvas|https://...,Personal|https://...`. Canvas → Calendar → Calendar Feed gives you a link with every assignment due date.
+
+**Voice notes from a Pebble Index 01 ring.** The ring's phone app can POST each recording's transcription to a webhook. Set `HUB_VOICE_TOKEN` to a long random string, then in the Pebble app (Index 01 Settings → Webhook) set the URL to `https://<your hub address>/api/voice`, add a header `Authorization: Bearer <token>`, and send transcription only (audio is accepted but ignored). The app's test event shows a "Ring connected" toast on the hub. The phone sends the request, so the hub has to be reachable from wherever your phone is: a public URL through a tunnel, or Tailscale on the phone. Any tool that can POST `{"text": "..."}` with the same header works too.
 
 **Push your own alerts.** Anything on your network can put a card on the hub:
 

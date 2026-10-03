@@ -412,3 +412,15 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 34px;
   .drawer .panel { padding: 14px; }
   .sleep .time { font-size: 96px; }
 }
+
+/* ---------- journal ---------- */
+.journal-list { flex: 1; min-height: 0; overflow-y: auto; }
+.journal-list .msg .top b { white-space: normal; font-weight: 500; }
+.journal-list .said { font-size: 14px; color: var(--muted); font-style: italic; }
+.journal-list .act { color: var(--good); }
+.journal-list .act svg { width: 16px; height: 16px; stroke-width: 2.6; }
+.daysep { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 16px 0 2px; }
+.digest .tomorrow { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.digest .tomorrow b { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.digest .tomorrow ul { margin-top: 6px; }
+@media (max-width: 600px) { .journal-list { overflow: visible; } }

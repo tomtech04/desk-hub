@@ -21,6 +21,7 @@ const ICONS = {
   tasks: '<rect x="3" y="3" width="18" height="18" rx="5"/><path d="m8 12 3 3 5-6"/>',
   payit: '<path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m3 7 9 6 9-6"/>',
+  journal: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   schedule: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/>',
   settings: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
@@ -471,6 +472,35 @@ const VIEWS = {
       </section>`).join('')}</div></div>`;
   },
 
+  journal() {
+    const r = D.recap;
+    const today = D.journal.filter((j) => j.at >= dayStart());
+    const earlier = D.journal.filter((j) => j.at < dayStart());
+    let recap;
+    if (D.recapRunning) recap = '<div class="empty">Claude is writing up your day…</div>';
+    else if (r?.headline) {
+      recap = `<div class="head">${esc(r.headline)}</div>
+        ${r.bullets.length ? `<ul>${r.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
+        ${r.tomorrow.length ? `<div class="tomorrow"><b>Tomorrow</b><ul>${r.tomorrow.map((b) => `<li>${esc(b)}</li>`).join('')}</ul></div>` : ''}
+        <div class="foot"><span class="grow">${hm(r.at)}</span><button class="btn small ghost" data-act="recap-run">Redo</button></div>`;
+    } else if (!D.aiEnabled) recap = '<div class="empty">Add ANTHROPIC_API_KEY to the Pi\'s .env to get a recap of your day.</div>';
+    else if (r?.error) recap = `<div class="empty" style="color:var(--warn)">${esc(r.error)}</div><div class="foot"><span class="grow"></span><button class="btn small ghost" data-act="recap-run">Try again</button></div>`;
+    else recap = `<div class="foot" style="margin:0"><span class="grow">Your recap arrives at ${esc(D.settings.recapAt)}, from your notes, tasks and focus time.</span><button class="btn small ghost" data-act="recap-run">Make it now</button></div>`;
+    const row = (j) => `<div class="msg">
+      <div class="top"><b>${esc(j.note || j.text)}</b><span class="muted">${hm(j.at)}</span></div>
+      ${j.note && j.note !== j.text ? `<p class="said">“${esc(j.text)}”</p>` : ''}
+      ${j.pending ? '<div class="act">Working out what you meant…</div>' : j.tasks.map((t) => `<div class="act">${icon('check')} ${esc(t)}</div>`).join('')}
+    </div>`;
+    return `<div class="page-h"><h1>Journal</h1><button class="btn primary" data-act="note-add">${icon('plus')} Note</button></div>
+      <div class="mail-page">
+        <section class="card digest"><div class="card-h">${icon('journal')}<span class="grow">Today's recap</span></div>${recap}</section>
+        <section class="card" style="flex:1;min-height:0"><div class="card-h"><span class="grow">Voice notes</span><span class="link">${D.voiceReady ? 'Ring token set' : 'Ring not set up yet'}</span></div>
+          <div class="list journal-list">${today.length || earlier.length ? `${today.map(row).join('')}${earlier.length ? `<h3 class="daysep">Yesterday</h3>${earlier.map(row).join('')}` : ''}`
+            : '<div class="empty">Nothing yet. Speak into the ring, or tap Note to type one. Say what you need to do and it lands in To do.</div>'}</div>
+        </section>
+      </div>`;
+  },
+
   schedule() {
     const s = D.calendar;
     const evs = s?.data?.events || [];
@@ -501,6 +531,7 @@ const VIEWS = {
           <div class="set-row"><label>Sleep at</label>${step('sleepAt', st.sleepAt)}</div>
           <div class="set-row"><label>Wake at</label>${step('wakeAt', st.wakeAt)}</div>
           <div class="set-row"><label>Email digest at<span>Claude's daily summary of the last 24 hours</span></label>${step('digestAt', st.digestAt)}</div>
+          <div class="set-row"><label>Day recap at<span>Evening summary from your notes, tasks and focus time</span></label>${step('recapAt', st.recapAt)}</div>
           <div class="set-row"><label>Suggest tasks from email<span>You approve each one before it counts</span></label><button class="toggle ${st.emailTasks ? 'on' : ''}" data-act="set-toggle" data-k="emailTasks"></button></div>
           <div class="set-row"><label>Sounds</label><button class="toggle ${st.chime ? 'on' : ''}" data-act="set-toggle" data-k="chime"></button></div>
         </section>
@@ -538,7 +569,7 @@ function digestCard() {
   return `<section class="card digest"><div class="card-h">${icon('mail')}<span class="grow">Today's digest</span></div>${body}</section>`;
 }
 
-const NAV = [['home', 'Home'], ['focus', 'Focus'], ['tasks', 'To do'], ['payit', 'PayIt'], ['mail', 'Mail'], ['schedule', 'Schedule'], ['settings', 'Settings']];
+const NAV = [['home', 'Home'], ['focus', 'Focus'], ['tasks', 'To do'], ['payit', 'PayIt'], ['mail', 'Mail'], ['journal', 'Journal'], ['schedule', 'Schedule'], ['settings', 'Settings']];
 
 function renderRail() {
   const alerts = D?.alerts || [];
@@ -701,7 +732,7 @@ async function addTask(preset = {}) {
   });
 }
 
-const SET_STEPS = { digestAt: 15, sleepAt: 15, wakeAt: 15, focusMinutes: 5, shortBreak: 1, longBreak: 5 };
+const SET_STEPS = { recapAt: 15, digestAt: 15, sleepAt: 15, wakeAt: 15, focusMinutes: 5, shortBreak: 1, longBreak: 5 };
 
 async function patchSettings(patch) {
   Object.assign(D.settings, patch);
@@ -761,6 +792,18 @@ document.addEventListener('click', async (e) => {
         await api('POST', '/api/digest');
         D.digestRunning = true; render();
         for (let i = 0; i < 30 && D.digestRunning; i++) { await new Promise((r) => setTimeout(r, 3000)); await load(); }
+        break;
+      case 'recap-run':
+        await api('POST', '/api/recap');
+        D.recapRunning = true; render();
+        for (let i = 0; i < 30 && D.recapRunning; i++) { await new Promise((r) => setTimeout(r, 3000)); await load(); }
+        break;
+      case 'note-add':
+        openKeyboard({ title: 'New note', value: '', options: [], onDone: async (text) => {
+          if (!text.trim()) return;
+          await fetch('/api/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+          await load(); setTimeout(load, 2500); setTimeout(load, 7000);
+        } });
         break;
       case 'todo-clear': await api('POST', '/api/todos/clear-done'); load(); break;
       case 'task-filter': ui.taskFilter = el.dataset.f; render(); break;

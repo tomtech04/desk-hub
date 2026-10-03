@@ -37,7 +37,7 @@ const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
  * Haiku 4.5 takes neither `effort` nor server-side `fallbacks`, so those are
  * only sent to the newer models that support them.
  */
-async function askJson({ model, system, content, schema, effort }) {
+export async function askJson({ model = MODEL, system, content, schema, effort = 'low' }) {
   const isHaiku = model.startsWith('claude-haiku');
   const res = await anthropic.beta.messages.create({
     model,

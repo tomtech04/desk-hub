@@ -10,12 +10,14 @@ import { payitConfigured, loadPayit } from './payit.js';
 import { mailConfigured, loadMail, buildDigest, aiEnabled } from './mail.js';
 import { calendarConfigured, loadCalendar } from './calendar.js';
 import { setBrightness, hasBacklight, systemStats, loadWeather } from './system.js';
+import { readVoiceRequest, interpretVoice, buildRecap } from './voice.js';
 import * as demo from './demo.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const DEMO = process.env.DEMO === '1';
 const NOTIFY_TOKEN = process.env.HUB_NOTIFY_TOKEN || '';
 const HUB_PASSWORD = process.env.HUB_PASSWORD || '';
+const VOICE_TOKEN = process.env.HUB_VOICE_TOKEN || '';
 
 // ---------------------------------------------------------------------------
 // Persistent state (data/state.json)
@@ -27,6 +29,8 @@ const DEFAULT_STATE = {
   suggestedFrom: {}, // emailId -> at, so an email is only ever suggested once
   focusLog: [], // { at, minutes, label }
   notifications: [], // pushed via POST /api/notify
+  journal: [], // voice notes: { id, at, text, note, tasks: [text], trigger }
+  recap: null, // { day, at, headline, bullets, tomorrow }
   sessions: {}, // sha256(session token) -> expiry; for signed-in phones/laptops
   dismissed: {}, // alertId -> dismissedAt
   mode: 'day', // day | sleep | off
@@ -42,6 +46,7 @@ const DEFAULT_STATE = {
     tags: ['School', 'PayIt', 'Personal'],
     chime: true,
     digestAt: '07:30',
+    recapAt: '21:00',
     emailTasks: true,
   },
 };
@@ -165,6 +170,73 @@ setInterval(() => {
 }, 60e3).unref();
 
 // ---------------------------------------------------------------------------
+// Voice notes (the ring, or typed on a phone) and the evening recap
+// ---------------------------------------------------------------------------
+
+const weekdayName = () => new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: TZ }).format(new Date());
+const dayToMs = (ymd) => { const [y, mo, d] = ymd.split('-').map(Number); return zonedToUtc(TZ, y, mo, d); };
+
+/** Tasks you say out loud are added straight away: you asked for them yourself. */
+async function handleVoice({ text, recordedAt, trigger }) {
+  const id = `v${recordedAt}`;
+  if (state.journal.some((j) => j.id === id)) return; // the app retried a delivery
+  const entry = { id, at: recordedAt, text, note: '', tasks: [], trigger, pending: true };
+  state.journal.push(entry);
+  state.journal = state.journal.slice(-400);
+  save();
+
+  const out = await interpretVoice({ text, tags: state.settings.tags, today: localDay(), weekday: weekdayName() });
+  for (const t of out.tasks) {
+    state.todos.push({
+      id: crypto.randomUUID(), text: String(t.text).slice(0, 200), tag: state.settings.tags.includes(t.tag) ? t.tag : null,
+      due: t.due ? dayToMs(t.due) : null, star: false, done: false, createdAt: Date.now(), source: { why: 'Voice note' },
+    });
+  }
+  Object.assign(entry, { note: out.note, tasks: out.tasks.map((t) => t.text), pending: false });
+  const n = out.tasks.length;
+  state.notifications = [...state.notifications, {
+    id: crypto.randomUUID(), level: 'info', source: 'voice', at: Date.now(),
+    title: n ? `Added ${n} task${n > 1 ? 's' : ''} from your voice note` : 'Voice note saved',
+    body: (n ? out.tasks.map((t) => t.text).join(' · ') : out.note || text).slice(0, 300),
+  }].slice(-50);
+  save();
+}
+
+let recapRunning = false;
+async function runRecap() {
+  if (recapRunning) return;
+  recapRunning = true;
+  try {
+    const today = startOfDay();
+    const focus = state.focusLog.filter((f) => f.at >= today);
+    const input = {
+      today: localDay(), weekday: weekdayName(),
+      notes: state.journal.filter((j) => j.at >= today).map((j) => ({ time: new Date(j.at).toISOString(), said: j.note || j.text })),
+      done: state.todos.filter((t) => t.done && t.doneAt >= today).map((t) => t.text),
+      open: state.todos.filter((t) => !t.done && !t.suggested).map((t) => ({ task: t.text, due: t.due ? localDay(t.due) : null })),
+      focusMinutes: focus.reduce((a, f) => a + f.minutes, 0), focusSessions: focus.length,
+    };
+    const r = DEMO ? demo.recap() : await buildRecap(input);
+    state.recap = { day: localDay(), at: Date.now(), ...r };
+  } catch (err) {
+    state.recap = { ...(state.recap || {}), error: err.message, errorAt: Date.now() };
+    console.error('[recap]', err.message);
+  } finally {
+    recapRunning = false;
+    save();
+  }
+}
+
+// Evening recap at recapAt, but only on days with something to recap.
+setInterval(() => {
+  const today = startOfDay();
+  const hasContent = state.journal.some((j) => j.at >= today) || state.todos.some((t) => t.done && t.doneAt >= today) || state.focusLog.some((f) => f.at >= today);
+  const due = state.recap?.day !== localDay() && nowMinutes() >= hmToMin(state.settings.recapAt);
+  const backingOff = state.recap?.errorAt && Date.now() - state.recap.errorAt < 30 * 60e3;
+  if ((DEMO || aiEnabled()) && hasContent && due && !backingOff) runRecap();
+}, 60e3).unref();
+
+// ---------------------------------------------------------------------------
 // Alerts: everything that wants attention, from every source, in one list
 // ---------------------------------------------------------------------------
 
@@ -200,6 +272,7 @@ function buildAlerts(snap) {
   if (sys.tempC > 75) add(`temp:${Math.round(sys.tempC / 5)}`, 'warn', 'system', `Pi is running hot (${sys.tempC.toFixed(0)}°C)`);
 
   if (state.digest?.day === localDay() && state.digest.headline) add(`digest:${state.digest.day}`, 'info', 'mail', 'Your email digest is ready', state.digest.headline);
+  if (state.recap?.day === localDay() && state.recap.headline) add(`recap:${state.recap.day}`, 'info', 'journal', 'Your day recap is ready', state.recap.headline);
   const toReview = state.todos.filter((t) => t.suggested).length;
   if (toReview) add(`review:${toReview}`, 'info', 'tasks', `${toReview} suggested task${toReview > 1 ? 's' : ''} to review`, 'From your email — keep or dismiss them in To do');
 
@@ -233,6 +306,10 @@ function dashboard() {
     system: systemStats(),
     digest: state.digest?.day === localDay() ? state.digest : state.digest?.error ? { error: state.digest.error } : null,
     digestRunning,
+    journal: state.journal.filter((j) => j.at >= startOfDay(Date.now(), -1)).slice(-40).reverse(),
+    recap: state.recap?.day === localDay() ? state.recap : state.recap?.error ? { error: state.recap.error } : null,
+    recapRunning,
+    voiceReady: Boolean(VOICE_TOKEN),
     aiEnabled: DEMO || aiEnabled(),
     alerts: buildAlerts(snap),
   };
@@ -298,6 +375,27 @@ function login(req, res, body) {
   const secure = proxied || req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
   res.setHeader('Set-Cookie', `hub_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_DAYS * 86400}${secure}`);
   return send(res, 200, { ok: true });
+}
+
+// The ring's phone app authenticates with a token it sends as the Authorization
+// header (set in the app: Index 01 Settings -> Webhook). Signed-in devices and
+// the desk screen can post notes too.
+async function voice(req, res) {
+  const given = req.headers.authorization || '';
+  const tokenOk = VOICE_TOKEN && crypto.timingSafeEqual(Buffer.from(sha(given)), Buffer.from(sha(`Bearer ${VOICE_TOKEN}`)));
+  if (!tokenOk && !allowed(req)) return send(res, 401, { error: 'unauthorized' });
+  const chunks = []; let size = 0;
+  for await (const chunk of req) { size += chunk.length; if (size > 30e6) return send(res, 413, { error: 'too large' }); chunks.push(chunk); }
+  const note = readVoiceRequest(Buffer.concat(chunks), req.headers);
+  if (note.test) {
+    state.notifications = [...state.notifications, { id: crypto.randomUUID(), level: 'info', source: 'voice', at: Date.now(), title: 'Ring connected', body: 'Test recording received.' }].slice(-50);
+    save();
+    return send(res, 200, { ok: true, test: true });
+  }
+  if (!note.text) return send(res, 400, { error: 'no transcription in request' });
+  // Answer right away so the phone isn't kept waiting on Claude.
+  send(res, 200, { ok: true, queued: `v${note.recordedAt}` });
+  handleVoice(note).catch((err) => console.error('[voice]', err.message));
 }
 
 function logout(req, res) {
@@ -385,6 +483,12 @@ const routes = {
     return { started: true };
   },
 
+  'POST /api/recap': () => {
+    if (!DEMO && !aiEnabled()) return [400, { error: 'Needs ANTHROPIC_API_KEY in .env' }];
+    runRecap();
+    return { started: true };
+  },
+
   'POST /api/refresh': () => { for (const s of Object.values(sources)) s?.refresh(); return { ok: true }; },
 };
 
@@ -406,6 +510,7 @@ http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) {
       if (url.pathname === '/api/login' && req.method === 'POST') return login(req, res, await readBody(req));
       if (url.pathname === '/api/logout' && req.method === 'POST') return logout(req, res);
+      if (url.pathname === '/api/voice' && req.method === 'POST') return voice(req, res);
       // /api/notify can also be reached with its own bearer token (scripts, webhooks).
       const viaNotifyToken = url.pathname === '/api/notify' && NOTIFY_TOKEN && req.headers.authorization === `Bearer ${NOTIFY_TOKEN}`;
       if (!viaNotifyToken && !allowed(req)) return send(res, 401, { error: 'sign in required', canSignIn: Boolean(HUB_PASSWORD) });
