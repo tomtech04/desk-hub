@@ -7,7 +7,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { ROOT, TZ, readJson, writeJson, refresher, startOfDay, hmToMin, nowMinutes, tzOffset, zonedToUtc } from './util.js';
 import { payitConfigured, loadPayit } from './payit.js';
-import { mailConfigured, loadMail, buildDigest, aiEnabled, readMessage } from './mail.js';
+import { mailConfigured, loadMail, buildDigest, aiEnabled, readMessage, taskFromEmail, tasksFromNewMail } from './mail.js';
 import { calendarConfigured, loadCalendar } from './calendar.js';
 import { setBrightness, hasBacklight, systemStats, loadWeather } from './system.js';
 import { readVoiceRequest, interpretVoice, buildRecap } from './voice.js';
@@ -26,6 +26,7 @@ const VOICE_TOKEN = process.env.HUB_VOICE_TOKEN || '';
 const DEFAULT_STATE = {
   todos: [],
   digest: null, // { day, at, headline, highlights, emailCount, errors }
+  taskChecked: {}, // emailId -> at: already considered by the hourly task pass
   suggestedFrom: {}, // emailId -> at, so an email is only ever suggested once
   focusLog: [], // { at, minutes, label }
   notifications: [], // pushed via POST /api/notify
@@ -152,16 +153,75 @@ setInterval(scheduleTick, 30e3).unref();
 const localDay = (ms = Date.now()) => new Date(ms + tzOffset(TZ, ms)).toISOString().slice(0, 10);
 
 /** Adds a task that waits on the screen for Keep / Dismiss. Once per email, ever. */
-function suggestTask({ emailId, text, due = null, tag = null, from, subject, why }) {
+const makeSubtasks = (list) => (Array.isArray(list) ? list : []).map((t) => String(t?.text ?? t).trim().slice(0, 160)).filter(Boolean).slice(0, 12)
+  .map((text) => ({ id: crypto.randomUUID().slice(0, 8), text, done: false }));
+
+function newTodo({ text, tag = null, due = null, star = false, subtasks = [], ...extra }) {
+  return {
+    id: crypto.randomUUID(), text: String(text).trim().slice(0, 200), tag: state.settings.tags.includes(tag) ? tag : null,
+    due, star: Boolean(star), done: false, createdAt: Date.now(), subtasks: makeSubtasks(subtasks), ...extra,
+  };
+}
+
+function suggestTask({ emailId, text, due = null, tag = null, from, subject, why, subtasks = [] }) {
   if (!state.settings.emailTasks || !emailId || state.suggestedFrom[emailId]) return false;
   state.suggestedFrom[emailId] = Date.now();
-  state.todos.push({
-    id: crypto.randomUUID(), text: String(text).slice(0, 200), tag: state.settings.tags.includes(tag) ? tag : null,
-    due, star: false, done: false, createdAt: Date.now(),
-    suggested: true, source: { from, subject, why: why || null },
-  });
+  state.todos.push(newTodo({ text, tag, due, subtasks, suggested: true, source: { from, subject, why: why || null, emailId } }));
   return true;
 }
+
+// Every hour: have Claude look at mail that hasn't been considered yet, next to
+// the open to-do list. New work becomes suggestions; an email that changes an
+// existing task (moved deadline, new requirements) updates it, with a note on
+// the task saying what changed and where it came from. Email never completes
+// or deletes a task.
+let mailTasksRunning = false;
+async function mailTaskPass() {
+  if (mailTasksRunning || !state.settings.emailTasks || DEMO || !mailConfigured || !aiEnabled()) return;
+  const mail = sources.mail?.get().data;
+  if (!mail) return;
+  const ids = mail.accounts.flatMap((a) => a.messages).filter((m) => m.priority !== 'low' && !state.taskChecked[m.id]).map((m) => m.id);
+  // Low-priority mail is marked as seen without spending a Claude call on it.
+  for (const m of mail.accounts.flatMap((a) => a.messages)) if (m.priority === 'low') state.taskChecked[m.id] ??= Date.now();
+  if (!ids.length) return;
+  mailTasksRunning = true;
+  try {
+    const open = state.todos.filter((t) => !t.done && !t.suggested);
+    const refs = new Map(open.map((t, i) => [`t${i + 1}`, t]));
+    const out = await tasksFromNewMail({
+      ids, tags: state.settings.tags, today: localDay(),
+      openTasks: [...refs].map(([ref, t]) => ({ ref, text: t.text, due: t.due ? localDay(t.due) : null, subtasks: (t.subtasks || []).map((x) => x.text) })),
+    });
+    for (const id of ids) state.taskChecked[id] = Date.now();
+    let added = 0;
+    for (const t of out.newTasks) {
+      added += suggestTask({ emailId: t.email_id, text: t.text, due: t.due ? dayToMs(t.due) : null, tag: t.tag, subtasks: t.subtasks, from: t.from, subject: t.subject, why: t.why });
+    }
+    const changed = [];
+    for (const u of out.updates) {
+      const t = refs.get(u.task_ref);
+      if (!t) continue;
+      t.subtasks = [...(t.subtasks || []), ...makeSubtasks(u.add_subtasks)];
+      if (u.due) t.due = dayToMs(u.due);
+      t.updates = [...(t.updates || []), { at: Date.now(), note: String(u.note).slice(0, 200), from: u.from }].slice(-3);
+      changed.push(t.text);
+    }
+    if (changed.length) {
+      state.notifications = [...state.notifications, { id: crypto.randomUUID(), level: 'info', source: 'mail', at: Date.now(),
+        title: `Updated ${changed.length} task${changed.length > 1 ? 's' : ''} from new email`, body: changed.join(' · ').slice(0, 300) }].slice(-50);
+    }
+    const cutoff = Date.now() - 30 * 86400e3;
+    for (const [k, v] of Object.entries(state.taskChecked)) if (v < cutoff) delete state.taskChecked[k];
+    if (added || changed.length) console.log(`[mail-tasks] ${added} suggested, ${changed.length} updated from ${ids.length} new emails`);
+  } catch (err) {
+    console.error('[mail-tasks]', err.message);
+  } finally {
+    mailTasksRunning = false;
+    save();
+  }
+}
+setInterval(mailTaskPass, 60 * 60e3).unref();
+setTimeout(mailTaskPass, 3 * 60e3).unref(); // and shortly after startup, once mail has loaded
 
 // Urgent mail with a concrete action becomes a suggestion as soon as it's seen.
 function suggestFromUrgent(mail) {
@@ -187,7 +247,7 @@ async function runDigest() {
     const d = DEMO ? demo.digest() : await buildDigest({ tags: state.settings.tags, today: localDay() });
     for (const t of d.tasks) {
       const [y, mo, day] = t.due ? t.due.split('-').map(Number) : [];
-      suggestTask({ emailId: t.email_id, text: t.text, due: t.due ? zonedToUtc(TZ, y, mo, day) : null, tag: t.tag, from: t.from, subject: t.subject, why: t.why });
+      suggestTask({ emailId: t.email_id, text: t.text, due: t.due ? zonedToUtc(TZ, y, mo, day) : null, tag: t.tag, from: t.from, subject: t.subject, why: t.why, subtasks: t.subtasks });
     }
     state.digest = { day: localDay(), at: Date.now(), headline: d.headline, highlights: d.highlights, emailCount: d.emailCount, taskCount: d.tasks.length, errors: d.errors };
     save();
@@ -226,19 +286,32 @@ async function handleVoice({ text, recordedAt, trigger }) {
   state.journal = state.journal.slice(-400);
   save();
 
-  const out = await interpretVoice({ text, tags: state.settings.tags, today: localDay(), weekday: weekdayName() });
+  // Give Claude the open list with short refs, so "mark grocery shopping as done" can point at one.
+  const openList = state.todos.filter((t) => !t.done && !t.suggested);
+  const byRef = new Map();
+  const open = openList.map((t, i) => {
+    const ref = `t${i + 1}`;
+    byRef.set(ref, { task: t });
+    return { ref, text: t.text, subtasks: (t.subtasks || []).filter((x) => !x.done).map((x, j) => { const r = `${ref}.${j + 1}`; byRef.set(r, { task: t, sub: x }); return { ref: r, text: x.text }; }) };
+  });
+  const out = await interpretVoice({ text, tags: state.settings.tags, today: localDay(), weekday: weekdayName(), open });
   for (const t of out.tasks) {
-    state.todos.push({
-      id: crypto.randomUUID(), text: String(t.text).slice(0, 200), tag: state.settings.tags.includes(t.tag) ? t.tag : null,
-      due: t.due ? dayToMs(t.due) : null, star: false, done: false, createdAt: Date.now(), source: { why: 'Voice note' },
-    });
+    state.todos.push(newTodo({ text: t.text, tag: t.tag, due: t.due ? dayToMs(t.due) : null, subtasks: t.subtasks, source: { why: 'Voice note' } }));
   }
-  Object.assign(entry, { note: out.note, tasks: out.tasks.map((t) => t.text), pending: false });
-  const n = out.tasks.length;
+  const completed = [];
+  for (const ref of out.complete) {
+    const hit = byRef.get(ref);
+    if (!hit) continue;
+    if (hit.sub) { hit.sub.done = true; completed.push(hit.sub.text); }
+    else { hit.task.done = true; hit.task.doneAt = Date.now(); completed.push(hit.task.text); }
+  }
+  Object.assign(entry, { note: out.note, tasks: out.tasks.map((t) => t.text), completed, pending: false });
+  const n = out.tasks.length, c = completed.length;
+  const title = [c && `Marked ${c} done`, n && `added ${n} task${n > 1 ? 's' : ''}`].filter(Boolean).join(', ');
   state.notifications = [...state.notifications, {
     id: crypto.randomUUID(), level: 'info', source: 'voice', at: Date.now(),
-    title: n ? `Added ${n} task${n > 1 ? 's' : ''} from your voice note` : 'Voice note saved',
-    body: (n ? out.tasks.map((t) => t.text).join(' · ') : out.note || text).slice(0, 300),
+    title: title ? title[0].toUpperCase() + title.slice(1) + ' from your voice note' : 'Voice note saved',
+    body: (out.reply || [...completed.map((t) => `✓ ${t}`), ...out.tasks.map((t) => t.text)].join(' · ') || out.note || text).slice(0, 300),
   }].slice(-50);
   save();
 }
@@ -479,13 +552,17 @@ const routes = {
   'POST /api/todos': ({ body }) => {
     const text = String(body.text || '').trim().slice(0, 200);
     if (!text) return [400, { error: 'text required' }];
-    const todo = { id: crypto.randomUUID(), text, tag: body.tag || null, due: body.due ?? null, star: Boolean(body.star), done: false, createdAt: Date.now() };
+    const todo = newTodo({ text, tag: body.tag || null, due: body.due ?? null, star: body.star, subtasks: body.subtasks });
     state.todos.push(todo); save(); return todo;
   },
   'PATCH /api/todos/:id': ({ params, body }) => {
     const t = state.todos.find((x) => x.id === params.id);
     if (!t) return [404, { error: 'not found' }];
     for (const k of ['text', 'tag', 'due', 'star', 'done']) if (k in body) t[k] = body[k];
+    if (Array.isArray(body.subtasks)) {
+      t.subtasks = body.subtasks.slice(0, 20).map((x) => ({ id: String(x.id || crypto.randomUUID().slice(0, 8)), text: String(x.text || '').trim().slice(0, 160), done: Boolean(x.done) })).filter((x) => x.text);
+    }
+    if (body.clearUpdates) delete t.updates;
     if (body.suggested === false) { t.suggested = false; t.createdAt = Date.now(); }
     if ('done' in body) t.doneAt = body.done ? Date.now() : null;
     save(); return t;
@@ -497,6 +574,21 @@ const routes = {
     const minutes = Math.max(1, Math.min(240, Math.round(Number(body.minutes) || 0)));
     state.focusLog.push({ at: Date.now(), minutes, label: String(body.label || '').slice(0, 60) || null });
     state.focusLog = state.focusLog.slice(-2000); save(); return { ok: true };
+  },
+
+  // "Make it a task" on an email: Claude reads the whole message and writes a
+  // real task (with subtasks if it has several parts). Added directly, since
+  // the person asked for it.
+  'POST /api/mail/task': async ({ body }) => {
+    const id = String(body.id);
+    try {
+      const t = DEMO ? demo.taskFromEmail(id) : await taskFromEmail(id, { tags: state.settings.tags, today: localDay() });
+      const todo = newTodo({ text: t.text, tag: t.tag, due: t.due ? dayToMs(t.due) : null, subtasks: t.subtasks, source: { from: t.from, subject: t.subject, why: t.why || t.from, emailId: id } });
+      state.todos.push(todo);
+      state.suggestedFrom[id] = Date.now(); state.taskChecked[id] = Date.now(); // don't suggest it again
+      save();
+      return todo;
+    } catch (err) { return [502, { error: err.message }]; }
   },
 
   'POST /api/peek': () => { peek(); return { ok: true, ms: PEEK_MS }; },

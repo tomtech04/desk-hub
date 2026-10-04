@@ -121,9 +121,20 @@ export function recap() {
 export function message(id) {
   const m = mail().accounts.flatMap((a) => a.messages.map((x) => ({ ...x, account: a.name }))).find((x) => x.id === id);
   if (!m) throw new Error('That email is no longer in the list. Refresh and try again.');
+  const html = id === 'p1' ? `<div style="font-family:Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1a1f36"><div style="background:#635bff;color:#fff;padding:22px 24px;border-radius:8px 8px 0 0;font-size:22px;font-weight:700">stripe</div><div style="border:1px solid #e3e8ee;border-top:0;padding:24px;border-radius:0 0 8px 8px"><h2 style="margin:0 0 12px">Action required: verify business details</h2><p style="line-height:1.5">We need an updated tax ID for your connected account. Payouts will pause on <b>Friday</b> if it isn't provided.</p><p><a href="https://example.com" style="display:inline-block;background:#635bff;color:#fff;padding:12px 18px;border-radius:6px;text-decoration:none;font-weight:600">Update details</a></p><img alt="" width="512" height="120" style="max-width:100%;border-radius:6px" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='512' height='120'><rect width='512' height='120' fill='%23f6f9fc'/><text x='24' y='68' font-family='Arial' font-size='20' fill='%23635bff'>[ an image from the email ]</text></svg>"><p style="color:#697386;font-size:13px;margin-top:18px">Stripe, 354 Oyster Point Blvd, South San Francisco, CA</p></div></div>` : '';
   return {
+    html,
     id, account: m.account, from: m.from, fromAddress: 'sender@example.com', to: ['Tomas'], subject: m.subject, date: m.date,
     text: `Hi Tomas,\n\n${m.summary}\n\nThis is demo text standing in for the full email. On the Pi this shows the real message exactly as it was sent, fetched from your mailbox when you tap it, without marking it as read.\n\nA second paragraph so the reader has something to scroll: lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\n\nThanks,\n${m.from}`,
     truncated: false, attachments: id === 's1' ? ['Lab2_rubric_v2.pdf'] : [],
   };
+}
+
+export function taskFromEmail(id) {
+  const m = mail().accounts.flatMap((a) => a.messages).find((x) => x.id === id);
+  if (!m) throw new Error('That email is no longer in the list. Refresh and try again.');
+  return id === 's1'
+    ? { text: 'Finish ME 3057 Lab 2 report with the new rubric', due: new Date(startOfDay(Date.now(), 4) + 12 * H).toISOString().slice(0, 10), tag: 'School', why: 'Prof. Ramirez · rubric update', from: m.from, subject: m.subject,
+        subtasks: ['Add the uncertainty analysis section', 'Re-check figures against the new rubric', 'Submit on Canvas by 11:59pm Thursday'] }
+    : { text: m.action || m.subject, due: '', tag: '', why: m.from, from: m.from, subject: m.subject, subtasks: [] };
 }

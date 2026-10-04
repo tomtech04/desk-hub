@@ -258,13 +258,27 @@ function dueHtml(t) {
 }
 
 function todoRow(t, full = false) {
-  return `<div class="item ${t.done ? 'done' : ''}">
+  const subs = t.subtasks || [];
+  const left = subs.filter((x) => !x.done).length;
+  const progress = subs.length ? `<span class="steps ${left ? '' : 'all'}">${subs.length - left}/${subs.length}</span>` : '';
+  const row = `<div class="item ${t.done ? 'done' : ''}">
     <button class="check ${t.done ? 'done' : ''}" data-act="todo-toggle" data-id="${t.id}">${t.done ? icon('check') : ''}</button>
-    <div class="t"><b class="wrap">${esc(t.text)}</b></div>
+    <div class="t"><b class="wrap">${esc(t.text)}</b>${full && t.source?.why ? `<span>${esc(t.source.why)}</span>` : ''}</div>
+    ${progress}
     ${t.tag ? `<span class="tag">${esc(t.tag)}</span>` : ''}
     ${dueHtml(t)}
     ${full ? `<button class="icon-btn ${t.star ? 'on' : ''}" data-act="todo-star" data-id="${t.id}">${icon('star')}</button>
               <button class="icon-btn" data-act="todo-del" data-id="${t.id}">${icon('trash')}</button>` : ''}
+  </div>`;
+  if (!full) return row;
+  // The full list shows the steps under each task, plus any change that came in by email.
+  return `<div class="task ${t.done ? 'done' : ''}">${row}
+    ${(t.updates || []).map((u) => `<div class="task-update">${icon('mail')}<span>${esc(u.note)}${u.from ? ` <i>· ${esc(u.from.replace(/\s*<.*>/, ''))}</i>` : ''}</span><button class="icon-btn" data-act="update-clear" data-id="${t.id}" aria-label="Dismiss">${icon('x')}</button></div>`).join('')}
+    ${subs.length || !t.done ? `<div class="subs">
+      ${subs.map((x) => `<div class="sub ${x.done ? 'done' : ''}"><button class="check small ${x.done ? 'done' : ''}" data-act="sub-toggle" data-id="${t.id}" data-sid="${x.id}">${x.done ? icon('check') : ''}</button><span>${esc(x.text)}</span>
+        <button class="icon-btn small" data-act="sub-del" data-id="${t.id}" data-sid="${x.id}" aria-label="Remove step">${icon('x')}</button></div>`).join('')}
+      ${t.done ? '' : `<button class="add-step" data-act="sub-add" data-id="${t.id}">${icon('plus')} Add a step</button>`}
+    </div>` : ''}
   </div>`;
 }
 
@@ -399,7 +413,7 @@ const VIEWS = {
       ${review.length ? `<section class="card review">
         <div class="card-h">${icon('mail')}<span class="grow">Suggested from email</span><span class="link">Keep the ones that are real</span></div>
         <div class="list">${review.map((t) => `<div class="item">
-          <div class="t"><b class="wrap">${esc(t.text)}</b><span>${esc(t.source?.why || [t.source?.from, t.source?.subject].filter(Boolean).join(' · '))}</span></div>
+          <div class="t"><b class="wrap">${esc(t.text)}</b><span>${esc(t.source?.why || [t.source?.from, t.source?.subject].filter(Boolean).join(' · '))}${t.subtasks?.length ? ` · ${t.subtasks.length} steps` : ''}</span></div>
           ${t.tag ? `<span class="tag">${esc(t.tag)}</span>` : ''}${dueHtml(t)}
           <button class="btn small primary" data-act="sugg-keep" data-id="${t.id}">${icon('check')} Keep</button>
           <button class="icon-btn" data-act="sugg-dismiss" data-id="${t.id}" aria-label="Dismiss">${icon('x')}</button>
@@ -488,7 +502,7 @@ const VIEWS = {
     const row = (j) => `<div class="msg">
       <div class="top"><b>${esc(j.note || j.text)}</b><span class="muted">${hm(j.at)}</span></div>
       ${j.note && j.note !== j.text ? `<p class="said">“${esc(j.text)}”</p>` : ''}
-      ${j.pending ? '<div class="act">Working out what you meant…</div>' : j.tasks.map((t) => `<div class="act">${icon('check')} ${esc(t)}</div>`).join('')}
+      ${j.pending ? '<div class="act">Working out what you meant…</div>' : `${(j.completed || []).map((t) => `<div class="act done">${icon('check')} Done: ${esc(t)}</div>`).join('')}${j.tasks.map((t) => `<div class="act">${icon('plus')} ${esc(t)}</div>`).join('')}`}
     </div>`;
     return `<div class="page-h"><h1>Journal</h1><button class="btn primary" data-act="note-add">${icon('plus')} Note</button></div>
       <div class="mail-page">
@@ -576,37 +590,43 @@ const VIEWS = {
     const st = D.settings;
     const step = (key, val, unit = '') => `<div class="stepper"><button data-act="set-step" data-k="${key}" data-d="-1">−</button><b>${esc(val)}${unit}</b><button data-act="set-step" data-k="${key}" data-d="1">+</button></div>`;
     const sys = D.system;
+    const row = (label, hint, control) => `<div class="set-row"><label>${label}${hint ? `<span>${hint}</span>` : ''}</label><div class="set-ctl">${control}</div></div>`;
+    const toggle = (k) => `<button class="toggle ${st[k] ? 'on' : ''}" data-act="set-toggle" data-k="${k}" aria-pressed="${Boolean(st[k])}"></button>`;
+    const range = (k, min, max) => `<input type="range" min="${min}" max="${max}" value="${st[k]}" data-act="set-range" data-k="${k}">`;
+    const group = (title, rows) => `<section class="card"><div class="card-h">${title}</div>${rows.join('')}</section>`;
     return `<div class="page-h"><h1>Settings</h1>
         <button class="btn" data-act="mode" data-mode="sleep">${icon('moon')} Sleep now</button>
         <button class="btn ghost" data-act="mode" data-mode="off">Screen off</button></div>
       <div class="settings">
-        <section class="card">
-          <div class="card-h">Display</div>
-          <div class="set-row"><label>Brightness<span>${D.hasBacklight ? 'Touch Display backlight' : 'No backlight found — dims on the Pi only'}</span></label>
-            <input type="range" min="10" max="100" value="${st.dayBrightness}" data-act="set-range" data-k="dayBrightness"></div>
-          <div class="set-row"><label>Sleep brightness<span>How dim the bedside clock gets</span></label>
-            <input type="range" min="0" max="30" value="${st.sleepBrightness}" data-act="set-range" data-k="sleepBrightness"></div>
-          <div class="set-row"><label>Wind down<span>From this time the desk screen dims and puts mail and PayIt away</span></label>${step('windDownAt', st.windDownAt)}<button class="toggle ${st.windDown ? 'on' : ''}" data-act="set-toggle" data-k="windDown"></button></div>
-          <div class="set-row"><label>Morning brief<span>Sunrise screen with your day, shown at wake time until you tap it</span></label><button class="toggle ${st.morningBrief ? 'on' : ''}" data-act="set-toggle" data-k="morningBrief"></button></div>
-          <div class="set-row"><label>Automatic sleep mode</label><button class="toggle ${st.autoSleep ? 'on' : ''}" data-act="set-toggle" data-k="autoSleep"></button></div>
-          <div class="set-row"><label>Sleep at</label>${step('sleepAt', st.sleepAt)}</div>
-          <div class="set-row"><label>Wake at</label>${step('wakeAt', st.wakeAt)}</div>
-          <div class="set-row"><label>Email digest at<span>Claude's daily summary of the last 24 hours</span></label>${step('digestAt', st.digestAt)}</div>
-          <div class="set-row"><label>Day recap at<span>Evening summary from your notes, tasks and focus time</span></label>${step('recapAt', st.recapAt)}</div>
-          <div class="set-row"><label>Suggest tasks from email<span>You approve each one before it counts</span></label><button class="toggle ${st.emailTasks ? 'on' : ''}" data-act="set-toggle" data-k="emailTasks"></button></div>
-          <div class="set-row"><label>Sounds</label><button class="toggle ${st.chime ? 'on' : ''}" data-act="set-toggle" data-k="chime"></button></div>
-        </section>
-        <section class="card">
-          <div class="card-h">Focus timer</div>
-          <div class="set-row"><label>Focus length</label>${step('focusMinutes', st.focusMinutes, 'm')}</div>
-          <div class="set-row"><label>Short break</label>${step('shortBreak', st.shortBreak, 'm')}</div>
-          <div class="set-row"><label>Long break</label>${step('longBreak', st.longBreak, 'm')}</div>
-          <div class="card-h" style="margin-top:16px">Pi</div>
-          <div class="set-row"><label>${esc(sys.host)}<span>${sys.tempC != null ? `${sys.tempC.toFixed(0)}°C · ` : ''}load ${sys.load.toFixed(2)} · mem ${sys.memUsedPct}% · up ${sys.uptimeH}h</span></label>
-            <button class="btn small ghost" data-act="refresh">Refresh data</button><button class="btn small ghost" data-act="reload">Reload</button></div>
-          ${D.signedIn ? `<div class="set-row"><label>Signed in on this device</label><button class="btn small ghost" data-act="logout">Sign out</button></div>` : ''}
-          <div class="set-row"><label>Use it from your phone or laptop<span>Open http://${esc(sys.host.includes(".") ? sys.host : sys.host + ".local")}:${esc(location.port || 80)} on the same Wi-Fi</span></label></div>
-        </section>
+        ${group('Display', [
+          row('Brightness', D.hasBacklight ? 'Desk screen backlight' : 'No backlight here; this controls the desk screen', range('dayBrightness', 10, 100)),
+          row('Sleep brightness', 'How dim the bedside clock gets', range('sleepBrightness', 0, 30)),
+          row('Sounds', '', toggle('chime')),
+        ])}
+        ${group('Evening and morning', [
+          row('Wind down', 'Desk screen dims and puts mail and PayIt away', toggle('windDown')),
+          row('Wind down starts', '', step('windDownAt', st.windDownAt)),
+          row('Automatic sleep mode', '', toggle('autoSleep')),
+          row('Sleep at', '', step('sleepAt', st.sleepAt)),
+          row('Wake at', '', step('wakeAt', st.wakeAt)),
+          row('Morning brief', 'Sunrise screen with your day, until you tap it', toggle('morningBrief')),
+        ])}
+        ${group('Mail and Claude', [
+          row('Email digest at', "Claude's summary of the last 24 hours", step('digestAt', st.digestAt)),
+          row('Day recap at', 'From your notes, tasks and focus time', step('recapAt', st.recapAt)),
+          row('Tasks from email', 'Checked hourly; you approve new ones', toggle('emailTasks')),
+        ])}
+        ${group('Focus timer', [
+          row('Focus length', '', step('focusMinutes', st.focusMinutes, 'm')),
+          row('Short break', '', step('shortBreak', st.shortBreak, 'm')),
+          row('Long break', '', step('longBreak', st.longBreak, 'm')),
+        ])}
+        ${group('This hub', [
+          row(esc(sys.host), `${sys.tempC != null ? `${sys.tempC.toFixed(0)}°C · ` : ''}load ${sys.load.toFixed(2)} · memory ${sys.memUsedPct}% · up ${sys.uptimeH}h`, ''),
+          row('Data', 'Reload mail, PayIt, calendar and weather now', '<button class="btn small ghost" data-act="refresh">Refresh</button>'),
+          row('This screen', 'Reload the page', '<button class="btn small ghost" data-act="reload">Reload</button>'),
+          D.signedIn ? row('Signed in on this device', '', '<button class="btn small ghost" data-act="logout">Sign out</button>') : '',
+        ])}
       </div>`;
   },
 };
@@ -742,6 +762,17 @@ function renderDrawer() {
   </div>`;
 }
 
+// The email's own HTML, shown in a sandboxed frame: scripts can't run, forms
+// can't submit, and it can't reach the hub. Images load as the sender intended.
+// On the desk screen links do nothing; on a phone or laptop they open a new tab.
+function emailDoc(html) {
+  return `<!doctype html><html><head><meta charset="utf-8"><base target="_blank">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src http: https: data:; style-src 'unsafe-inline' http: https:; font-src http: https: data:; media-src 'none'">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>html{background:#fff;color:#111;font:16px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif}body{margin:14px;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}</style>
+    </head><body>${html}</body></html>`;
+}
+
 // Reading one email in full. The text is fetched from the mailbox on demand.
 function renderReader() {
   const r = ui.reading;
@@ -756,8 +787,8 @@ function renderReader() {
          <div class="r-meta"><b>${esc(m.from)}</b>${m.fromAddress ? ` <span>&lt;${esc(m.fromAddress)}&gt;</span>` : ''}<br>
            <span>${m.date ? new Date(m.date).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}${m.to?.length ? ` · to ${esc(m.to.join(', '))}` : ''}</span></div>
          ${r.summary ? `<div class="r-summary">${esc(r.summary)}${r.action ? `<div class="act">${icon('arrow')} ${esc(r.action)}</div>` : ''}</div>` : ''}
-         <div class="r-body">${esc(m.text)}</div>
-         ${m.truncated ? '<div class="muted" style="margin-top:10px">This email is very long; the rest is cut off here.</div>' : ''}
+         ${m.html ? `<iframe class="r-frame" title="Email" sandbox="${KIOSK ? '' : 'allow-popups allow-popups-to-escape-sandbox'}" referrerpolicy="no-referrer" srcdoc="${esc(emailDoc(m.html))}"></iframe>`
+           : `<div class="r-body">${esc(m.text)}</div>${m.truncated ? '<div class="muted" style="margin-top:10px">This email is very long; the rest is cut off here.</div>' : ''}`}
          ${m.attachments?.length ? `<div class="r-attach">Attachments: ${m.attachments.map(esc).join(', ')}</div>` : ''}`}
   </div>`;
 }
@@ -985,9 +1016,29 @@ document.addEventListener('click', async (e) => {
       }
       case 'sched-day': ui.schedDay = Number(el.dataset.o); render(); break;
       case 'mail-todo': {
-        const m = D.mail.data.accounts.flatMap((a) => a.messages).find((x) => x.id === el.dataset.id);
+        el.disabled = true; el.innerHTML = 'Claude is reading it…';
+        const t = await api('POST', '/api/mail/task', { id: el.dataset.id });
         $('#drawer').hidden = true;
-        addTask({ text: m.action || m.subject, due: m.priority === 'urgent' ? dayStart() : null });
+        toast({ level: 'info', title: 'Added to To do', body: `${t.text}${t.subtasks?.length ? ` (${t.subtasks.length} steps)` : ''}` });
+        await load();
+        break;
+      }
+      case 'sub-toggle': case 'sub-del': case 'sub-add': case 'update-clear': {
+        const t = D.todos.find((x) => x.id === el.dataset.id);
+        if (act === 'update-clear') { delete t.updates; render(); await api('PATCH', `/api/todos/${t.id}`, { clearUpdates: true }); break; }
+        if (act === 'sub-add') {
+          openKeyboard({ title: `Add a step to “${t.text.slice(0, 40)}”`, value: '', options: [], onDone: async (text) => {
+            if (!text.trim()) return;
+            await api('PATCH', `/api/todos/${t.id}`, { subtasks: [...(t.subtasks || []), { text, done: false }] });
+            load();
+          } });
+          break;
+        }
+        t.subtasks = act === 'sub-del' ? t.subtasks.filter((x) => x.id !== el.dataset.sid)
+          : t.subtasks.map((x) => (x.id === el.dataset.sid ? { ...x, done: !x.done } : x));
+        if (act === 'sub-toggle' && t.subtasks.find((x) => x.id === el.dataset.sid)?.done) chime('soft');
+        render();
+        await api('PATCH', `/api/todos/${t.id}`, { subtasks: t.subtasks });
         break;
       }
       case 'mode':
@@ -1046,7 +1097,13 @@ setInterval(() => {
 
 window.addEventListener('resize', () => drawCharts());
 
-load();
+// Deep link: /#read=<email id> opens that email (handy from a notification or for testing).
+load().then(() => {
+  const m = /^#read=(.+)$/.exec(location.hash);
+  if (!m || !D) return;
+  go('mail');
+  document.querySelector(`.msg[data-id="${CSS.escape(decodeURIComponent(m[1]))}"]`)?.click();
+});
 setInterval(load, 20e3);
 // Midnight rollover and long-running kiosk hygiene: full reload once a day at 4am.
 if (KIOSK) setInterval(() => { const d = new Date(); if (d.getHours() === 4 && d.getMinutes() === 0) location.reload(); }, 60e3);

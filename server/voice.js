@@ -45,52 +45,73 @@ export function readVoiceRequest(buffer, headers) {
 const VOICE_SCHEMA = (tags) => ({
   type: 'object',
   additionalProperties: false,
-  required: ['tasks', 'note'],
+  required: ['tasks', 'complete', 'note', 'reply'],
   properties: {
     tasks: {
       type: 'array',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['text', 'due', 'tag'],
-        properties: { text: { type: 'string' }, due: { type: 'string' }, tag: { type: 'string', enum: [...tags, ''] } },
+        required: ['text', 'due', 'tag', 'subtasks'],
+        properties: { text: { type: 'string' }, due: { type: 'string' }, tag: { type: 'string', enum: [...tags, ''] }, subtasks: { type: 'array', items: { type: 'string' } } },
       },
     },
+    complete: { type: 'array', items: { type: 'string' } },
     note: { type: 'string' },
+    reply: { type: 'string' },
   },
 });
 
-/** No-AI fallback: sentences that sound like to-dos become tasks, the rest a note. */
-function roughSplit(text) {
-  const tasks = [], rest = [];
+const norm = (t) => t.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\b(the|a|an|my|to|go|do|task|item)\b/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** No-AI fallback: sentences that sound like to-dos become tasks, "mark X as done" completes, the rest is a note. */
+function roughSplit(text, open = []) {
+  const tasks = [], complete = [], rest = [];
+  const everything = open.flatMap((t) => [{ ref: t.ref, text: t.text }, ...t.subtasks]);
   for (const raw of text.split(/(?<=[.!?])\s+|\s+and then\s+|;\s*/i)) {
     const s = raw.trim().replace(/[.!?]+$/, '');
     if (!s) continue;
+    const done = /^(?:please\s+)?(?:mark|check off|tick off|cross off|complete)\s+(.+?)(?:\s+(?:as|is)\s+(?:done|complete|completed|finished))?$/i.exec(s)
+      || /^(?:i\s+)?(?:finished|completed|did|am done with|have done)\s+(.+)$/i.exec(s);
+    const hit = done && everything.find((t) => { const a = norm(t.text), b = norm(done[1]); return b && (a.includes(b) || b.includes(a)); });
+    if (hit) { complete.push(hit.ref); continue; }
     const m = /^(?:i\s+)?(?:need to|have to|got to|gotta|should|must|remind me to|remember to|don't forget to|to-?do:?|add(?: a)? task(?: to)?:?)\s+(.+)/i.exec(s);
-    if (m) tasks.push({ text: m[1][0].toUpperCase() + m[1].slice(1), due: '', tag: '' });
+    if (m) tasks.push({ text: m[1][0].toUpperCase() + m[1].slice(1), due: '', tag: '', subtasks: [] });
     else rest.push(s);
   }
-  return { tasks, note: rest.join('. ') };
+  return { tasks, complete, note: rest.join('. '), reply: '' };
 }
 
-/** What did they ask for? Returns { tasks: [{ text, due: 'YYYY-MM-DD'|'', tag }], note }. */
-export async function interpretVoice({ text, tags, today, weekday }) {
-  if (!aiEnabled()) return roughSplit(text);
+/**
+ * What did they ask for?
+ * @param open  their open tasks: [{ ref, text, subtasks: [{ ref, text }] }]
+ * @returns { tasks: [{ text, due, tag, subtasks: [string] }], complete: [ref], note, reply }
+ */
+export async function interpretVoice({ text, tags, today, weekday, open = [] }) {
+  if (!aiEnabled()) return roughSplit(text, open);
   try {
     const out = await askJson({
       schema: VOICE_SCHEMA(tags),
-      system: `You turn a person's spoken note into entries for their desk dashboard. They pressed a button on a ring and spoke; the text is an automatic transcription, so expect small mistakes and fix obvious ones. Today is ${weekday}, ${today}.
+      system: `You act on a person's spoken note for their desk dashboard. They pressed a button on a ring and spoke; the text is an automatic transcription, so expect small mistakes and fix obvious ones. Today is ${weekday}, ${today}. You're given their open tasks, each with a ref (and refs for any subtasks).
 
-- tasks: every to-do they stated or clearly meant for themselves, one per item, each a short imperative as they'd write it on their own list. Keep their specifics (names, numbers, places). due is YYYY-MM-DD when they gave or implied a day ("tomorrow", "by Friday", "tonight" = today), else "". tag is the best fit from the allowed list, or "".
-- note: anything else worth keeping (an idea, something that happened, how the day went), cleaned up into one or two plain sentences in their voice. "" if the recording was only tasks.
+- tasks: every NEW to-do they stated or clearly meant for themselves, one per item, each a short imperative as they'd write it. Keep their specifics (names, numbers, places). due is YYYY-MM-DD when they gave or implied a day ("tomorrow", "by Friday", "tonight" = today), else "". tag is the best fit from the allowed list, or "". subtasks are the separate steps they listed for that task, if they listed any; otherwise empty.
+- complete: the refs of open tasks or subtasks they said are done ("mark grocery shopping as completed", "I finished the lab report", "done with step two of the onboarding"). Match by meaning, not exact words, but only when it's clear which one they mean; if it's ambiguous, leave it out and say so in reply. Copy refs exactly.
+- note: anything else worth keeping (an idea, something that happened, how the day went), cleaned up into one or two plain sentences in their voice. "" if there's nothing beyond tasks and completions.
+- reply: one short sentence confirming what you did, for a notification (e.g. "Marked grocery shopping as done." or "Added 2 tasks."). If you couldn't tell which task they meant, say that instead.
 
-Don't invent tasks they didn't ask for, and don't turn a passing thought into a task.`,
-      content: `<recording>\n${text}\n</recording>`,
+Don't invent tasks they didn't ask for, don't turn a passing thought into a task, and don't add a task for something they just said they finished.`,
+      content: JSON.stringify({ open_tasks: open, recording: text }),
     });
-    return { tasks: out.tasks.map((t) => ({ ...t, due: /^\d{4}-\d{2}-\d{2}$/.test(t.due) ? t.due : '' })), note: out.note };
+    const refs = new Set(open.flatMap((t) => [t.ref, ...t.subtasks.map((x) => x.ref)]));
+    return {
+      tasks: out.tasks.map((t) => ({ ...t, due: /^\d{4}-\d{2}-\d{2}$/.test(t.due) ? t.due : '' })),
+      complete: out.complete.filter((r) => refs.has(r)),
+      note: out.note,
+      reply: out.reply,
+    };
   } catch (err) {
     console.error('[voice] falling back to simple split:', err.message);
-    return roughSplit(text);
+    return roughSplit(text, open);
   }
 }
 
