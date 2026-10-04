@@ -1,7 +1,7 @@
 // Fake data for `npm run demo`, so the UI can be designed and tested off the Pi.
 import { startOfDay } from './util.js';
 
-export const source = (fn) => ({ get: () => ({ data: fn(), error: null, updatedAt: Date.now() }), refresh() {} });
+export const source = (fn) => ({ get: () => ({ data: fn(), error: null, failures: 0, updatedAt: Date.now() }), refresh() {} });
 
 const H = 3600e3;
 

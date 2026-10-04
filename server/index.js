@@ -376,7 +376,10 @@ function buildAlerts(snap) {
   const add = (id, level, source, title, body = '') => alerts.push({ id, level, source, title, body });
 
   for (const [name, s] of Object.entries(sources)) {
-    if (s?.get().error) add(`err:${name}:${s.get().error}`, 'warn', name, `Can't load ${name}`, s.get().error);
+    // Only worth an alert once it keeps failing (or has never loaded); a single
+    // missed refresh retries on its own and the last good data stays on screen.
+    const g = s?.get();
+    if (g?.error && (g.failures >= 3 || !g.data)) add(`err:${name}:${g.error}`, 'warn', name, `Can't load ${name}`, g.error);
   }
 
   const p = snap.payit?.data;

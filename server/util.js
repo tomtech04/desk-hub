@@ -59,17 +59,22 @@ export function writeJson(name, value) {
  * records the error so the dashboard can show it as an alert.
  */
 export function refresher(name, intervalMs, load) {
-  const state = { data: null, error: null, updatedAt: null, loading: false };
+  const state = { data: null, error: null, updatedAt: null, loading: false, failures: 0 };
   async function refresh() {
     if (state.loading) return;
     state.loading = true;
     try {
       state.data = await load();
       state.error = null;
+      state.failures = 0;
       state.updatedAt = Date.now();
     } catch (err) {
       state.error = err?.message || String(err);
+      state.failures++;
       console.error(`[${name}]`, state.error);
+      // A one-off network blip (a failed DNS lookup, a dropped connection)
+      // shouldn't wait a whole interval: try again shortly, a couple of times.
+      if (state.failures <= 2) setTimeout(refresh, 10e3).unref();
     } finally {
       state.loading = false;
     }
