@@ -117,3 +117,13 @@ export function recap() {
     tomorrow: ['Finish the Lab 2 uncertainty section (due 11:59pm)', 'Problem set 4 (Dynamics)', 'Schedule the merchant demo'],
   };
 }
+
+export function message(id) {
+  const m = mail().accounts.flatMap((a) => a.messages.map((x) => ({ ...x, account: a.name }))).find((x) => x.id === id);
+  if (!m) throw new Error('That email is no longer in the list. Refresh and try again.');
+  return {
+    id, account: m.account, from: m.from, fromAddress: 'sender@example.com', to: ['Tomas'], subject: m.subject, date: m.date,
+    text: `Hi Tomas,\n\n${m.summary}\n\nThis is demo text standing in for the full email. On the Pi this shows the real message exactly as it was sent, fetched from your mailbox when you tap it, without marking it as read.\n\nA second paragraph so the reader has something to scroll: lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\n\nThanks,\n${m.from}`,
+    truncated: false, attachments: id === 's1' ? ['Lab2_rubric_v2.pdf'] : [],
+  };
+}

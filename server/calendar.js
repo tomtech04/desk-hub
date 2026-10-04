@@ -91,7 +91,6 @@ export async function loadCalendar() {
         if (ev.cancelled) continue;
         const dur = ev.end ? ev.end.ms - ev.start.ms : 0;
         for (const start of occurrences(ev, from, to)) {
-          if (start + dur < now && !ev.start.allDay) continue; // already over
           all.push({ calendar: feed.name, title: ev.title || '(untitled)', location: ev.location || '', start, end: start + dur, allDay: ev.start.allDay });
         }
       }

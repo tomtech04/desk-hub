@@ -95,7 +95,7 @@ async function api(method, url, body) {
 
 let D = null; // last dashboard snapshot
 let view = 'home';
-const ui = { taskFilter: 'open', chartSel: {}, mailOpen: null };
+const ui = { taskFilter: 'open', chartSel: {}, schedDay: 0, drawer: 'alerts', reading: null };
 
 async function load() {
   try {
@@ -283,7 +283,7 @@ const VIEWS = {
     const [wxLabel, wxIcon] = w ? wx(w.code) : ['', 'sun'];
     const rainH = w?.nextRain ? new Date(w.nextRain.time).getHours() : 0;
     const rain = w?.nextRain ? ` · rain ~${rainH % 12 || 12}${rainH < 12 ? 'am' : 'pm'}` : '';
-    const events = (D.calendar?.data?.events || []).slice(0, 4);
+    const events = (D.calendar?.data?.events || []).filter((e) => e.allDay ? e.start >= dayStart() : e.end >= Date.now() || e.start >= Date.now()).slice(0, 4);
     const todos = realTodos().filter((t) => !t.done).sort(todoSort).slice(0, 5);
     const toReview = suggestedTodos().length;
     const doneToday = D.todos.filter((t) => t.done && t.doneAt >= dayStart()).length;
@@ -467,8 +467,6 @@ const VIEWS = {
           <div class="top">${m.priority === 'urgent' ? '<span class="prio"><span class="dot" style="background:var(--bad)"></span>Urgent</span>' : ''}<b>${esc(m.from)}</b><span class="muted">${ago(m.date)}</span></div>
           <p>${esc(m.summary)}</p>
           ${m.action ? `<div class="act">${icon('arrow')} ${esc(m.action)}</div>` : ''}
-          ${ui.mailOpen === m.id ? `<div class="subj">Subject: ${esc(m.subject)}</div>
-            <div class="row" style="margin-top:8px"><button class="btn small ghost" data-act="mail-todo" data-id="${esc(m.id)}">${icon('plus')} Make it a task</button></div>` : ''}
         </div>`).join('') || '<div class="empty">No unread mail from the last few days.</div>'}</div>
       </section>`).join('')}</div></div>`;
   },
@@ -503,15 +501,73 @@ const VIEWS = {
   },
 
   schedule() {
-    const s = D.calendar;
-    const evs = s?.data?.events || [];
-    const groups = {};
-    for (const e of evs) (groups[dayLabel(e.start)] ??= []).push(e);
-    return `<div class="page-h"><h1>Schedule</h1><span class="muted">Next 7 days</span></div>
-      <section class="card sched">${s?.configured === false ? notConfigured('Calendar', 'Add CALENDAR_FEEDS to .env — Canvas → Calendar → Calendar Feed gives you the link.')
-        : evs.length ? Object.entries(groups).map(([day, list]) => `<h3>${esc(day)}</h3><div class="list">${list.map(eventRow).join('')}</div>`).join('')
-        : `<div class="empty">${esc(s?.error || 'Nothing scheduled.')}</div>`}
-        ${s?.data?.errors?.length ? `<div class="empty" style="color:var(--warn)">${esc(s.data.errors.join(' · '))}</div>` : ''}</section>`;
+    const cal = D.calendar;
+    if (cal?.configured === false) return `<div class="page-h"><h1>Schedule</h1></div><section class="card">${notConfigured('Calendar', 'Add CALENDAR_FEEDS to .env (your Google Calendar secret iCal address).')}</section>`;
+    const all = cal?.data?.events || [];
+    const sel = Math.min(6, Math.max(0, ui.schedDay));
+    const from = dayStart(sel), to = dayStart(sel + 1);
+    const onDay = (o) => all.filter((e) => e.start < dayStart(o + 1) && e.end >= dayStart(o) && (e.allDay ? e.start >= dayStart(o) : true));
+    const events = onDay(sel);
+    const timed = events.filter((e) => !e.allDay).sort((x, y) => x.start - y.start);
+    const allDay = events.filter((e) => e.allDay);
+    const tasks = realTodos().filter((t) => !t.done && t.due && (sel === 0 ? t.due < to : t.due >= from && t.due < to)).sort(todoSort);
+    const date = new Date(from);
+
+    // One-line summary of the day.
+    const bits = [];
+    if (timed.length) bits.push(`${timed.length} event${timed.length > 1 ? 's' : ''}, first at ${hm(timed[0].start)}`);
+    else bits.push('No timed events');
+    if (tasks.length) bits.push(`${tasks.length} task${tasks.length > 1 ? 's' : ''} due`);
+    const busyMin = timed.reduce((m, e) => m + Math.max(0, Math.min(e.end, to) - Math.max(e.start, from)) / 60e3, 0);
+    if (busyMin >= 60) bits.push(`${(busyMin / 60).toFixed(busyMin % 60 ? 1 : 0)} h booked`);
+    const w = sel === 0 ? D.weather?.data : null;
+
+    // Timeline: hours down the side, events placed by time, overlaps side by side.
+    const hourOf = (ms) => (ms - from) / 3600e3;
+    const startH = Math.max(0, Math.min(8, Math.floor(Math.min(...timed.map((e) => hourOf(e.start)), 8))));
+    const endH = Math.min(24, Math.max(18, Math.ceil(Math.max(...timed.map((e) => hourOf(e.end)), 18))));
+    const span = endH - startH;
+    const pct = (h) => ((Math.min(endH, Math.max(startH, h)) - startH) / span) * 100;
+    const cols = [];
+    const placed = timed.map((e) => {
+      let c = cols.findIndex((end) => end <= e.start);
+      if (c === -1) { c = cols.length; cols.push(0); }
+      cols[c] = Math.max(e.end, e.start + 30 * 60e3);
+      return { e, c };
+    });
+    const hours = Array.from({ length: span + 1 }, (_, i) => startH + i);
+    const hourLabel = (h) => `${h % 12 || 12} ${h < 12 || h === 24 ? 'AM' : 'PM'}`;
+    const nowH = hourOf(Date.now());
+    const timeline = `<div class="tl">
+      ${hours.map((h) => `<div class="tl-hour" style="top:${pct(h)}%"><span>${hourLabel(h)}</span></div>`).join('')}
+      ${sel === 0 && nowH >= startH && nowH <= endH ? `<div class="tl-now" style="top:${pct(nowH)}%"></div>` : ''}
+      <div class="tl-events">${placed.map(({ e, c }) => {
+        const top = pct(hourOf(e.start)), h = Math.max(pct(hourOf(e.end)) - top, 0);
+        const past = e.end < Date.now();
+        return `<div class="tl-ev ${past ? 'past' : ''}" style="top:min(${top}%, calc(100% - 46px));height:${h}%;left:${(c / cols.length) * 100}%;width:${100 / cols.length}%">
+          <b>${esc(e.title)}</b><span>${hm(e.start)}${e.end > e.start ? `–${hm(e.end)}` : ''}${e.location ? ` · ${esc(e.location)}` : ''}</span></div>`;
+      }).join('')}</div>
+      ${timed.length ? '' : '<div class="tl-empty">Nothing on the calendar</div>'}
+    </div>`;
+
+    const strip = Array.from({ length: 7 }, (_, o) => {
+      const d = new Date(dayStart(o)), n = onDay(o).length;
+      return `<button class="day ${o === sel ? 'on' : ''}" data-act="sched-day" data-o="${o}">
+        <span>${o === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' })}</span><b>${d.getDate()}</b>
+        <i>${'<u></u>'.repeat(Math.min(n, 4))}</i></button>`;
+    }).join('');
+
+    return `<div class="page-h"><h1>Schedule</h1>${cal?.error ? `<span class="muted" style="color:var(--warn)">${esc(cal.error)}</span>` : ''}</div>
+      <div class="sched-page">
+        <section class="card daysum">
+          <div class="daysum-date">${sel === 0 ? 'Today' : sel === 1 ? 'Tomorrow' : date.toLocaleDateString('en-US', { weekday: 'long' })}<span>${date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</span></div>
+          <div class="daysum-line">${esc(bits.join(' · '))}${w ? ` · ${w.temp}° now, high ${w.hi}°${w.rainChance >= 40 ? `, ${w.rainChance}% rain` : ''}` : ''}</div>
+          ${allDay.length ? `<div class="chips" style="margin-top:10px">${allDay.map((e) => `<span class="chip allday">${esc(e.title)}</span>`).join('')}</div>` : ''}
+          ${tasks.length ? `<div class="list" style="margin-top:8px">${tasks.slice(0, 3).map((t) => todoRow(t)).join('')}</div>${tasks.length > 3 ? `<div class="muted" style="margin-top:6px">+${tasks.length - 3} more in To do</div>` : ''}` : ''}
+        </section>
+        <section class="card tl-card">${timeline}</section>
+        <div class="weekstrip">${strip}</div>
+      </div>`;
   },
 
   settings() {
@@ -675,11 +731,32 @@ function render() {
 }
 
 function renderDrawer() {
+  if (ui.drawer === 'mail') return renderReader();
   const alerts = D.alerts;
   $('#drawer').innerHTML = `<div class="panel" data-stop>
     <div class="page-h"><h1>Alerts</h1><button class="btn small ghost" data-act="close-drawer">Close</button></div>
     ${alerts.length ? alerts.map((a) => `<div class="alert ${esc(a.level)}"><div class="t"><small>${esc(a.source)}</small><b>${esc(a.title)}</b>${a.body ? `<p>${esc(a.body)}</p>` : ''}</div>
       <button class="icon-btn" data-act="dismiss" data-id="${esc(a.id)}">${icon('x')}</button></div>`).join('') : '<div class="empty">Nothing needs your attention.</div>'}
+  </div>`;
+}
+
+// Reading one email in full. The text is fetched from the mailbox on demand.
+function renderReader() {
+  const r = ui.reading;
+  const m = r?.message;
+  $('#drawer').innerHTML = `<div class="panel reader" data-stop>
+    <div class="page-h"><h1>${esc(m?.account || 'Mail')}</h1>
+      ${m ? `<button class="btn small ghost" data-act="mail-todo" data-id="${esc(m.id)}">${icon('plus')} Make it a task</button>` : ''}
+      <button class="btn small" data-act="close-drawer">Close</button></div>
+    ${r?.error ? `<div class="empty" style="color:var(--warn)">${esc(r.error)}</div>`
+      : !m ? '<div class="empty">Opening…</div>'
+      : `<h2 class="r-subject">${esc(m.subject)}</h2>
+         <div class="r-meta"><b>${esc(m.from)}</b>${m.fromAddress ? ` <span>&lt;${esc(m.fromAddress)}&gt;</span>` : ''}<br>
+           <span>${m.date ? new Date(m.date).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}${m.to?.length ? ` · to ${esc(m.to.join(', '))}` : ''}</span></div>
+         ${r.summary ? `<div class="r-summary">${esc(r.summary)}${r.action ? `<div class="act">${icon('arrow')} ${esc(r.action)}</div>` : ''}</div>` : ''}
+         <div class="r-body">${esc(m.text)}</div>
+         ${m.truncated ? '<div class="muted" style="margin-top:10px">This email is very long; the rest is cut off here.</div>' : ''}
+         ${m.attachments?.length ? `<div class="r-attach">Attachments: ${m.attachments.map(esc).join(', ')}</div>` : ''}`}
   </div>`;
 }
 
@@ -737,6 +814,8 @@ $('#sleep').addEventListener('pointerdown', (e) => {
   const el = $('#sleep');
   // In "off" mode the first tap brings the dim clock back briefly.
   el.classList.add('reveal');
+  // Light the panel up for a few seconds so the buttons can be seen in daylight.
+  if (KIOSK) api('POST', '/api/peek').catch(() => {});
   clearTimeout(revealTimer);
   revealTimer = setTimeout(() => el.classList.remove('reveal'), 6000);
 });
@@ -798,7 +877,7 @@ function toast(a) {
 // Interactions (one delegated handler)
 // ---------------------------------------------------------------------------
 
-function go(v) { view = v; ui.chartSel = {}; render(); }
+function go(v) { view = v; ui.chartSel = {}; if (v === 'schedule') ui.schedDay = 0; render(); }
 
 async function addTask(preset = {}) {
   const tags = D.settings.tags;
@@ -892,10 +971,20 @@ document.addEventListener('click', async (e) => {
         break;
       case 'todo-clear': await api('POST', '/api/todos/clear-done'); load(); break;
       case 'task-filter': ui.taskFilter = el.dataset.f; render(); break;
-      case 'mail-open': ui.mailOpen = ui.mailOpen === el.dataset.id ? null : el.dataset.id; render(); break;
+      case 'mail-open': {
+        const listed = D.mail.data.accounts.flatMap((a) => a.messages).find((x) => x.id === el.dataset.id);
+        ui.drawer = 'mail';
+        ui.reading = { id: el.dataset.id, summary: listed?.ai ? listed.summary : '', action: listed?.action || '' };
+        $('#drawer').hidden = false; renderReader();
+        try { ui.reading.message = await api('POST', '/api/mail/read', { id: el.dataset.id }); }
+        catch (err) { ui.reading.error = err.message; }
+        if (ui.drawer === 'mail' && !$('#drawer').hidden) renderReader();
+        break;
+      }
+      case 'sched-day': ui.schedDay = Number(el.dataset.o); render(); break;
       case 'mail-todo': {
-        e.stopPropagation();
         const m = D.mail.data.accounts.flatMap((a) => a.messages).find((x) => x.id === el.dataset.id);
+        $('#drawer').hidden = true;
         addTask({ text: m.action || m.subject, due: m.priority === 'urgent' ? dayStart() : null });
         break;
       }
@@ -905,7 +994,7 @@ document.addEventListener('click', async (e) => {
         if (!KIOSK) toast({ level: 'info', title: el.dataset.mode === 'day' ? 'Desk display is awake' : el.dataset.mode === 'off' ? 'Desk display is off' : 'Desk display is asleep' });
         if (el.dataset.mode === 'day') load();
         break;
-      case 'alerts': $('#drawer').hidden = false; renderDrawer(); break;
+      case 'alerts': ui.drawer = 'alerts'; $('#drawer').hidden = false; renderDrawer(); break;
       case 'close-drawer': $('#drawer').hidden = true; break;
       case 'dismiss':
         D.alerts = D.alerts.filter((a) => a.id !== el.dataset.id); renderDrawer(); renderRail();

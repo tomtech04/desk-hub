@@ -7,7 +7,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { ROOT, TZ, readJson, writeJson, refresher, startOfDay, hmToMin, nowMinutes, tzOffset, zonedToUtc } from './util.js';
 import { payitConfigured, loadPayit } from './payit.js';
-import { mailConfigured, loadMail, buildDigest, aiEnabled } from './mail.js';
+import { mailConfigured, loadMail, buildDigest, aiEnabled, readMessage } from './mail.js';
 import { calendarConfigured, loadCalendar } from './calendar.js';
 import { setBrightness, hasBacklight, systemStats, loadWeather } from './system.js';
 import { readVoiceRequest, interpretVoice, buildRecap } from './voice.js';
@@ -88,12 +88,42 @@ const inSleepWindow = () => between(nowMinutes(), hmToMin(state.settings.sleepAt
 const WIND_DOWN_BRIGHTNESS = 35;
 const inWindDown = () => state.settings.windDown && between(nowMinutes(), hmToMin(state.settings.windDownAt), hmToMin(state.settings.wakeAt));
 
-function applyMode(mode) {
-  state.mode = mode;
+// Brightness changes glide over ~0.7s rather than jumping.
+let currentPct = null, rampTimer = null;
+function glideTo(target) {
+  clearInterval(rampTimer);
+  if (currentPct === null) { currentPct = target; setBrightness(target); return; }
+  const from = currentPct, steps = 10;
+  let i = 0;
+  rampTimer = setInterval(() => {
+    i++;
+    currentPct = Math.round(from + ((target - from) * i) / steps);
+    setBrightness(currentPct);
+    if (i >= steps) clearInterval(rampTimer);
+  }, 70);
+}
+
+const modeBrightness = (mode) => {
   const day = inWindDown() ? Math.min(state.settings.dayBrightness, WIND_DOWN_BRIGHTNESS) : state.settings.dayBrightness;
-  const pct = mode === 'day' ? day : mode === 'sleep' ? state.settings.sleepBrightness : 0;
-  setBrightness(pct);
+  return mode === 'day' ? day : mode === 'sleep' ? state.settings.sleepBrightness : 0;
+};
+
+let peekTimer = null;
+function applyMode(mode) {
+  clearTimeout(peekTimer);
+  state.mode = mode;
+  glideTo(modeBrightness(mode));
   save();
+}
+
+// A tap on the sleeping screen lights it up for a few seconds, so the Wake
+// button can actually be seen (in daylight a 4% backlight is invisible).
+const PEEK_BRIGHTNESS = 70, PEEK_MS = 6000;
+function peek() {
+  if (state.mode === 'day') return;
+  clearTimeout(peekTimer);
+  glideTo(Math.max(PEEK_BRIGHTNESS, state.settings.sleepBrightness));
+  peekTimer = setTimeout(() => { if (state.mode !== 'day') glideTo(modeBrightness(state.mode)); }, PEEK_MS);
 }
 
 // Only act when the schedule *crosses* a boundary, so tapping "wake" at 1am
@@ -467,6 +497,13 @@ const routes = {
     const minutes = Math.max(1, Math.min(240, Math.round(Number(body.minutes) || 0)));
     state.focusLog.push({ at: Date.now(), minutes, label: String(body.label || '').slice(0, 60) || null });
     state.focusLog = state.focusLog.slice(-2000); save(); return { ok: true };
+  },
+
+  'POST /api/peek': () => { peek(); return { ok: true, ms: PEEK_MS }; },
+
+  'POST /api/mail/read': async ({ body }) => {
+    try { return DEMO ? demo.message(String(body.id)) : await readMessage(String(body.id)); }
+    catch (err) { return [404, { error: err.message }]; }
   },
 
   'POST /api/morning/seen': () => { state.morningSeen = localDay(); save(); return { ok: true }; },

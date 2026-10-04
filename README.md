@@ -11,11 +11,11 @@ A touchscreen desk dashboard for a Raspberry Pi 5 + Raspberry Pi Touch Display 2
 | **Mail** | A daily digest from Claude (7:30 by default) of the last 24 hours across all accounts, which is also what Home shows. Below it, unread mail per account, each summarized in one line with an urgency flag and a suggested action. Mail is never marked read. |
 | **Suggested tasks** | Urgent emails and the digest's picks become *suggested* tasks in To do, each with Keep / Dismiss. Nothing counts as a real task until you keep it, and each email is suggested at most once. |
 | **Journal** | Voice notes from the ring (or typed on your phone) and an evening recap of your day from Claude, built from your notes, finished tasks and focus time. Anything you say you need to do is added to To do. |
-| **Schedule** | Next 7 days from Canvas / Google / Outlook calendar feeds |
+| **Schedule** | A week view: the selected day's summary and tasks due on top, an hour-by-hour timeline of its events, and a seven-day strip to switch days |
 | **Settings** | Brightness, sleep schedule, timer lengths, Pi health |
 | **Wind-down** | From 10 PM (adjustable) until wake time, the desk screen dims and warms, and puts mail and PayIt away: just tomorrow's schedule, today's recap, what's still open, and a place to leave a note. Only real problems interrupt. "Show everything" overrides it for the night. |
 | **Morning brief** | A sunrise screen at wake time with the forecast, today's calendar and to-dos, anything left from yesterday, and email you haven't dealt with. It stays until you tap it. |
-| **Sleep** | Moon button or schedule: backlight drops to ~4% with a dim warm clock and tomorrow's first event; "Screen off" kills the backlight entirely. Tap to wake. A wind-down banner appears 30 min before. |
+| **Sleep** | Moon button or schedule: backlight drops to ~4% with a dim warm clock and tomorrow's first event; "Screen off" kills the backlight entirely. Tap the sleeping screen and it lights up for six seconds with a glowing Wake button, so it can be found in daylight. A wind-down banner appears 30 min before. |
 
 Anything that needs attention (PayIt system down, lots of declines, urgent mail, a class starting in 15 min, overdue tasks, Pi overheating, a source failing to load) shows up as a toast + chime and in the bell drawer.
 
