@@ -381,9 +381,18 @@ function login(req, res, body) {
 // header (set in the app: Index 01 Settings -> Webhook). Signed-in devices and
 // the desk screen can post notes too.
 async function voice(req, res) {
-  const given = req.headers.authorization || '';
-  const tokenOk = VOICE_TOKEN && crypto.timingSafeEqual(Buffer.from(sha(given)), Buffer.from(sha(`Bearer ${VOICE_TOKEN}`)));
-  if (!tokenOk && !allowed(req)) return send(res, 401, { error: 'unauthorized' });
+  // Accept "Bearer <token>" or the bare token, ignoring stray whitespace, since
+  // it's typed into a phone app by hand.
+  const given = String(req.headers.authorization || '').trim();
+  const bare = given.replace(/^bearer\s+/i, '').trim();
+  const tokenOk = Boolean(VOICE_TOKEN) && crypto.timingSafeEqual(Buffer.from(sha(bare)), Buffer.from(sha(VOICE_TOKEN)));
+  if (!tokenOk && !allowed(req)) {
+    // Describe the shape of what arrived, never the value, so a mistyped header can be found.
+    console.error(`[voice] 401 from ${client(req).ip}: authorization ${given ? 'present' : 'MISSING'}`
+      + (given ? `, starts with "Bearer": ${/^bearer\s/i.test(given)}, token length ${bare.length} (expected ${VOICE_TOKEN.length}), 64 hex chars: ${/^[0-9a-f]{64}$/.test(bare)}` : '')
+      + `; headers sent: ${Object.keys(req.headers).filter((h) => !/^(cf-|x-forwarded|cdn-)/.test(h)).join(', ')}; trigger: ${req.headers['x-index-trigger'] || 'none'}`);
+    return send(res, 401, { error: 'unauthorized' });
+  }
   const chunks = []; let size = 0;
   for await (const chunk of req) { size += chunk.length; if (size > 30e6) return send(res, 413, { error: 'too large' }); chunks.push(chunk); }
   const note = readVoiceRequest(Buffer.concat(chunks), req.headers);
