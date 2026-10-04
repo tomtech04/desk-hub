@@ -53,6 +53,8 @@ The focus timer runs in each browser, so a timer started on your phone isn't the
 - *Read-only role (preferred).* `sql/deskhub_reader_role.sql` defines a `deskhub_reader` Postgres login that can read only the columns the hub uses and can't write anything. `scripts/setup-readonly-db.sh` applies it, sets `PAYIT_DATABASE_URL` and `PAYIT_TEST_OWNER_IDS` on the Pi, and removes the service key. **This adds a role and policies to PayIt's production database, so get the team's sign-off before running it.** It never touches the PayIt git repo or its migration history.
 - *Service key (fallback).* `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Works with no database change, but that key has full read/write access, so it shouldn't live on the Pi long-term.
 
+*Platform profit (optional).* The hub shows what the platform actually kept, the way the admin panel measures it: Stripe application fees minus refunds. That figure lives in Stripe, not the database, so it needs `STRIPE_RESTRICTED_KEY`: a restricted key with only "Application Fees: Read". Fees on team/test connected accounts can be left out with `PAYIT_EXCLUDE_STRIPE_ACCOUNTS`.
+
 Either way the screen only receives totals, and revenue follows the admin panel's rules: businesses owned by team/test accounts and admin-ignored transactions are left out.
 
 **Personal Gmail.** Turn on 2-Step Verification, create an App Password, and put it in `MAIL_1_PASS`.

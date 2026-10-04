@@ -93,6 +93,32 @@ async function excludedBusinesses() {
   return ids;
 }
 
+// Platform profit, the way the admin panel measures it: the application fees
+// Stripe actually paid the platform, minus any that were refunded. That lives
+// in Stripe, not the database, so it needs a key. Use a RESTRICTED key with
+// only "Application Fees: Read"; it can't see cards or move money.
+const STRIPE_KEY = process.env.STRIPE_RESTRICTED_KEY;
+// Connected accounts whose fees shouldn't count (team/test accounts), comma-separated acct_ ids.
+const STRIPE_EXCLUDE = new Set(list(process.env.PAYIT_EXCLUDE_STRIPE_ACCOUNTS));
+
+async function loadFees(sinceMs) {
+  const fees = [];
+  let after = null;
+  for (let page = 0; page < 20; page++) {
+    const q = new URLSearchParams({ limit: '100', 'created[gte]': String(Math.floor(sinceMs / 1000)) });
+    if (after) q.set('starting_after', after);
+    const res = await fetch(`https://api.stripe.com/v1/application_fees?${q}`, { headers: { Authorization: `Bearer ${STRIPE_KEY}` }, signal: AbortSignal.timeout(15000) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error?.message || `Stripe responded ${res.status}`);
+    fees.push(...body.data);
+    if (!body.has_more || !body.data.length) break;
+    after = body.data.at(-1).id;
+  }
+  return fees
+    .filter((f) => f.livemode && !STRIPE_EXCLUDE.has(typeof f.account === 'string' ? f.account : f.account?.id))
+    .map((f) => ({ at: f.created * 1000, kept: f.amount - f.amount_refunded }));
+}
+
 export async function loadPayit() {
   const now = Date.now();
   const today = startOfDay(now);
@@ -106,6 +132,9 @@ export async function loadPayit() {
     db.ignored().catch(() => []),
     excludedBusinesses(),
   ]);
+  // Profit is extra: if Stripe can't be reached, sales still show.
+  let fees = null, profitError = null;
+  if (STRIPE_KEY) { try { fees = await loadFees(weekStart); } catch (err) { profitError = err.message; } }
 
   const ignoredTx = new Set(ignored);
   const rows = payments.filter((p) => !excluded.has(p.business_id) && !ignoredTx.has(p.transaction_id));
@@ -147,7 +176,17 @@ export async function loadPayit() {
     },
     yesterdaySameTimeCents: ySameTimeCents,
     hourly: hours,
-    week: days.map((d) => ({ date: new Date(d.start).toISOString(), cents: d.cents, count: d.count })),
+    week: days.map((d, i) => ({
+      date: new Date(d.start).toISOString(), cents: d.cents, count: d.count,
+      profitCents: fees ? fees.filter((f) => f.at >= d.start && (i === days.length - 1 || f.at < days[i + 1].start)).reduce((a, f) => a + f.kept, 0) : null,
+    })),
+    profit: fees ? {
+      todayCents: fees.filter((f) => f.at >= today).reduce((a, f) => a + f.kept, 0),
+      weekCents: fees.reduce((a, f) => a + f.kept, 0),
+      // Take rate on card volume only: cash and ATH Movil never pay a platform fee.
+      cardVolumeCents: t.byProvider.stripe || 0,
+    } : null,
+    profitError,
     excludedBusinesses: excluded.size,
     access: payitMode,
     systems: Object.values(latest).sort((a, b) => a.system.localeCompare(b.system)),

@@ -334,7 +334,7 @@ const VIEWS = {
             : p ? `<span class="status up">${icon('check')} All up</span>` : ''}</div>
         ${p ? `<div class="big-num money">${money(p.today.grossCents)}</div>
           ${delta !== null ? `<div class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}% vs. this time yesterday</div>` : '<div class="delta muted">—</div>'}
-          <div class="kv"><div><b>${p.today.count}</b><span>sales</span></div><div><b>${money(p.today.avgTicketCents, true)}</b><span>avg ticket</span></div><div><b>${p.today.declined}</b><span>declined</span></div></div>`
+          <div class="kv ${p.profit ? 'four' : ''}"><div><b>${p.today.count}</b><span>sales</span></div><div><b>${money(p.today.avgTicketCents, true)}</b><span>avg ticket</span></div><div><b>${p.today.declined}</b><span>declined</span></div>${p.profit ? `<div class="profit"><b>${money(p.profit.todayCents, true)}</b><span>platform profit</span></div>` : ''}</div>`
           : D.payit?.configured === false ? notConfigured('PayIt', 'Add SUPABASE_URL + key to .env') : `<div class="empty">${esc(D.payit?.error || 'Loading…')}</div>`}
       </section>
 
@@ -441,6 +441,9 @@ const VIEWS = {
           <div class="card-h">Gross volume today</div>
           <div class="row" style="align-items:baseline;gap:14px"><div class="big-num money" style="font-size:60px">${money(t.grossCents)}</div>
             ${delta !== null ? `<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}% vs. ${money(p.yesterdaySameTimeCents)} yesterday by now</span>` : ''}</div>
+          ${p.profit ? `<div class="kept">Platform kept <b>${money(p.profit.todayCents, true)}</b> today${p.profit.cardVolumeCents ? ` · ${((p.profit.todayCents / p.profit.cardVolumeCents) * 100).toFixed(2)}% of card volume` : ''} · <b>${money(p.profit.weekCents, true)}</b> this week</div>`
+            : p.profitError ? `<div class="kept" style="color:var(--warn)">Platform profit unavailable: ${esc(p.profitError)}</div>`
+            : '<div class="kept muted">Platform profit needs a restricted Stripe key (see .env.example)</div>'}
           <div class="tiles" style="margin-top:14px">
             <div class="tile"><b>${t.count}</b><span>sales</span></div>
             <div class="tile"><b>${money(t.avgTicketCents, true)}</b><span>avg ticket</span></div>
@@ -462,7 +465,7 @@ const VIEWS = {
         </section>
         <section class="card">
           <div class="card-h"><span class="grow">Last 7 days</span><span class="link">${money(weekTotal)} total</span></div>
-          ${bars('week', p.week.map((d) => d.cents), p.week.map((d) => new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' })), (v) => money(v), { height: 150, capLabel: (i) => new Date(p.week[i].date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) })}
+          ${bars('week', p.week.map((d) => d.cents), p.week.map((d) => new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' })), (v) => money(v), { height: 150, capLabel: (i) => `${new Date(p.week[i].date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}${p.week[i].profitCents != null ? ` · kept ${money(p.week[i].profitCents, true)}` : ''}` })}
           <div class="row" style="gap:18px;margin-top:10px;flex-wrap:wrap">${providers.map(([k, v]) => `<span class="muted">${esc(provName[k] || k)} <b style="color:var(--text)">${money(v)}</b></span>`).join('') || '<span class="muted">No sales yet today</span>'}</div>
         </section>
       </div>`;
@@ -782,7 +785,7 @@ function renderReader() {
       ${m ? `<button class="btn small ghost" data-act="mail-todo" data-id="${esc(m.id)}">${icon('plus')} Make it a task</button>` : ''}
       <button class="btn small" data-act="close-drawer">Close</button></div>
     ${r?.error ? `<div class="empty" style="color:var(--warn)">${esc(r.error)}</div>`
-      : !m ? '<div class="empty">Opening…</div>'
+      : !m ? '<div class="loading"><div class="loadbar"><i></i></div><span>Fetching it from your mailbox…</span></div>'
       : `<h2 class="r-subject">${esc(m.subject)}</h2>
          <div class="r-meta"><b>${esc(m.from)}</b>${m.fromAddress ? ` <span>&lt;${esc(m.fromAddress)}&gt;</span>` : ''}<br>
            <span>${m.date ? new Date(m.date).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}${m.to?.length ? ` · to ${esc(m.to.join(', '))}` : ''}</span></div>

@@ -33,6 +33,7 @@ export function payit() {
   return {
     today: { grossCents: gross, count: 47, declined: 4, refunded: 1, activeMerchants: 9, byProvider: { stripe: gross * 0.71, cash: gross * 0.2, ath_movil: gross * 0.09 }, newBusinesses: 2, avgTicketCents: Math.round(gross / 47) },
     yesterdaySameTimeCents: Math.round(gross * 0.86),
+    profit: { todayCents: Math.round(gross * 0.71 * 0.029), weekCents: 41250, cardVolumeCents: Math.round(gross * 0.71) },
     hourly,
     week: Array.from({ length: 7 }, (_, i) => ({ date: new Date(startOfDay(Date.now(), i - 6)).toISOString(), cents: i === 6 ? gross : [182000, 241500, 198300, 265000, 301200, 227900][i], count: 40 })),
     systems: [
