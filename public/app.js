@@ -787,10 +787,13 @@ function renderReader() {
          <div class="r-meta"><b>${esc(m.from)}</b>${m.fromAddress ? ` <span>&lt;${esc(m.fromAddress)}&gt;</span>` : ''}<br>
            <span>${m.date ? new Date(m.date).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}${m.to?.length ? ` · to ${esc(m.to.join(', '))}` : ''}</span></div>
          ${r.summary ? `<div class="r-summary">${esc(r.summary)}${r.action ? `<div class="act">${icon('arrow')} ${esc(r.action)}</div>` : ''}</div>` : ''}
-         ${m.html ? `<iframe class="r-frame" title="Email" sandbox="${KIOSK ? '' : 'allow-popups allow-popups-to-escape-sandbox'}" referrerpolicy="no-referrer" srcdoc="${esc(emailDoc(m.html))}"></iframe>`
+         ${m.html ? `<iframe class="r-frame" title="Email" sandbox="${KIOSK ? 'allow-same-origin' : 'allow-popups allow-popups-to-escape-sandbox'}" referrerpolicy="no-referrer" srcdoc="${esc(emailDoc(m.html))}"></iframe>`
            : `<div class="r-body">${esc(m.text)}</div>${m.truncated ? '<div class="muted" style="margin-top:10px">This email is very long; the rest is cut off here.</div>' : ''}`}
          ${m.attachments?.length ? `<div class="r-attach">Attachments: ${m.attachments.map(esc).join(', ')}</div>` : ''}`}
   </div>`;
+  // Scripts stay off in the frame; same-origin only lets the hub attach drag-scrolling to it.
+  const frame = $('#drawer .r-frame');
+  if (frame && KIOSK) frame.addEventListener('load', () => { try { enableDragScroll(frame.contentDocument, () => frame.contentDocument.scrollingElement); } catch {} });
 }
 
 // Wind-down banner: 30 minutes before sleep mode kicks in.
@@ -1087,6 +1090,63 @@ document.addEventListener('change', (e) => {
   const el = e.target.closest('[data-act="set-range"]');
   if (el) patchSettings({ [el.dataset.k]: Number(el.value) });
 });
+
+// ---------------------------------------------------------------------------
+// Drag to scroll (desk screen). If the Pi hands touches to the browser as mouse
+// input, a finger drag would do nothing; this makes any scrollable area follow
+// the drag, with a little momentum, and swallows the tap that would otherwise
+// fire when the finger lifts. Real touch input scrolls natively and is ignored
+// here.
+// ---------------------------------------------------------------------------
+
+function enableDragScroll(doc, findScroller) {
+  let drag = null, coast = 0;
+  doc.addEventListener('pointerdown', (e) => {
+    cancelAnimationFrame(coast);
+    if (e.pointerType !== 'mouse' || e.button !== 0 || e.target.closest?.('input, .kb')) return;
+    const sc = findScroller(e.target);
+    if (sc) drag = { sc, y: e.clientY, top: sc.scrollTop, moved: false, lastY: e.clientY, lastT: performance.now(), v: 0 };
+  }, true);
+  doc.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dy = e.clientY - drag.y;
+    if (!drag.moved && Math.abs(dy) < 10) return;
+    drag.moved = true;
+    drag.sc.scrollTop = drag.top - dy;
+    const now = performance.now();
+    drag.v = (e.clientY - drag.lastY) / Math.max(1, now - drag.lastT);
+    drag.lastY = e.clientY; drag.lastT = now;
+    e.preventDefault();
+  }, true);
+  const end = () => {
+    if (!drag) return;
+    const { sc, moved } = drag;
+    let v = performance.now() - drag.lastT < 80 ? drag.v : 0; // px per ms
+    drag = null;
+    if (!moved) return;
+    // The drag was a scroll, not a tap.
+    // Swallow the click that follows the release, but only that one: if none
+    // comes, stop listening so the next real tap isn't eaten.
+    const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+    doc.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => doc.removeEventListener('click', swallow, { capture: true }), 350);
+    const step = () => { sc.scrollTop -= v * 16; v *= 0.94; if (Math.abs(v) > 0.02) coast = requestAnimationFrame(step); };
+    if (Math.abs(v) > 0.05) coast = requestAnimationFrame(step);
+  };
+  doc.addEventListener('pointerup', end, true);
+  doc.addEventListener('pointercancel', end, true);
+  // Dragging over an image or link would otherwise start a native drag and cut the scroll short.
+  doc.addEventListener('dragstart', (e) => e.preventDefault(), true);
+}
+
+function scrollerOf(el) {
+  for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+    const oy = getComputedStyle(n).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight + 2) return n;
+  }
+  return null;
+}
+if (KIOSK) enableDragScroll(document, scrollerOf);
 
 // Drift back to Home after a few idle minutes (unless the timer screen is up and running).
 let lastTouch = Date.now();
