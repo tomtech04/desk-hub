@@ -169,7 +169,7 @@ main { flex: 1; min-width: 0; height: 100vh; padding: 16px; overflow: hidden; }
 .tasks .list { overflow-y: auto; height: 100%; padding-right: 6px; }
 .tasks .item { min-height: 64px; }
 .tasks .item .t b { font-size: 19px; white-space: normal; }
-.home .item .t b.wrap { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; }
+.home .item .t b.wrap, .wind .item .t b.wrap { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; }
 .icon-btn { width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center; color: var(--muted); flex: none; }
 .icon-btn:active { background: var(--surface-3); }
 .icon-btn.on { color: var(--accent); }
@@ -424,3 +424,70 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 34px;
 .digest .tomorrow b { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .digest .tomorrow ul { margin-top: 6px; }
 @media (max-width: 600px) { .journal-list { overflow: visible; } }
+
+/* ==========================================================================
+   Wind-down: warmer, lower-contrast, fewer things on screen
+   ========================================================================== */
+.winddown {
+  --bg: #0b0908; --surface: #151110; --surface-2: #1d1715; --surface-3: #2a211d; --line: #2e2420;
+  --text: #e6d9cc; --text-2: #b3a394; --muted: #7f7064;
+  --accent: #d9914a; --info: #c9a27a; --good: #9fb58a;
+}
+.wind { display: grid; height: 100%; gap: var(--gap); grid-template-columns: 1.2fr 1fr 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-areas: "clock tomorrow tomorrow" "clock note open" "foot foot foot"; }
+.wind > .card:nth-child(1) { grid-area: clock; justify-content: center; }
+.wind > .card:nth-child(2) { grid-area: tomorrow; }
+.wind > .card:nth-child(3) { grid-area: note; }
+.wind > .card:nth-child(4) { grid-area: open; }
+.wind .card > .list { flex: 1; min-height: 0; }
+.wind .clock .time { font-size: 120px; }
+.wind .clock .date { color: var(--muted); }
+.wind-foot { grid-area: foot; display: flex; gap: 12px; justify-content: center; }
+@media (orientation: portrait) {
+  .wind { grid-template-columns: 1fr 1fr; grid-template-rows: 300px minmax(0, 0.8fr) minmax(0, 1fr) auto;
+    grid-template-areas: "clock clock" "tomorrow tomorrow" "note open" "foot foot"; }
+  .wind .clock .time { font-size: 150px; }
+  .wind .tag { display: none; }
+}
+
+/* ==========================================================================
+   Morning brief: a sunrise, then the day
+   ========================================================================== */
+.morning { position: fixed; inset: 0; z-index: 35; overflow: hidden; display: flex; flex-direction: column; color: #fff8ee; cursor: pointer;
+  background: linear-gradient(#1b2340 0%, #5a4a78 34%, #d9785a 62%, #f7b267 78%, #fbe3b0 100%);
+  animation: dawn 2.4s ease-out both; }
+@keyframes dawn { from { filter: brightness(.25) saturate(.6); } to { filter: none; } }
+.morning .sky { position: relative; height: 34%; flex: none; }
+.morning .sun { position: absolute; left: 50%; bottom: -70px; width: 220px; height: 220px; margin-left: -110px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 45%, #fff6d8 0%, #ffd27a 45%, #ffb347 100%);
+  box-shadow: 0 0 60px 30px #ffcf7a88, 0 0 160px 90px #ffb34744;
+  animation: rise 3.2s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes rise { from { transform: translateY(240px); opacity: .4; } to { transform: none; opacity: 1; } }
+/* Slow-turning rays behind the sun. */
+.morning .sun i { position: absolute; inset: -90px; border-radius: 50%;
+  background: repeating-conic-gradient(#ffe3a300 0deg 10deg, #ffe3a340 10deg 20deg);
+  -webkit-mask-image: radial-gradient(circle, transparent 38%, #000 40%, transparent 70%); mask-image: radial-gradient(circle, transparent 38%, #000 40%, transparent 70%);
+  animation: spin 60s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.morning .hills { position: absolute; left: -5%; right: -5%; bottom: -1px; height: 90px;
+  background: radial-gradient(60% 100% at 25% 100%, #3a2f52 60%, transparent 61%), radial-gradient(70% 100% at 75% 100%, #2d2644 60%, transparent 61%); }
+.morning .m-body { flex: 1; min-height: 0; background: #12101cf2; padding: 26px 30px 24px; display: flex; flex-direction: column; animation: up .9s .5s ease-out both; }
+@keyframes up { from { transform: translateY(40px); opacity: 0; } }
+.morning h1 { font-size: 46px; font-weight: 700; letter-spacing: -.02em; }
+.morning .m-date { font-size: 20px; color: #cfc6dc; margin-top: 2px; }
+.morning .m-wx { font-size: 20px; margin-top: 14px; color: #f3e9d8; }
+.morning .m-wx b { font-size: 30px; font-weight: 600; margin-right: 6px; }
+.morning .m-digest { margin-top: 10px; font-size: 17px; color: #cfc6dc; line-height: 1.35; }
+.morning .m-grid { flex: 1; min-height: 0; overflow: hidden; margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px; align-content: start; }
+.morning .m-block h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: #f7b267; margin-bottom: 6px; }
+.morning .m-block ul { list-style: none; margin: 0; padding: 0; }
+.morning .m-block li { padding: 7px 0; border-bottom: 1px solid #ffffff14; }
+.morning .m-block li b { display: block; font-size: 17px; font-weight: 500; line-height: 1.3; }
+.morning .m-block li span { font-size: 13px; color: #a79fb8; }
+.morning .m-go { margin-top: 16px; height: 60px; font-size: 19px; background: #f7b267; color: #2a1a05; }
+@media (orientation: landscape) {
+  .morning { flex-direction: row; }
+  .morning .sky { height: auto; width: 36%; }
+  .morning .sun { bottom: 22%; }
+}
+@media (prefers-reduced-motion: reduce) { .morning, .morning .sun, .morning .sun i, .morning .m-body { animation: none; } }

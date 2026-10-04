@@ -1,29 +1,37 @@
 #!/usr/bin/env bash
 # Switch the hub from the Supabase service-role key to the read-only
 # `deskhub_reader` Postgres role. Run once, from this Mac:
+#
+#   SUPABASE_PROJECT_REF=<ref> SUPABASE_POOLER_HOST=<host> \
 #   PAYIT_TEST_EMAILS="a@x.com b@y.com" bash scripts/setup-readonly-db.sh
 #
 # THIS CHANGES PAYIT'S PRODUCTION DATABASE (adds one role and four SELECT-only
 # policies for it; see sql/deskhub_reader_role.sql). Get the team's sign-off
-# first. It does not touch the PayIt git repo or its migration history; the
-# repo's Supabase link is only read to know which project to talk to.
+# first. It never reads or writes the PayIt repo: it links the Supabase CLI
+# to the project from a scratch folder inside this repo.
 #
-# 1. Runs sql/deskhub_reader_role.sql against the linked project.
+# 1. Runs sql/deskhub_reader_role.sql against the project.
 # 2. Gives the role a random password. It's never printed or written to git;
 #    it goes straight into the Pi's .env.
 # 3. Points the hub at the role and removes the service key from the Pi.
 set -euo pipefail
 
 HUB="$(cd "$(dirname "$0")/.." && pwd)"
-POS=${POS_APP:-$HOME/Developer/POS-App}   # read-only: used for its Supabase link
 PI=${PI:-pi@deskhub.local}
 FILE="$HUB/sql/deskhub_reader_role.sql"
+# Project ref: the subdomain of the Supabase URL (https://<ref>.supabase.co).
+REF=${SUPABASE_PROJECT_REF:?set SUPABASE_PROJECT_REF}
+# Session pooler host, from Supabase dashboard -> Connect (e.g. aws-1-us-west-2.pooler.supabase.com).
+POOLER_HOST=${SUPABASE_POOLER_HOST:?set SUPABASE_POOLER_HOST}
 # Team/test accounts whose businesses don't count as revenue (space-separated).
 TEST_EMAILS=${PAYIT_TEST_EMAILS:?set PAYIT_TEST_EMAILS to the team/test account emails}
 
-cd "$POS"
-REF=$(cat supabase/.temp/project-ref)
-POOLER_HOST=$(sed -E 's#.*@([^:/]+).*#\1#' supabase/.temp/pooler-url)
+# The CLI needs a "linked" folder; keep it here, out of git and out of PayIt's repo.
+LINK="$HUB/.supabase-link"
+mkdir -p "$LINK"
+cd "$LINK"
+[ -f supabase/.temp/project-ref ] && [ "$(cat supabase/.temp/project-ref)" = "$REF" ] || supabase link --project-ref "$REF" >/dev/null
+
 echo "Project $REF via $POOLER_HOST"
 echo
 echo "This will create the deskhub_reader role and its read-only policies in the"

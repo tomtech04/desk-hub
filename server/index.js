@@ -30,6 +30,7 @@ const DEFAULT_STATE = {
   focusLog: [], // { at, minutes, label }
   notifications: [], // pushed via POST /api/notify
   journal: [], // voice notes: { id, at, text, note, tasks: [text], trigger }
+  morningSeen: null, // local day the morning brief was last dismissed
   recap: null, // { day, at, headline, bullets, tomorrow }
   sessions: {}, // sha256(session token) -> expiry; for signed-in phones/laptops
   dismissed: {}, // alertId -> dismissedAt
@@ -47,6 +48,9 @@ const DEFAULT_STATE = {
     chime: true,
     digestAt: '07:30',
     recapAt: '21:00',
+    windDown: true,
+    windDownAt: '22:00',
+    morningBrief: true,
     emailTasks: true,
   },
 };
@@ -77,22 +81,29 @@ const sources = DEMO
 // Display mode + sleep schedule
 // ---------------------------------------------------------------------------
 
+const between = (now, from, to) => (from > to ? now >= from || now < to : now >= from && now < to);
+const inSleepWindow = () => between(nowMinutes(), hmToMin(state.settings.sleepAt), hmToMin(state.settings.wakeAt));
+// Wind-down runs from windDownAt until wake time: a calmer, dimmer screen with
+// work (mail, PayIt) put away. It stays in force if the screen is woken at night.
+const WIND_DOWN_BRIGHTNESS = 35;
+const inWindDown = () => state.settings.windDown && between(nowMinutes(), hmToMin(state.settings.windDownAt), hmToMin(state.settings.wakeAt));
+
 function applyMode(mode) {
   state.mode = mode;
-  const pct = mode === 'day' ? state.settings.dayBrightness : mode === 'sleep' ? state.settings.sleepBrightness : 0;
+  const day = inWindDown() ? Math.min(state.settings.dayBrightness, WIND_DOWN_BRIGHTNESS) : state.settings.dayBrightness;
+  const pct = mode === 'day' ? day : mode === 'sleep' ? state.settings.sleepBrightness : 0;
   setBrightness(pct);
   save();
 }
 
-const inSleepWindow = () => {
-  const now = nowMinutes(), s = hmToMin(state.settings.sleepAt), w = hmToMin(state.settings.wakeAt);
-  return s > w ? now >= s || now < w : now >= s && now < w;
-};
-
 // Only act when the schedule *crosses* a boundary, so tapping "wake" at 1am
 // isn't immediately undone by the next tick.
 let lastScheduled = null;
+let lastWind = null;
 function scheduleTick() {
+  // Entering or leaving wind-down only changes the brightness of an awake screen.
+  const wind = inWindDown();
+  if (wind !== lastWind) { lastWind = wind; if (state.mode === 'day') applyMode('day'); }
   if (!state.settings.autoSleep) { lastScheduled = null; return; }
   const scheduled = inSleepWindow() ? 'sleep' : 'day';
   if (scheduled !== lastScheduled) {
@@ -290,6 +301,10 @@ function dashboard() {
     tz: TZ,
     demo: DEMO,
     mode: state.mode,
+    phase: inWindDown() ? 'winddown' : 'day',
+    // The morning brief waits on the desk screen from wake time until it's tapped away.
+    morningDue: state.settings.morningBrief && state.morningSeen !== localDay() && !inWindDown()
+      && between(nowMinutes(), hmToMin(state.settings.wakeAt), state.settings.windDown ? hmToMin(state.settings.windDownAt) : 23 * 60 + 59),
     hasBacklight: hasBacklight(),
     settings: state.settings,
     todos: state.todos,
@@ -453,6 +468,8 @@ const routes = {
     state.focusLog.push({ at: Date.now(), minutes, label: String(body.label || '').slice(0, 60) || null });
     state.focusLog = state.focusLog.slice(-2000); save(); return { ok: true };
   },
+
+  'POST /api/morning/seen': () => { state.morningSeen = localDay(); save(); return { ok: true }; },
 
   'POST /api/mode': ({ body }) => {
     if (!['day', 'sleep', 'off'].includes(body.mode)) return [400, { error: 'bad mode' }];

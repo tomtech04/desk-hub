@@ -528,6 +528,8 @@ const VIEWS = {
             <input type="range" min="10" max="100" value="${st.dayBrightness}" data-act="set-range" data-k="dayBrightness"></div>
           <div class="set-row"><label>Sleep brightness<span>How dim the bedside clock gets</span></label>
             <input type="range" min="0" max="30" value="${st.sleepBrightness}" data-act="set-range" data-k="sleepBrightness"></div>
+          <div class="set-row"><label>Wind down<span>From this time the desk screen dims and puts mail and PayIt away</span></label>${step('windDownAt', st.windDownAt)}<button class="toggle ${st.windDown ? 'on' : ''}" data-act="set-toggle" data-k="windDown"></button></div>
+          <div class="set-row"><label>Morning brief<span>Sunrise screen with your day, shown at wake time until you tap it</span></label><button class="toggle ${st.morningBrief ? 'on' : ''}" data-act="set-toggle" data-k="morningBrief"></button></div>
           <div class="set-row"><label>Automatic sleep mode</label><button class="toggle ${st.autoSleep ? 'on' : ''}" data-act="set-toggle" data-k="autoSleep"></button></div>
           <div class="set-row"><label>Sleep at</label>${step('sleepAt', st.sleepAt)}</div>
           <div class="set-row"><label>Wake at</label>${step('wakeAt', st.wakeAt)}</div>
@@ -570,6 +572,82 @@ function digestCard() {
   return `<section class="card digest"><div class="card-h">${icon('mail')}<span class="grow">Today's digest</span></div>${body}</section>`;
 }
 
+function windHome() {
+  const tomorrowEvents = (D.calendar?.data?.events || []).filter((e) => e.start >= dayStart(1) && e.start < dayStart(2)).slice(0, 3);
+  const open = realTodos().filter((t) => !t.done).sort(todoSort);
+  const tomorrowTasks = open.filter((t) => t.due && t.due >= dayStart(1) && t.due < dayStart(2));
+  const left = open.filter((t) => !t.due || t.due < dayStart(1)).slice(0, 4);
+  const r = D.recap?.headline ? D.recap : null;
+  const doneToday = D.todos.filter((t) => t.done && t.doneAt >= dayStart()).length;
+  return `<div class="wind">
+    <section class="card clock">
+      <div class="card-h">${icon('moon')}<span class="grow">Winding down</span><span class="link">Sleep mode at ${esc(D.settings.sleepAt)}</span></div>
+      <div class="time" id="clock-time">${clockHtml()}</div>
+      <div class="date">${doneToday ? `${doneToday} thing${doneToday > 1 ? 's' : ''} done today` : 'The day is done'}${D.focus.todayMinutes ? ` · ${D.focus.todayMinutes} min of focus` : ''}</div>
+    </section>
+    <section class="card">
+      <div class="card-h">${icon('schedule')}<span class="grow">Tomorrow</span></div>
+      <div class="list">${tomorrowEvents.map(eventRow).join('')}${tomorrowTasks.map((t) => todoRow(t)).join('')
+        || (tomorrowEvents.length ? '' : '<div class="empty">Nothing scheduled for tomorrow yet.</div>')}</div>
+    </section>
+    <section class="card">
+      <div class="card-h">${icon('journal')}<span class="grow">${r ? 'Today' : 'Before you sleep'}</span></div>
+      ${r ? `<div class="home-digest"><b>${esc(r.headline)}</b>${r.bullets.length ? `<ul>${r.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}</div>`
+          : '<div class="empty">Anything on your mind for tomorrow? Say it into the ring or leave a note, and let it go for tonight.</div>'}
+      <button class="btn small ghost" style="margin-top:auto" data-act="note-add">${icon('plus')} Leave a note</button>
+    </section>
+    <section class="card">
+      <div class="card-h">${icon('tasks')}<span class="grow">Still open</span></div>
+      <div class="list">${left.length ? left.map((t) => todoRow(t)).join('') : '<div class="empty">Nothing left open. Nice.</div>'}</div>
+      <button class="btn small ghost" style="margin-top:auto" data-act="todo-add">${icon('plus')} Add for tomorrow</button>
+    </section>
+    <div class="wind-foot"><button class="btn" data-act="mode" data-mode="sleep">${icon('moon')} Sleep now</button>
+      <button class="btn ghost" data-act="wind-override">Show everything</button></div>
+  </div>`;
+}
+
+// The morning brief: a sunrise over the day ahead, on the desk screen from wake
+// time until it's tapped away.
+function renderMorning() {
+  const el = $('#morning');
+  const show = KIOSK && D.morningDue && D.mode === 'day';
+  if (!show) { el.hidden = true; el.dataset.html = ''; return; }
+  const h = new Date().getHours();
+  const w = D.weather?.data;
+  const [wxLabel] = w ? wx(w.code) : [''];
+  const rainH = w?.nextRain ? new Date(w.nextRain.time).getHours() : 0;
+  const open = realTodos().filter((t) => !t.done).sort(todoSort);
+  const today = open.filter((t) => t.due && t.due >= dayStart() && t.due < dayStart(1));
+  const carried = open.filter((t) => t.due && t.due < dayStart());
+  const events = (D.calendar?.data?.events || []).filter((e) => e.start < dayStart(1)).slice(0, 4);
+  const missed = (D.mail?.data?.accounts || []).flatMap((a) => a.messages)
+    .filter((m) => Date.parse(m.date) < dayStart() && (m.priority === 'urgent' || m.action))
+    .sort((a, b) => (a.priority === 'urgent' ? 0 : 1) - (b.priority === 'urgent' ? 0 : 1)).slice(0, 3);
+  const line = (t, sub) => `<li><b>${esc(t)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</li>`;
+  const block = (title, items) => items.length ? `<div class="m-block"><h3>${title}</h3><ul>${items.join('')}</ul></div>` : '';
+  const html = `<div class="sky"><div class="sun"><i></i></div><div class="hills"></div></div>
+    <div class="m-body">
+      <h1>${h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'}</h1>
+      <p class="m-date">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+      ${w ? `<p class="m-wx"><b>${w.temp}°</b> ${esc(wxLabel)} · high ${w.hi}°, low ${w.lo}°${w.nextRain ? ` · rain around ${rainH % 12 || 12}${rainH < 12 ? 'am' : 'pm'}` : w.rainChance >= 30 ? ` · ${w.rainChance}% chance of rain` : ' · no rain expected'}</p>` : ''}
+      ${D.digest?.headline ? `<p class="m-digest">${esc(D.digest.headline)}</p>` : ''}
+      <div class="m-grid">
+        ${block('On your calendar', events.map((e) => line(e.title, e.allDay ? 'All day' : hm(e.start))))}
+        ${block('To do today', today.slice(0, 5).map((t) => line(t.text, t.tag)))}
+        ${block('Left from yesterday', carried.slice(0, 4).map((t) => line(t.text, 'Overdue')))}
+        ${block('Email you haven\'t dealt with', missed.map((m) => line(m.action || m.summary, m.from)))}
+        ${!events.length && !today.length && !carried.length && !missed.length ? '<div class="m-block"><h3>A clear day</h3><ul><li><b>Nothing scheduled, nothing overdue.</b></li></ul></div>' : ''}
+      </div>
+      <button class="btn primary m-go" data-act="morning-done">Start the day</button>
+    </div>`;
+  if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+  el.hidden = false;
+}
+
+// Wind-down (desk screen only): work is put away for the night.
+const WIND_VIEWS = ['home', 'tasks', 'journal', 'settings'];
+const winding = () => KIOSK && D?.phase === 'winddown' && ui.windOverride !== new Date().toDateString();
+
 const NAV = [['home', 'Home'], ['focus', 'Focus'], ['tasks', 'To do'], ['payit', 'PayIt'], ['mail', 'Mail'], ['journal', 'Journal'], ['schedule', 'Schedule'], ['settings', 'Settings']];
 
 function renderRail() {
@@ -578,16 +656,20 @@ function renderRail() {
   const urgentMail = (D?.mail?.data?.accounts || []).flatMap((a) => a.messages).filter((m) => m.priority === 'urgent').length;
   const openToday = (D?.todos || []).filter((t) => !t.done && t.due && t.due < dayStart(1)).length;
   const badge = { mail: urgentMail, tasks: openToday + (D ? suggestedTodos().length : 0) };
-  $('#rail').innerHTML = NAV.map(([k, label]) => `<button class="${view === k ? 'on' : ''}" data-act="go" data-view="${k}" aria-label="${label}">${icon(k)}${badge[k] ? `<span class="badge info">${badge[k]}</span>` : ''}</button>`).join('')
+  const nav = winding() ? NAV.filter(([k]) => WIND_VIEWS.includes(k)) : NAV;
+  $('#rail').innerHTML = nav.map(([k, label]) => `<button class="${view === k ? 'on' : ''}" data-act="go" data-view="${k}" aria-label="${label}">${icon(k)}${badge[k] ? `<span class="badge info">${badge[k]}</span>` : ''}</button>`).join('')
     + `<div class="spacer"></div>
-      <button data-act="alerts" aria-label="Alerts">${icon('bell')}${alerts.length ? `<span class="badge ${serious ? '' : 'info'}">${alerts.length}</span>` : ''}</button>
+      ${winding() && !serious ? '' : `<button data-act="alerts" aria-label="Alerts">${icon('bell')}${alerts.length ? `<span class="badge ${serious ? '' : 'info'}">${alerts.length}</span>` : ''}</button>`}
       <button class="moon" data-act="mode" data-mode="sleep" aria-label="Sleep">${icon('moon')}</button>`;
 }
 
 function render() {
   if (!D) return;
+  document.documentElement.classList.toggle('winddown', winding());
+  if (winding() && !WIND_VIEWS.includes(view)) view = 'home';
   renderRail();
-  $('#view').innerHTML = VIEWS[view]();
+  $('#view').innerHTML = winding() && view === 'home' ? windHome() : VIEWS[view]();
+  renderMorning();
   drawCharts();
   if (!$('#drawer').hidden) renderDrawer();
 }
@@ -693,6 +775,8 @@ function handleAlerts() {
   const ids = new Set(D.alerts.map((a) => a.id));
   if (seenAlerts) {
     const fresh = D.alerts.filter((a) => !seenAlerts.has(a.id));
+    // During wind-down only real problems interrupt; everything else waits for morning.
+    if (winding()) fresh.splice(0, fresh.length, ...fresh.filter((a) => a.level !== 'info'));
     if (fresh.length && D.mode === 'day') {
       fresh.slice(0, 3).forEach(toast);
       chime(fresh.some((a) => a.level !== 'info') ? 'alert' : 'soft');
@@ -733,7 +817,7 @@ async function addTask(preset = {}) {
   });
 }
 
-const SET_STEPS = { recapAt: 15, digestAt: 15, sleepAt: 15, wakeAt: 15, focusMinutes: 5, shortBreak: 1, longBreak: 5 };
+const SET_STEPS = { windDownAt: 15, recapAt: 15, digestAt: 15, sleepAt: 15, wakeAt: 15, focusMinutes: 5, shortBreak: 1, longBreak: 5 };
 
 async function patchSettings(patch) {
   Object.assign(D.settings, patch);
@@ -841,6 +925,11 @@ document.addEventListener('click', async (e) => {
       }
       case 'refresh': await api('POST', '/api/refresh'); setTimeout(load, 3000); toast({ level: 'info', title: 'Refreshing…' }); break;
       case 'reload': location.reload(); break;
+      case 'wind-override': ui.windOverride = new Date().toDateString(); render(); break;
+      case 'morning-done':
+        D.morningDue = false; renderMorning();
+        await api('POST', '/api/morning/seen');
+        break;
       case 'logout': await api('POST', '/api/logout'); location.reload(); break;
     }
   } catch (err) {
