@@ -71,6 +71,9 @@ else
   echo "   Couldn't find labwc or wayfire — start scripts/kiosk.sh from your desktop's autostart."
 fi
 
+echo "==> Let the hub restart the Pi from Settings"
+bash "$APP_DIR/scripts/allow-restart.sh" || true
+
 echo "==> Never blank the screen (the hub manages brightness itself)"
 sudo raspi-config nonint do_blanking 1 || true
 

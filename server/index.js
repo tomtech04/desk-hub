@@ -3,6 +3,7 @@
 // so the screen never waits on Gmail or Supabase.
 import http from 'node:http';
 import fs from 'node:fs';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { ROOT, TZ, readJson, writeJson, refresher, startOfDay, hmToMin, nowMinutes, tzOffset, zonedToUtc } from './util.js';
@@ -60,6 +61,7 @@ const STATE_FILE = DEMO ? 'demo-state.json' : 'state.json';
 const state = readJson(STATE_FILE, DEFAULT_STATE);
 state.settings = { ...DEFAULT_STATE.settings, ...state.settings };
 for (const k of Object.keys(DEFAULT_STATE)) state[k] ??= structuredClone(DEFAULT_STATE[k]);
+if (state.mode === 'off') state.mode = 'sleep';
 if (DEMO && !state.todos.length) Object.assign(state, demo.seedState());
 
 let saveTimer = null;
@@ -138,7 +140,7 @@ function scheduleTick() {
   if (!state.settings.autoSleep) { lastScheduled = null; return; }
   const scheduled = inSleepWindow() ? 'sleep' : 'day';
   if (scheduled !== lastScheduled) {
-    if (lastScheduled !== null || state.mode !== scheduled) applyMode(scheduled === 'sleep' && state.mode === 'off' ? 'off' : scheduled);
+    if (lastScheduled !== null || state.mode !== scheduled) applyMode(scheduled);
     lastScheduled = scheduled;
   }
 }
@@ -351,6 +353,21 @@ setInterval(() => {
 }, 60e3).unref();
 
 // ---------------------------------------------------------------------------
+// Restarting the Pi. The hub runs as an ordinary user, so the system has to
+// allow that user to reboot (scripts/allow-restart.sh adds a polkit rule for
+// exactly that and nothing else). Ask logind whether we may, rather than guess.
+// ---------------------------------------------------------------------------
+
+let canRestart = false;
+function checkCanRestart() {
+  execFile('busctl', ['call', 'org.freedesktop.login1', '/org/freedesktop/login1', 'org.freedesktop.login1.Manager', 'CanReboot'], (err, out) => {
+    canRestart = DEMO || (!err && /"yes"/.test(out));
+  });
+}
+checkCanRestart();
+setInterval(checkCanRestart, 60e3).unref();
+
+// ---------------------------------------------------------------------------
 // Alerts: everything that wants attention, from every source, in one list
 // ---------------------------------------------------------------------------
 
@@ -409,6 +426,7 @@ function dashboard() {
     morningDue: state.settings.morningBrief && state.morningSeen !== localDay() && !inWindDown()
       && between(nowMinutes(), hmToMin(state.settings.wakeAt), state.settings.windDown ? hmToMin(state.settings.windDownAt) : 23 * 60 + 59),
     hasBacklight: hasBacklight(),
+    canRestart,
     settings: state.settings,
     todos: state.todos,
     focus: {
@@ -591,6 +609,15 @@ const routes = {
     } catch (err) { return [502, { error: err.message }]; }
   },
 
+  'POST /api/restart': () => {
+    if (!canRestart) return [403, { error: "The hub isn't allowed to restart the Pi yet. Run scripts/allow-restart.sh on the Pi once." }];
+    if (DEMO) return { ok: true, demo: true };
+    writeJson(STATE_FILE, state); // don't lose the last few seconds of changes
+    console.log('[restart] rebooting on request');
+    setTimeout(() => execFile('systemctl', ['reboot'], (err) => { if (err) console.error('[restart]', err.message); }), 1200);
+    return { ok: true };
+  },
+
   'POST /api/peek': () => { peek(); return { ok: true, ms: PEEK_MS }; },
 
   'POST /api/mail/read': async ({ body }) => {
@@ -601,7 +628,7 @@ const routes = {
   'POST /api/morning/seen': () => { state.morningSeen = localDay(); save(); return { ok: true }; },
 
   'POST /api/mode': ({ body }) => {
-    if (!['day', 'sleep', 'off'].includes(body.mode)) return [400, { error: 'bad mode' }];
+    if (!['day', 'sleep'].includes(body.mode)) return [400, { error: 'bad mode' }];
     applyMode(body.mode); return { mode: state.mode };
   },
   'PATCH /api/settings': ({ body }) => {

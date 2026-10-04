@@ -599,7 +599,7 @@ const VIEWS = {
     const group = (title, rows) => `<section class="card"><div class="card-h">${title}</div>${rows.join('')}</section>`;
     return `<div class="page-h"><h1>Settings</h1>
         <button class="btn" data-act="mode" data-mode="sleep">${icon('moon')} Sleep now</button>
-        <button class="btn ghost" data-act="mode" data-mode="off">Screen off</button></div>
+</div>
       <div class="settings">
         ${group('Display', [
           row('Brightness', D.hasBacklight ? 'Desk screen backlight' : 'No backlight here; this controls the desk screen', range('dayBrightness', 10, 100)),
@@ -628,6 +628,7 @@ const VIEWS = {
           row(esc(sys.host), `${sys.tempC != null ? `${sys.tempC.toFixed(0)}°C · ` : ''}load ${sys.load.toFixed(2)} · memory ${sys.memUsedPct}% · up ${sys.uptimeH}h`, ''),
           row('Data', 'Reload mail, PayIt, calendar and weather now', '<button class="btn small ghost" data-act="refresh">Refresh</button>'),
           row('This screen', 'Reload the page', '<button class="btn small ghost" data-act="reload">Reload</button>'),
+          row('Restart the Pi', D.canRestart ? 'Reboots the whole device; back in about a minute' : 'Not allowed yet: run scripts/allow-restart.sh on the Pi once', `<button class="btn small ghost danger" data-act="restart-pi" ${D.canRestart ? '' : 'disabled'}>Restart</button>`),
           D.signedIn ? row('Signed in on this device', '', '<button class="btn small ghost" data-act="logout">Sign out</button>') : '',
         ])}
       </div>`;
@@ -803,7 +804,7 @@ function renderReader() {
 function renderBanner() {
   const el = $('#banner');
   if (!KIOSK && D && D.mode !== 'day') {
-    el.innerHTML = `<div class="b">${icon('moon')} Desk display is ${D.mode === 'off' ? 'off' : 'asleep'} <button class="btn small" data-act="mode" data-mode="day">Wake it</button></div>`;
+    el.innerHTML = `<div class="b">${icon('moon')} Desk display is asleep <button class="btn small" data-act="mode" data-mode="day">Wake it</button></div>`;
     return;
   }
   if (!D?.settings.autoSleep || D.mode !== 'day') { el.innerHTML = ''; return; }
@@ -828,13 +829,11 @@ function renderSleep() {
   const el = $('#sleep');
   el.hidden = !KIOSK || D.mode === 'day'; // a phone shouldn't go dark because the desk did
   if (el.hidden) return;
-  el.classList.toggle('off', D.mode === 'off');
   el.classList.toggle('sim', !D.hasBacklight);
   const d = new Date();
   const html = `<div class="time">${d.getHours() % 12 || 12}:${pad(d.getMinutes())}</div>
     <div class="next">${nextMorningLine()}</div>
-    <div class="actions"><button class="btn" data-act="mode" data-mode="day">Wake up</button>
-      ${D.mode === 'off' ? `<button class="btn" data-act="mode" data-mode="sleep">Dim clock</button>` : `<button class="btn" data-act="mode" data-mode="off">Screen off</button>`}</div>`;
+    <div class="actions"><button class="btn" data-act="mode" data-mode="day">Wake up</button></div>`;
   if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
 }
 
@@ -1050,7 +1049,7 @@ document.addEventListener('click', async (e) => {
       case 'mode':
         D.mode = el.dataset.mode; syncMode(); renderBanner();
         await api('POST', '/api/mode', { mode: el.dataset.mode });
-        if (!KIOSK) toast({ level: 'info', title: el.dataset.mode === 'day' ? 'Desk display is awake' : el.dataset.mode === 'off' ? 'Desk display is off' : 'Desk display is asleep' });
+        if (!KIOSK) toast({ level: 'info', title: el.dataset.mode === 'day' ? 'Desk display is awake' : 'Desk display is asleep' });
         if (el.dataset.mode === 'day') load();
         break;
       case 'alerts': ui.drawer = 'alerts'; $('#drawer').hidden = false; renderDrawer(); break;
@@ -1073,6 +1072,19 @@ document.addEventListener('click', async (e) => {
       }
       case 'refresh': await api('POST', '/api/refresh'); setTimeout(load, 3000); toast({ level: 'info', title: 'Refreshing…' }); break;
       case 'reload': location.reload(); break;
+      case 'restart-pi':
+        // Two taps, so a stray touch can't reboot the Pi.
+        if (el.dataset.armed !== '1') {
+          el.dataset.armed = '1'; el.textContent = 'Tap again to restart';
+          setTimeout(() => { if (el.isConnected) { el.dataset.armed = ''; el.textContent = 'Restart'; } }, 4000);
+          break;
+        }
+        await api('POST', '/api/restart');
+        $('#login').hidden = false;
+        $('#login').innerHTML = '<div class="login-card"><h1>Restarting the Pi…</h1><p class="muted">The hub will be back in about a minute.</p><div class="loadbar"><i></i></div></div>';
+        // On a phone or laptop, come back on our own once the hub answers again.
+        if (!KIOSK) { const t = setInterval(async () => { try { if ((await fetch('/api/dashboard')).status < 500) { clearInterval(t); location.reload(); } } catch {} }, 5000); }
+        break;
       case 'wind-override': ui.windOverride = new Date().toDateString(); render(); break;
       case 'morning-done':
         D.morningDue = false; renderMorning();
