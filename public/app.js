@@ -51,7 +51,7 @@ const money = (cents, exact = false) => {
   const v = cents / 100;
   return v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: exact || v < 100 ? 2 : 0, minimumFractionDigits: exact || v < 100 ? 2 : 0 });
 };
-const hm = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const hm = (ms) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 const dayStart = (offset = 0) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + offset); return d.getTime(); };
 const ago = (iso) => {
   const m = Math.round((Date.now() - Date.parse(iso)) / 60e3);
@@ -63,7 +63,7 @@ const ago = (iso) => {
 const dayLabel = (ms) => {
   if (ms < dayStart(1)) return 'Today';
   if (ms < dayStart(2)) return 'Tomorrow';
-  return new Date(ms).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+  return new Date(ms).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 };
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -254,7 +254,7 @@ function dueHtml(t) {
   if (t.due < dayStart()) return '<span class="when overdue">Overdue</span>';
   if (t.due < dayStart(1)) return '<span class="when due-today">Today</span>';
   if (t.due < dayStart(2)) return '<span class="when">Tomorrow</span>';
-  return `<span class="when">${new Date(t.due).toLocaleDateString([], { weekday: 'short' })}</span>`;
+  return `<span class="when">${new Date(t.due).toLocaleDateString('en-US', { weekday: 'short' })}</span>`;
 }
 
 function todoRow(t, full = false) {
@@ -271,7 +271,7 @@ function todoRow(t, full = false) {
 function eventRow(e) {
   const soon = !e.allDay && e.start - Date.now() < 60 * 60e3 && e.start > Date.now();
   const now = !e.allDay && e.start <= Date.now() && e.end > Date.now();
-  const when = e.allDay ? 'All day' : now ? 'Now' : e.start < dayStart(1) ? hm(e.start) : `${new Date(e.start).toLocaleDateString([], { weekday: 'short' })} ${hm(e.start)}`;
+  const when = e.allDay ? 'All day' : now ? 'Now' : e.start < dayStart(1) ? hm(e.start) : `${new Date(e.start).toLocaleDateString('en-US', { weekday: 'short' })} ${hm(e.start)}`;
   return `<div class="item"><span class="cal-bar"></span>
     <div class="t"><b>${esc(e.title)}</b><span>${esc([e.calendar, e.location].filter(Boolean).join(' · '))}</span></div>
     <span class="when ${soon || now ? 'soon' : ''}">${esc(when)}</span></div>`;
@@ -297,7 +297,7 @@ const VIEWS = {
     return `<div class="home">
       <section class="card a-clock clock">
         <div class="time" id="clock-time">${clockHtml()}</div>
-        <div class="date">${new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+        <div class="date">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
         <div class="wx">${w ? `${icon(wxIcon)}<b>${w.temp}°</b> ${esc(wxLabel)} · H ${w.hi}° L ${w.lo}°${esc(rain)}` : '<span class="muted">Weather loading…</span>'}</div>
       </section>
 
@@ -317,7 +317,7 @@ const VIEWS = {
       <section class="card a-payit tap" data-act="go" data-view="payit">
         <div class="card-h">${icon('payit')}<span class="grow">PayIt today</span>
           ${sysBad.length ? `<span class="status ${sysBad.some((s) => s.status === 'down') ? 'down' : 'degraded'}">${icon('warnI')} ${sysBad.length} issue${sysBad.length > 1 ? 's' : ''}</span>`
-            : p ? `<span class="status up">${icon('check')} All systems up</span>` : ''}</div>
+            : p ? `<span class="status up">${icon('check')} All up</span>` : ''}</div>
         ${p ? `<div class="big-num money">${money(p.today.grossCents)}</div>
           ${delta !== null ? `<div class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}% vs. this time yesterday</div>` : '<div class="delta muted">—</div>'}
           <div class="kv"><div><b>${p.today.count}</b><span>sales</span></div><div><b>${money(p.today.avgTicketCents, true)}</b><span>avg ticket</span></div><div><b>${p.today.declined}</b><span>declined</span></div></div>`
@@ -372,7 +372,7 @@ const VIEWS = {
           <div class="card-h">Today</div>
           <div class="row" style="gap:28px"><div><div class="big-num" style="font-size:44px">${D.focus.todayMinutes}<span class="muted" style="font-size:20px"> min</span></div></div>
             <div><div class="big-num" style="font-size:44px">${D.focus.todaySessions}</div><span class="muted">sessions</span></div></div>
-          <div style="margin-top:12px">${bars('focusweek', week.map((d) => d.minutes), week.map((d) => new Date(d.date).toLocaleDateString([], { weekday: 'narrow' })), (v) => `${v} min`, { height: 110, cls: 'focus-c', capLabel: (i) => new Date(week[i].date).toLocaleDateString([], { weekday: 'long' }) })}</div>
+          <div style="margin-top:12px">${bars('focusweek', week.map((d) => d.minutes), week.map((d) => new Date(d.date).toLocaleDateString('en-US', { weekday: 'narrow' })), (v) => `${v} min`, { height: 110, cls: 'focus-c', capLabel: (i) => new Date(week[i].date).toLocaleDateString('en-US', { weekday: 'long' }) })}</div>
         </section>
         <section class="card working">
           <div class="card-h">Working on</div>
@@ -448,7 +448,7 @@ const VIEWS = {
         </section>
         <section class="card">
           <div class="card-h"><span class="grow">Last 7 days</span><span class="link">${money(weekTotal)} total</span></div>
-          ${bars('week', p.week.map((d) => d.cents), p.week.map((d) => new Date(d.date).toLocaleDateString([], { weekday: 'short' })), (v) => money(v), { height: 150, capLabel: (i) => new Date(p.week[i].date).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }) })}
+          ${bars('week', p.week.map((d) => d.cents), p.week.map((d) => new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' })), (v) => money(v), { height: 150, capLabel: (i) => new Date(p.week[i].date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) })}
           <div class="row" style="gap:18px;margin-top:10px;flex-wrap:wrap">${providers.map(([k, v]) => `<span class="muted">${esc(provName[k] || k)} <b style="color:var(--text)">${money(v)}</b></span>`).join('') || '<span class="muted">No sales yet today</span>'}</div>
         </section>
       </div>`;
@@ -515,7 +515,9 @@ const VIEWS = {
 
     // One-line summary of the day.
     const bits = [];
-    if (timed.length) bits.push(`${timed.length} event${timed.length > 1 ? 's' : ''}, first at ${hm(timed[0].start)}`);
+    // An event carried over from the night before doesn't count as the day's first.
+    const firstToday = timed.find((e) => e.start >= from);
+    if (timed.length) bits.push(`${timed.length} event${timed.length > 1 ? 's' : ''}${firstToday ? `, first at ${hm(firstToday.start)}` : ''}`);
     else bits.push('No timed events');
     if (tasks.length) bits.push(`${tasks.length} task${tasks.length > 1 ? 's' : ''} due`);
     const busyMin = timed.reduce((m, e) => m + Math.max(0, Math.min(e.end, to) - Math.max(e.start, from)) / 60e3, 0);
