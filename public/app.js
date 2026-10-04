@@ -479,12 +479,12 @@ const VIEWS = {
       <div class="mail-page">${digestCard()}
       <div class="mailview">${s.data.accounts.map((a) => `<section class="card">
         <div class="card-h"><span class="grow">${esc(a.name)}</span><span class="pill">${a.unread} unread</span></div>
-        ${a.error ? `<div class="empty" style="color:var(--warn)">${esc(a.error)}</div>` : ''}
+        ${a.needsSignIn ? `<div class="empty">Not signed in yet.<br><button class="btn small primary" style="margin-top:10px" data-act="go" data-view="settings">Connect in Settings</button></div>` : a.error ? `<div class="empty" style="color:var(--warn)">${esc(a.error)}</div>` : ''}
         <div class="list">${a.messages.map((m) => `<div class="msg tap ${m.priority === 'low' ? 'low' : ''}" data-act="mail-open" data-id="${esc(m.id)}">
           <div class="top">${m.priority === 'urgent' ? '<span class="prio"><span class="dot" style="background:var(--bad)"></span>Urgent</span>' : ''}<b>${esc(m.from)}</b><span class="muted">${ago(m.date)}</span></div>
           <p>${esc(m.summary)}</p>
           ${m.action ? `<div class="act">${icon('arrow')} ${esc(m.action)}</div>` : ''}
-        </div>`).join('') || '<div class="empty">No unread mail from the last few days.</div>'}</div>
+        </div>`).join('') || (a.needsSignIn ? '' : '<div class="empty">No unread mail from the last few days.</div>')}</div>
       </section>`).join('')}</div></div>`;
   },
 
@@ -618,6 +618,7 @@ const VIEWS = {
           row('Email digest at', "Claude's summary of the last 24 hours", step('digestAt', st.digestAt)),
           row('Day recap at', 'From your notes, tasks and focus time', step('recapAt', st.recapAt)),
           row('Tasks from email', 'Checked hourly; you approve new ones', toggle('emailTasks')),
+          schoolRow(row),
         ])}
         ${group('Focus timer', [
           row('Focus length', '', step('focusMinutes', st.focusMinutes, 'm')),
@@ -638,6 +639,16 @@ const VIEWS = {
 // ---------------------------------------------------------------------------
 // Render
 // ---------------------------------------------------------------------------
+
+// Microsoft 365 (school) mail: sign in with a code on another device.
+function schoolRow(row) {
+  const sc = D.school;
+  if (!sc?.configured) return '';
+  if (sc.pending) return `<div class="code-box"><div>On your phone or laptop, open <b>${esc(sc.pending.uri.replace(/^https?:\/\//, ''))}</b> and enter</div>
+    <div class="code">${esc(sc.pending.code)}</div><div class="muted">then sign in with your school account. This screen updates by itself.</div></div>`;
+  if (sc.connected) return row('School mail', 'Signed in with Microsoft (read-only)', '<button class="btn small ghost" data-act="school-disconnect">Disconnect</button>');
+  return row('School mail', sc.error ? `<span style="color:var(--warn)">${esc(sc.error)}</span>` : 'Sign in with Microsoft using a short code', '<button class="btn small primary" data-act="school-connect">Connect</button>');
+}
 
 function digestCard() {
   const d = D.digest;
@@ -1072,6 +1083,14 @@ document.addEventListener('click', async (e) => {
       }
       case 'refresh': await api('POST', '/api/refresh'); setTimeout(load, 3000); toast({ level: 'info', title: 'Refreshing…' }); break;
       case 'reload': location.reload(); break;
+      case 'school-connect': {
+        D.school = { ...D.school, pending: await api('POST', '/api/school/connect'), error: null };
+        render();
+        // Check back often while the code is waiting to be entered.
+        const t = setInterval(async () => { await load(); if (!D.school?.pending) clearInterval(t); }, 4000);
+        break;
+      }
+      case 'school-disconnect': await api('POST', '/api/school/disconnect'); await load(); break;
       case 'restart-pi':
         // Two taps, so a stray touch can't reboot the Pi.
         if (el.dataset.armed !== '1') {

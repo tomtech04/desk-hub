@@ -5,6 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { readJson, writeJson } from './util.js';
+import { msConfigured, msStatus, graphUnread, graphRecent, graphFull } from './msgraph.js';
 
 const LOOKBACK_DAYS = Number(process.env.MAIL_LOOKBACK_DAYS || 3);
 const PER_ACCOUNT = Number(process.env.MAIL_MAX_PER_ACCOUNT || 12);
@@ -28,7 +29,17 @@ for (let i = 1; process.env[`MAIL_${i}_USER`]; i++) {
     mailbox: e('MAILBOX', 'INBOX'),
   });
 }
+// A Microsoft 365 account (school/work) read through Microsoft Graph instead of IMAP.
+if (msConfigured) accounts.push({ id: 'ms', kind: 'graph', name: process.env.MS_NAME || 'School' });
 export const mailConfigured = accounts.length > 0;
+
+/** Record a Graph message the same way an IMAP one is, and return its list entry. */
+function noteGraph(acct, m, bodyChars) {
+  const id = `${acct.id}:${m.messageId}`;
+  located.set(id, { acct, graphId: m.graphId, text: m.text.slice(0, 2500) });
+  lastListed.set(id, { from: `${m.from} <${m.fromAddress}>`, subject: m.subject, date: m.date });
+  return { id, account: acct.name, from: m.from, fromAddress: m.fromAddress, subject: m.subject, date: m.date, read: m.read, body: m.text.slice(0, bodyChars) };
+}
 
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 
@@ -100,7 +111,19 @@ async function fetchMessages(client, acct, uids, bodyChars) {
   return messages.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
 }
 
+async function fetchGraphAccount(acct) {
+  // Not signed in yet is a state, not an error: the Mail screen offers "Connect".
+  if (!msStatus().connected) return { id: acct.id, name: acct.name, unread: 0, messages: [], needsSignIn: true };
+  const { unread, messages } = await graphUnread(Date.now() - LOOKBACK_DAYS * 86400e3, PER_ACCOUNT);
+  const result = { id: acct.id, name: acct.name, unread, messages: messages.map((m) => noteGraph(acct, m, 2000)) };
+  const listed = new Set(result.messages.map((m) => m.id));
+  for (const id of fullCache.keys()) if (id.startsWith(`${acct.id}:`) && !listed.has(id)) fullCache.delete(id);
+  setTimeout(() => prefetch(acct, [...listed]), 500);
+  return result;
+}
+
 function fetchAccount(acct) {
+  if (acct.kind === 'graph') return fetchGraphAccount(acct);
   return withMailbox(acct, async (client) => {
     const unseen = await client.search({ seen: false }, { uid: true });
     const since = new Date(Date.now() - LOOKBACK_DAYS * 86400e3);
@@ -202,6 +225,10 @@ const DIGEST_PER_ACCOUNT = Number(process.env.DIGEST_MAX_PER_ACCOUNT || 60);
 export const aiEnabled = () => Boolean(anthropic);
 
 async function fetchRecent(acct) {
+  if (acct.kind === 'graph') {
+    if (!msStatus().connected) return [];
+    return (await graphRecent(Date.now() - DIGEST_HOURS * 3600e3, DIGEST_PER_ACCOUNT)).map((m) => noteGraph(acct, m, 800));
+  }
   return withMailbox(acct, async (client) => {
     const cutoff = Date.now() - DIGEST_HOURS * 3600e3;
     // IMAP SINCE is day-granular; trim to the exact window after fetching.
@@ -289,6 +316,7 @@ export async function readMessage(id) {
   if (cached) return cached;
   const loc = located.get(id);
   if (!loc) throw new Error('That email is no longer in the list. Refresh and try again.');
+  if (loc.graphId) return remember(id, await buildGraphFull(id, loc));
   return withMailbox(loc.acct, async (client) => {
     const msg = await client.fetchOne(String(loc.uid), { envelope: true, source: { start: 0, maxLength: 12_000_000 } }, { uid: true });
     if (!msg) throw new Error('That email could not be found in the mailbox.');
@@ -330,13 +358,24 @@ async function buildFull(id, acct, msg) {
   };
 }
 
+async function buildGraphFull(id, loc) {
+  const m = await graphFull(loc.graphId);
+  const text = (m.plain || loc.text || '').trim();
+  return {
+    id, account: loc.acct.name, from: m.from, fromAddress: m.fromAddress, to: m.to, subject: m.subject, date: m.date,
+    html: m.html, text: text || '(This email has no readable text. It may be images only.)', truncated: false, attachments: m.attachments,
+  };
+}
+
 let prefetching = false;
 async function prefetch(acct, ids) {
   const todo = ids.filter((id) => !fullCache.has(id) && located.has(id));
   if (prefetching || !todo.length) return;
   prefetching = true;
   try {
-    await withMailbox(acct, async (client) => {
+    if (acct.kind === 'graph') {
+      for (const id of todo) remember(id, await buildGraphFull(id, located.get(id)).catch(() => undefined));
+    } else await withMailbox(acct, async (client) => {
       const byUid = new Map(todo.map((id) => [located.get(id).uid, id]));
       for await (const msg of client.fetch([...byUid.keys()], { uid: true, envelope: true, source: { start: 0, maxLength: 12_000_000 } }, { uid: true })) {
         const id = byUid.get(msg.uid);

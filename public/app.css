@@ -732,3 +732,7 @@ html:not(.remote) .kv.four span { font-size: 13px; }
 
 .btn.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
 .btn[disabled] { opacity: .4; pointer-events: none; }
+
+/* ---------- Microsoft sign-in code ---------- */
+.code-box { padding: 16px 0; font-size: 17px; line-height: 1.45; border-bottom: 1px solid var(--line); }
+.code-box .code { font-size: 44px; font-weight: 700; letter-spacing: .12em; color: var(--accent); margin: 10px 0 6px; font-variant-numeric: tabular-nums; }

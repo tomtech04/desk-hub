@@ -12,6 +12,7 @@ import { mailConfigured, loadMail, buildDigest, aiEnabled, readMessage, taskFrom
 import { calendarConfigured, loadCalendar } from './calendar.js';
 import { setBrightness, hasBacklight, systemStats, loadWeather } from './system.js';
 import { readVoiceRequest, interpretVoice, buildRecap } from './voice.js';
+import { msStatus, startSignIn, signOut as msSignOut, whenConnected } from './msgraph.js';
 import * as demo from './demo.js';
 
 const PORT = Number(process.env.PORT || 8080);
@@ -79,6 +80,8 @@ const sources = DEMO
       calendar: calendarConfigured ? refresher('calendar', 15 * 60e3, loadCalendar) : null,
       weather: refresher('weather', 15 * 60e3, loadWeather),
     };
+
+whenConnected(() => { console.log('[school] Microsoft sign-in complete'); sources.mail?.refresh(); });
 
 // ---------------------------------------------------------------------------
 // Display mode + sleep schedule
@@ -390,7 +393,7 @@ function buildAlerts(snap) {
   if (p && p.today.declined >= 3) add(`declines:${startOfDay()}:${p.today.declined >= 10 ? 10 : 3}`, 'warn', 'payit', `${p.today.declined} declined charges today`);
 
   for (const acct of snap.mail?.data?.accounts || []) {
-    if (acct.error) add(`mailerr:${acct.id}`, 'warn', 'mail', `${acct.name} mail isn't connecting`, acct.error);
+    if (acct.error && !acct.needsSignIn) add(`mailerr:${acct.id}`, 'warn', 'mail', `${acct.name} mail isn't connecting`, acct.error);
     for (const m of acct.messages) if (m.priority === 'urgent') add(`mail:${m.id}`, 'info', 'mail', `${acct.name}: ${m.from}`, m.summary);
   }
 
@@ -430,6 +433,7 @@ function dashboard() {
       && between(nowMinutes(), hmToMin(state.settings.wakeAt), state.settings.windDown ? hmToMin(state.settings.windDownAt) : 23 * 60 + 59),
     hasBacklight: hasBacklight(),
     canRestart,
+    school: msStatus(), // Microsoft 365 mail sign-in: { configured, connected, pending: { code, uri }, error }
     settings: state.settings,
     todos: state.todos,
     focus: {
@@ -611,6 +615,12 @@ const routes = {
       return todo;
     } catch (err) { return [502, { error: err.message }]; }
   },
+
+  // School/work Microsoft mail: start the code sign-in, or disconnect.
+  'POST /api/school/connect': async () => {
+    try { return await startSignIn(); } catch (err) { return [400, { error: err.message }]; }
+  },
+  'POST /api/school/disconnect': () => { msSignOut(); sources.mail?.refresh(); return { ok: true }; },
 
   'POST /api/restart': () => {
     if (!canRestart) return [403, { error: "The hub isn't allowed to restart the Pi yet. Run scripts/allow-restart.sh on the Pi once." }];

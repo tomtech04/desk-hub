@@ -59,9 +59,15 @@ Either way the screen only receives totals, and revenue follows the admin panel'
 
 **Personal Gmail.** Turn on 2-Step Verification, create an App Password, and put it in `MAIL_1_PASS`.
 
-**School email.** Georgia Tech mail is Microsoft 365, which no longer allows password IMAP logins. Options, easiest first:
-- If GT allows it, an Outlook rule that forwards to your Gmail under a label (e.g. `GT`), read with `MAIL_2_MAILBOX=GT` using the same Gmail login.
-- Microsoft Graph with OAuth (needs an app registration; GT may require admin consent). Not built yet.
+**School or work Microsoft 365 email.** These accounts usually block IMAP passwords and outside forwarding, so the hub reads them through Microsoft Graph with a one-time code sign-in (read-only; the hub never sees the password):
+
+1. Sign in at https://entra.microsoft.com with the school account → **Applications → App registrations → New registration**. Name it "Desk Hub", choose **Accounts in this organizational directory only**, leave Redirect URI empty, and register.
+2. On the app's **Authentication** page, set **Allow public client flows** to **Yes** and save.
+3. On **API permissions**, add **Microsoft Graph → Delegated → Mail.Read**.
+4. Put the **Application (client) ID** in `.env` as `MS_CLIENT_ID`, with `MS_TENANT` set to the organization's domain.
+5. In the hub: Settings → Mail and Claude → **School mail → Connect**, then enter the code shown at microsoft.com/devicelogin.
+
+If the organization doesn't let you register apps or approve this permission, it needs their IT department's sign-off.
 
 **Summaries and digest.** Set `ANTHROPIC_API_KEY` (starts with `sk-ant-`). Both use Claude Haiku 4.5 by default, the cheapest current model; for a sharper digest only, set `DIGEST_MODEL=claude-sonnet-5-5`. Each email is summarized once and cached by Message-ID. Without a key, mail still shows with a plain preview and there's no digest.
 
