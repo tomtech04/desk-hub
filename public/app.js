@@ -281,7 +281,8 @@ const VIEWS = {
   home() {
     const w = D.weather?.data;
     const [wxLabel, wxIcon] = w ? wx(w.code) : ['', 'sun'];
-    const rain = w?.nextRain ? ` · rain ~${new Date(w.nextRain.time).toLocaleTimeString([], { hour: 'numeric' })}` : '';
+    const rainH = w?.nextRain ? new Date(w.nextRain.time).getHours() : 0;
+    const rain = w?.nextRain ? ` · rain ~${rainH % 12 || 12}${rainH < 12 ? 'am' : 'pm'}` : '';
     const events = (D.calendar?.data?.events || []).slice(0, 4);
     const todos = realTodos().filter((t) => !t.done).sort(todoSort).slice(0, 5);
     const toReview = suggestedTodos().length;
