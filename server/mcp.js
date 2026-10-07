@@ -197,7 +197,14 @@ export function createMcp(hub) {
 
   /** Handle one HTTP request to /mcp. Returns true once it has responded. */
   return async function handle(req, res, url, token) {
-    const send = (status, body, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }); res.end(body === undefined ? '' : JSON.stringify(body)); };
+    // One line per request, so a client that can't connect can be diagnosed.
+    // The token itself is never logged, only whether one came and where from.
+    let what = '';
+    const send = (status, body, headers = {}) => {
+      const hdr = req.headers.authorization, inUrl = Boolean(url.pathname.split('/')[2] || url.searchParams.get('key'));
+      console.log(`[mcp] ${req.method} ${url.pathname.split('/').slice(0, 2).join('/')}${inUrl ? '/<token>' : ''} -> ${status}${what ? ` (${what})` : ''} | auth: ${hdr ? (/^bearer\s/i.test(hdr) ? 'bearer header' : 'header without Bearer') : inUrl ? 'in url' : 'none'} | accept: ${req.headers.accept || '-'} | agent: ${String(req.headers['user-agent'] || '-').slice(0, 60)}`);
+      res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }); res.end(body === undefined ? '' : JSON.stringify(body));
+    };
     if (!token) return send(404, { error: 'The Claude connector is off. Set HUB_MCP_TOKEN in .env.' });
     const sha = (v) => crypto.createHash('sha256').update(v).digest();
     const header = String(req.headers.authorization || '').replace(/^bearer\s+/i, '').trim();
@@ -209,6 +216,7 @@ export function createMcp(hub) {
     for await (const chunk of req) { raw += chunk; if (raw.length > 512e3) return send(413, { error: 'too large' }); }
     let msg;
     try { msg = JSON.parse(raw); } catch { return send(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }); }
+    what = (Array.isArray(msg) ? msg : [msg]).map((m) => m?.method + (m?.params?.name ? `:${m.params.name}` : '')).join(',');
     const out = Array.isArray(msg) ? msg.map(rpc).filter(Boolean) : rpc(msg);
     if (out === null || (Array.isArray(out) && !out.length)) return send(202); // notifications only
     return send(200, out);
