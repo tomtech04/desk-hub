@@ -387,6 +387,45 @@ function notConfigured(what, hint) {
   return `<div class="empty">${esc(what)} isn't set up yet.<br><span style="font-size:14px">${esc(hint)}</span></div>`;
 }
 
+// The widget beside the clock: conditions now, and the next 12 hours as a
+// chart. Rain chance when rain is on the way, otherwise the temperature curve.
+function weatherWidget(w) {
+  if (!w) return '<div class="wxw"><div class="wxw-cap">Weather loading…</div></div>';
+  const [label, ic] = wx(w.code);
+  const hours = (w.hours || []).slice(0, 12);
+  const hr = (s) => { const h = new Date(s).getHours(); return `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`; };
+  const W = 300, H = 84;
+  const ticks = hours.length ? `<div class="wxw-x"><span>Now</span><span>${hr(hours[Math.floor(hours.length / 2)].time)}</span><span>${hr(hours.at(-1).time)}</span></div>` : '';
+  let cap = '', chart = '';
+  const wet = hours.filter((h) => h.rain >= 30);
+  if (wet.length) {
+    // Bars of rain chance per hour; the likeliest hour is named in the caption.
+    const peak = hours.reduce((a, h) => (h.rain > a.rain ? h : a), hours[0]);
+    const slot = W / hours.length, bw = slot - 5;
+    cap = `Rain · ${peak.rain}% around ${hr(peak.time)}`;
+    chart = `<svg class="wxw-chart rain" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${hours.map((h, i) => {
+      const bh = Math.max(3, (h.rain / 100) * (H - 6));
+      return `<rect x="${(i * slot + 2.5).toFixed(1)}" y="${(H - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="3" class="${h.rain >= 50 ? 'hi' : h.rain >= 30 ? 'mid' : ''}"/>`; }).join('')}</svg>`;
+  } else if (hours.length > 1) {
+    // Temperature as a line with the high and low of the stretch marked.
+    const temps = hours.map((h) => h.temp), lo = Math.min(...temps), hi = Math.max(...temps), span = Math.max(1, hi - lo);
+    const x = (i) => (i / (hours.length - 1)) * W, y = (t) => 30 + (1 - (t - lo) / span) * (H - 36);
+    const pts = hours.map((h, i) => `${x(i).toFixed(1)},${y(h.temp).toFixed(1)}`);
+    const iHi = temps.indexOf(hi), iLo = temps.lastIndexOf(lo);
+    const mark = (i, t, cls) => `<span class="wxw-mark ${cls}" style="left:${Math.min(91, Math.max(9, (x(i) / W) * 100)).toFixed(1)}%;top:${((y(t) / H) * 100).toFixed(1)}%">${t}°</span>`;
+    cap = `Temperature · ${lo}° to ${hi}° ahead`;
+    chart = `<div class="wxw-plot"><svg class="wxw-chart temp" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        <defs><linearGradient id="wxfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+        <polygon points="0,${H} ${pts.join(' ')} ${W},${H}" fill="url(#wxfill)"/>
+        <polyline points="${pts.join(' ')}" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      </svg>${hi !== lo ? mark(iHi, hi, 'hi') + mark(iLo, lo, 'lo') : ''}</div>`;
+  }
+  return `<button class="wxw" data-act="weather">
+    <div class="wxw-top">${icon(ic)}<b>${w.temp}°</b><span>${esc(label)}<br>H ${w.hi}° · L ${w.lo}°</span></div>
+    <div class="wxw-cap">${esc(cap)}</div>${chart.startsWith('<div') ? chart : `<div class="wxw-plot">${chart}</div>`}${ticks}
+  </button>`;
+}
+
 function clockHtml() {
   const d = new Date();
   const h = d.getHours() % 12 || 12;
@@ -547,9 +586,11 @@ const VIEWS = {
 
     return `<div class="home">
       <section class="card a-clock clock">
-        <div class="time" id="clock-time">${clockHtml()}</div>
-        <div class="date">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
-        ${w ? `<button class="wxchip" data-act="weather">${icon(wxIcon)}<b>${w.temp}°</b><span>${esc(wxLabel)} · H ${w.hi}° L ${w.lo}°${esc(rain)}</span>${icon('chev')}</button>` : '<div class="wx"><span class="muted">Weather loading…</span></div>'}
+        <div class="clock-main">
+          <div class="time" id="clock-time">${clockHtml()}</div>
+          <div class="date">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+        </div>
+        ${weatherWidget(w)}
       </section>
 
       <section class="card a-focus">

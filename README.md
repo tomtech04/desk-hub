@@ -6,7 +6,7 @@ The whole hub is drawn as translucent glass panels over a soft colour backdrop t
 
 | Screen | What it does |
 |---|---|
-| **Home** | Clock, a weather chip that opens the day's forecast (hourly, rain, wind, sunrise and sunset, tomorrow), focus timer, today's to-dos, PayIt today, the mail digest, and what's up next |
+| **Home** | Clock, a weather widget beside it charting the next 12 hours (rain chance when rain is coming, otherwise temperature) that opens the full forecast (hourly, rain, wind, sunrise and sunset, tomorrow), focus timer, today's to-dos, PayIt today, the mail digest, and what's up next |
 | **Focus** | Pomodoro timer (focus / short / long break). Starting a session locks the screen to it: a settle-in count, a breathing ring, a finish screen that offers the break, and press-and-hold to leave. "Working on" comes from your to-dos; minutes per day are charted. |
 | **To do** | Tasks with tags (School / PayIt / Personal), due dates, stars; on-screen keyboard |
 | **PayIt** | Gross volume vs. this time yesterday, sales, avg ticket, declines, active merchants, by-hour and 7-day charts, payment-method split, live status from `admin_system_checks` |
