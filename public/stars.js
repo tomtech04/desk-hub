@@ -85,14 +85,18 @@ function drawClock(now) {
     const pts = current(s, now).map(([px, py]) => [x + px * dw, top + py * dh / 2]);
     // Lines thin out while the stars travel, then draw back in.
     const settle = s.fresh ? t * t : 1 - Math.sin(t * Math.PI) * 0.75;
-    ctx.strokeStyle = `rgba(190,212,255,${(0.62 * settle).toFixed(3)})`;
-    ctx.lineWidth = 1.8; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    // A soft wide stroke under a bright one, so the lines read from across the room.
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     ctx.beginPath();
     pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+    ctx.strokeStyle = `rgba(150,185,255,${(0.2 * settle).toFixed(3)})`;
+    ctx.lineWidth = 9; ctx.stroke();
+    ctx.strokeStyle = `rgba(214,228,255,${(0.9 * settle).toFixed(3)})`;
+    ctx.lineWidth = 3.4;
     ctx.stroke();
     pts.forEach(([px, py], i) => {
       const tw = 0.5 + 0.5 * Math.sin(sec * 1.4 + i * 1.9 + pos * 2.3);
-      star(px, py, 3.2 + (i % 3) * 0.7 + tw * 0.9 + (1 - settle) * 1.5, 0.85 + 0.15 * tw);
+      star(px, py, 4 + (i % 3) * 0.7 + tw * 0.9 + (1 - settle) * 1.5, 0.85 + 0.15 * tw);
     });
     x += dw + gap;
   }

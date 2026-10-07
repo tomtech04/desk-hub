@@ -45,7 +45,7 @@ export function readVoiceRequest(buffer, headers) {
 const VOICE_SCHEMA = (tags) => ({
   type: 'object',
   additionalProperties: false,
-  required: ['tasks', 'complete', 'note', 'reply'],
+  required: ['tasks', 'complete', 'note', 'kind', 'reply'],
   properties: {
     tasks: {
       type: 'array',
@@ -58,6 +58,7 @@ const VOICE_SCHEMA = (tags) => ({
     },
     complete: { type: 'array', items: { type: 'string' } },
     note: { type: 'string' },
+    kind: { type: 'string', enum: ['reflection', 'note', ''] },
     reply: { type: 'string' },
   },
 });
@@ -79,7 +80,10 @@ function roughSplit(text, open = []) {
     if (m) tasks.push({ text: m[1][0].toUpperCase() + m[1].slice(1), due: '', tag: '', subtasks: [] });
     else rest.push(s);
   }
-  return { tasks, complete, note: rest.join('. '), reply: '' };
+  const note = rest.join('. ');
+  // Without Claude: looking-back words make it a reflection.
+  const kind = !note ? '' : /\b(today was|i feel|i felt|feeling|grateful|proud|tired|stressed|happy|anxious|worried|good day|rough day|long day)\b/i.test(note) ? 'reflection' : 'note';
+  return { tasks, complete, note, kind, reply: '' };
 }
 
 /**
@@ -87,16 +91,17 @@ function roughSplit(text, open = []) {
  * @param open  their open tasks: [{ ref, text, subtasks: [{ ref, text }] }]
  * @returns { tasks: [{ text, due, tag, subtasks: [string] }], complete: [ref], note, reply }
  */
-export async function interpretVoice({ text, tags, today, weekday, open = [] }) {
+export async function interpretVoice({ text, tags, today, weekday, clock = '', evening = false, open = [] }) {
   if (!aiEnabled()) return roughSplit(text, open);
   try {
     const out = await askJson({
       schema: VOICE_SCHEMA(tags),
-      system: `You act on a person's spoken note for their desk dashboard. They pressed a button on a ring and spoke; the text is an automatic transcription, so expect small mistakes and fix obvious ones. Today is ${weekday}, ${today}. You're given their open tasks, each with a ref (and refs for any subtasks).
+      system: `You act on a person's spoken note for their desk dashboard. They pressed a button on a ring and spoke; the text is an automatic transcription, so expect small mistakes and fix obvious ones. Today is ${weekday}, ${today}${clock ? `, and it's ${clock}` : ''}${evening ? ' (they are winding down for the night)' : ''}. You're given their open tasks, each with a ref (and refs for any subtasks).
 
 - tasks: every NEW to-do they stated or clearly meant for themselves, one per item, each a short imperative as they'd write it. Keep their specifics (names, numbers, places). due is YYYY-MM-DD when they gave or implied a day ("tomorrow", "by Friday", "tonight" = today), else "". tag is the best fit from the allowed list, or "". subtasks are the separate steps they listed for that task, if they listed any; otherwise empty.
 - complete: the refs of open tasks or subtasks they said are done ("mark grocery shopping as completed", "I finished the lab report", "done with step two of the onboarding"). Match by meaning, not exact words, but only when it's clear which one they mean; if it's ambiguous, leave it out and say so in reply. Copy refs exactly.
 - note: anything else worth keeping (an idea, something that happened, how the day went), cleaned up into one or two plain sentences in their voice. "" if there's nothing beyond tasks and completions.
+- kind: what the note is. "reflection" when they're looking back or inward: how the day went, how they feel, what they're grateful for or proud of, what's weighing on them, something they want to let go of before sleep. "note" when it's something to keep or pick up later: an idea, a fact, a reminder that isn't a task, a thought for tomorrow. Late at night, an unprompted musing about the day is a reflection. "" when note is "".
 - reply: one short sentence confirming what you did, for a notification (e.g. "Marked grocery shopping as done." or "Added 2 tasks."). If you couldn't tell which task they meant, say that instead.
 
 Don't invent tasks they didn't ask for, don't turn a passing thought into a task, and don't add a task for something they just said they finished.`,
@@ -107,6 +112,7 @@ Don't invent tasks they didn't ask for, don't turn a passing thought into a task
       tasks: out.tasks.map((t) => ({ ...t, due: /^\d{4}-\d{2}-\d{2}$/.test(t.due) ? t.due : '' })),
       complete: out.complete.filter((r) => refs.has(r)),
       note: out.note,
+      kind: out.note ? out.kind || 'note' : '',
       reply: out.reply,
     };
   } catch (err) {

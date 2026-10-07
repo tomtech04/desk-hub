@@ -804,7 +804,7 @@ const VIEWS = {
     else if (r?.error) recap = `<div class="empty" style="color:var(--warn)">${esc(r.error)}</div><div class="foot"><span class="grow"></span><button class="btn small ghost" data-act="recap-run">Try again</button></div>`;
     else recap = `<div class="foot" style="margin:0"><span class="grow">Your recap arrives at ${esc(D.settings.recapAt)}, from your notes, tasks and focus time.</span><button class="btn small ghost" data-act="recap-run">Make it now</button></div>`;
     const row = (j) => `<div class="msg">
-      <div class="top"><b>${esc(j.note || j.text)}</b><span class="muted">${hm(j.at)}</span></div>
+      <div class="top"><b>${esc(j.note || j.text)}</b><span class="muted">${j.kind === 'reflection' ? 'Reflection · ' : ''}${hm(j.at)}</span></div>
       ${j.note && j.note !== j.text ? `<p class="said">“${esc(j.text)}”</p>` : ''}
       ${j.pending ? '<div class="act">Working out what you meant…</div>' : `${(j.completed || []).map((t) => `<div class="act done">${icon('check')} Done: ${esc(t)}</div>`).join('')}${j.tasks.map((t) => `<div class="act">${icon('plus')} ${esc(t)}</div>`).join('')}`}
     </div>`;
@@ -976,6 +976,8 @@ function windHome() {
   const doneToday = D.todos.filter((t) => t.done && t.doneAt >= dayStart()).length;
   const w = D.weather?.data;
   const tw = w?.tomorrow;
+  // What was said tonight, newest first (D.journal already is).
+  const tonight = (D.journal || []).filter((j) => j.evening && j.at > Date.now() - 12 * 3600e3).slice(0, 6);
   return `<div class="wind">
     <section class="card clock">
       <div class="card-h">${icon('moon')}<span class="grow">Winding down</span><span class="link">Sleep mode at ${esc(D.settings.sleepAt)}</span></div>
@@ -988,10 +990,14 @@ function windHome() {
         || (tomorrowEvents.length ? '' : '<div class="empty">Nothing scheduled for tomorrow yet.</div>')}</div>
     </section>
     <section class="card">
-      <div class="card-h">${icon('journal')}<span class="grow">${r ? 'Today' : 'Before you sleep'}</span></div>
-      ${r ? `<div class="home-digest"><b>${esc(r.headline)}</b>${r.bullets.length ? `<ul>${r.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}</div>`
-          : '<div class="empty">Anything on your mind for tomorrow? Say it into the ring or leave a note, and let it go for tonight.</div>'}
-      <button class="btn small ghost" style="margin-top:auto" data-act="note-add">${icon('plus')} Leave a note</button>
+      <div class="card-h">${icon('journal')}<span class="grow">Before you sleep</span></div>
+      ${tonight.length ? `<div class="night-list">${tonight.map((j) => j.pending
+            ? `<div class="night pending"><i>Listening</i><p>Claude is reading what you said…</p></div>`
+            : `<div class="night ${j.kind === 'reflection' ? 'refl' : ''}"><i>${j.kind === 'reflection' ? 'Reflection' : j.note ? 'For tomorrow' : 'Sorted'} · ${hm(j.at)}</i><p>${esc(j.note || [j.tasks?.length && `Added ${j.tasks.length} task${j.tasks.length > 1 ? 's' : ''}`, j.completed?.length && `marked ${j.completed.length} done`].filter(Boolean).join(', ') || j.text)}</p></div>`).join('')}</div>`
+        : r ? `<div class="home-digest"><b>${esc(r.headline)}</b>${r.bullets.length ? `<ul>${r.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}</div>`
+          : ''}
+      <div class="night-hint">${icon('journal')}<span>${tonight.length ? 'Press the ring to add more.' : 'Press the ring and say what\'s on your mind. Claude keeps it as a reflection on today or a note for tomorrow.'}</span></div>
+      <button class="night-type" data-act="note-add">or type it</button>
     </section>
     <section class="card">
       <div class="card-h">${icon('tasks')}<span class="grow">Still open</span></div>

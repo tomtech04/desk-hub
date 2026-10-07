@@ -34,7 +34,7 @@ const DEFAULT_STATE = {
   suggestedFrom: {}, // emailId -> at, so an email is only ever suggested once
   focusLog: [], // { at, minutes, label }
   notifications: [], // pushed via POST /api/notify
-  journal: [], // voice notes: { id, at, text, note, tasks: [text], trigger }
+  journal: [], // voice notes: { id, at, text, note, kind: 'reflection'|'note'|'', evening, tasks: [text], trigger }
   morningSeen: null, // local day the morning brief was last dismissed
   recap: null, // { day, at, headline, bullets, tomorrow }
   sessions: {}, // sha256(session token) -> expiry; for signed-in phones/laptops
@@ -289,7 +289,10 @@ const dayToMs = (ymd) => { const [y, mo, d] = ymd.split('-').map(Number); return
 async function handleVoice({ text, recordedAt, trigger }) {
   const id = `v${recordedAt}`;
   if (state.journal.some((j) => j.id === id)) return; // the app retried a delivery
-  const entry = { id, at: recordedAt, text, note: '', tasks: [], trigger, pending: true };
+  // Said while winding down (or late): it shows on the wind-down screen's "Before you sleep".
+  const hour = new Date(recordedAt).getHours();
+  const evening = inWindDown() || hour >= 21 || hour < 4;
+  const entry = { id, at: recordedAt, text, note: '', kind: '', tasks: [], trigger, evening, pending: true };
   state.journal.push(entry);
   state.journal = state.journal.slice(-400);
   save();
@@ -302,7 +305,7 @@ async function handleVoice({ text, recordedAt, trigger }) {
     byRef.set(ref, { task: t });
     return { ref, text: t.text, subtasks: (t.subtasks || []).filter((x) => !x.done).map((x, j) => { const r = `${ref}.${j + 1}`; byRef.set(r, { task: t, sub: x }); return { ref: r, text: x.text }; }) };
   });
-  const out = await interpretVoice({ text, tags: state.settings.tags, today: localDay(), weekday: weekdayName(), open });
+  const out = await interpretVoice({ text, tags: state.settings.tags, today: localDay(), weekday: weekdayName(), clock: new Date(recordedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), evening, open });
   for (const t of out.tasks) {
     state.todos.push(newTodo({ text: t.text, tag: t.tag, due: t.due ? dayToMs(t.due) : null, subtasks: t.subtasks, source: { why: 'Voice note' } }));
   }
@@ -313,12 +316,12 @@ async function handleVoice({ text, recordedAt, trigger }) {
     if (hit.sub) { hit.sub.done = true; completed.push(hit.sub.text); }
     else { hit.task.done = true; hit.task.doneAt = Date.now(); completed.push(hit.task.text); }
   }
-  Object.assign(entry, { note: out.note, tasks: out.tasks.map((t) => t.text), completed, pending: false });
+  Object.assign(entry, { note: out.note, kind: out.kind || '', tasks: out.tasks.map((t) => t.text), completed, pending: false });
   const n = out.tasks.length, c = completed.length;
   const title = [c && `Marked ${c} done`, n && `added ${n} task${n > 1 ? 's' : ''}`].filter(Boolean).join(', ');
   state.notifications = [...state.notifications, {
     id: crypto.randomUUID(), level: 'info', source: 'voice', at: Date.now(),
-    title: title ? title[0].toUpperCase() + title.slice(1) + ' from your voice note' : 'Voice note saved',
+    title: title ? title[0].toUpperCase() + title.slice(1) + ' from your voice note' : out.kind === 'reflection' ? 'Reflection saved' : 'Voice note saved',
     body: (out.reply || [...completed.map((t) => `✓ ${t}`), ...out.tasks.map((t) => t.text)].join(' · ') || out.note || text).slice(0, 300),
   }].slice(-50);
   save();
@@ -333,7 +336,7 @@ async function runRecap() {
     const focus = state.focusLog.filter((f) => f.at >= today);
     const input = {
       today: localDay(), weekday: weekdayName(),
-      notes: state.journal.filter((j) => j.at >= today).map((j) => ({ time: new Date(j.at).toISOString(), said: j.note || j.text })),
+      notes: state.journal.filter((j) => j.at >= today).map((j) => ({ time: new Date(j.at).toISOString(), kind: j.kind || 'note', said: j.note || j.text })),
       done: state.todos.filter((t) => t.done && t.doneAt >= today).map((t) => t.text),
       open: state.todos.filter((t) => !t.done && !t.suggested).map((t) => ({ task: t.text, due: t.due ? localDay(t.due) : null })),
       focusMinutes: focus.reduce((a, f) => a + f.minutes, 0), focusSessions: focus.length,
