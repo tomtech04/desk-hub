@@ -5,7 +5,7 @@ A touchscreen desk dashboard for a Raspberry Pi 5 + Raspberry Pi Touch Display 2
 | Screen | What it does |
 |---|---|
 | **Home** | Clock, weather, focus timer, today's to-dos, PayIt today, unread mail, what's up next |
-| **Focus** | Pomodoro timer (focus / short / long break), ±5 min, "working on" label pulled from your to-dos, minutes-per-day chart |
+| **Focus** | Pomodoro timer (focus / short / long break). Starting a session locks the screen to it: a settle-in count, a breathing ring, a finish screen that offers the break, and press-and-hold to leave. "Working on" comes from your to-dos; minutes per day are charted. |
 | **To do** | Tasks with tags (School / PayIt / Personal), due dates, stars; on-screen keyboard |
 | **PayIt** | Gross volume vs. this time yesterday, sales, avg ticket, declines, active merchants, by-hour and 7-day charts, payment-method split, live status from `admin_system_checks` |
 | **Mail** | Tap an email to read it as it was sent, images and all (in a sandbox: its scripts can't run and it can't reach the hub). A daily digest from Claude (7:30 by default) of the last 24 hours across all accounts, which is also what Home shows. Below it, unread mail per account, each summarized in one line with an urgency flag and a suggested action. Mail is never marked read. |
@@ -74,6 +74,8 @@ If the organization doesn't let you register apps or approve this permission, it
 **Calendars.** Set `CALENDAR_FEEDS=Canvas|https://...,Personal|https://...`. Canvas → Calendar → Calendar Feed gives you a link with every assignment due date.
 
 **Voice notes from a Pebble Index 01 ring.** The ring's phone app can POST each recording's transcription to a webhook. Set `HUB_VOICE_TOKEN` to a long random string, then in the Pebble app (Index 01 Settings → Webhook) set the URL to `https://<your hub address>/api/voice`, add a header `Authorization: Bearer <token>`, and send transcription only (audio is accepted but ignored). The app's test event shows a "Ring connected" toast on the hub. The phone sends the request, so the hub has to be reachable from wherever your phone is: a public URL through a tunnel, or Tailscale on the phone. Any tool that can POST `{"text": "..."}` with the same header works too.
+
+**Claude.** The hub is an MCP server at `/mcp`, so Claude can add tasks (with steps and due dates), tick them off, save notes, log finished work into the journal, and read your day. From this repo, `bash scripts/connect-claude.sh` creates `HUB_MCP_TOKEN` on the Pi and connects Claude Code. For the Claude desktop chat app or claude.ai, add a custom connector with the URL `https://<your hub address>/mcp` and a request header `authorization: Bearer <token>`. The `claude-plugin/` folder is a Claude Code plugin with a skill that tells Claude when to use those tools: `/plugin marketplace add tomtech04/desk-hub`, then `/plugin install desk-hub@desk-hub`.
 
 **Push your own alerts.** Anything on your network can put a card on the hub:
 

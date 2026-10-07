@@ -8,7 +8,13 @@
 import crypto from 'node:crypto';
 
 const PROTOCOL = '2025-06-18';
-const KNOWN = new Set(['2025-06-18', '2025-03-26', '2024-11-05']);
+// This server only does plain request/response tool calls, which every protocol
+// revision so far shares, so it answers in whichever dated version the client
+// asked for (newer clients send it in _meta) and falls back to PROTOCOL.
+const asked = (params) => {
+  const v = params?.protocolVersion || params?._meta?.['io.modelcontextprotocol/protocolVersion'];
+  return /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : PROTOCOL;
+};
 
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
 const TASK_FIELDS = {
@@ -175,7 +181,7 @@ export function createMcp(hub) {
     if (id === undefined) return null; // a notification: nothing to send back
     switch (method) {
       case 'initialize':
-        return ok({ protocolVersion: KNOWN.has(params.protocolVersion) ? params.protocolVersion : PROTOCOL, capabilities: { tools: {} }, serverInfo: { name: 'desk-hub', version: '1.0.0' },
+        return ok({ protocolVersion: asked(params), capabilities: { tools: {} }, serverInfo: { name: 'desk-hub', version: '1.0.0' },
           instructions: 'Desk Hub is the user\'s personal dashboard. Use these tools to put tasks, notes and finished work on it. Dates are YYYY-MM-DD in the user\'s local time.' });
       case 'ping': return ok({});
       case 'tools/list': return ok({ tools: TOOLS });
@@ -196,7 +202,7 @@ export function createMcp(hub) {
     const sha = (v) => crypto.createHash('sha256').update(v).digest();
     const header = String(req.headers.authorization || '').replace(/^bearer\s+/i, '').trim();
     const inPath = decodeURIComponent(url.pathname.split('/')[2] || '');
-    const given = header || inPath;
+    const given = header || inPath || url.searchParams.get('key') || '';
     if (!given || !crypto.timingSafeEqual(sha(given), sha(token))) return send(401, { error: 'unauthorized' }, { 'WWW-Authenticate': 'Bearer' });
     if (req.method !== 'POST') return send(405, { error: 'POST only' }, { Allow: 'POST' });
     let raw = '';

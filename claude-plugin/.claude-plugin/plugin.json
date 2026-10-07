@@ -1,0 +1,7 @@
+{
+  "name": "desk-hub",
+  "displayName": "Desk Hub",
+  "description": "Send tasks, notes and finished work from Claude to your Desk Hub dashboard.",
+  "version": "1.0.0",
+  "author": { "name": "Tomas Navedo" }
+}

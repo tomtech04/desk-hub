@@ -1,0 +1,7 @@
+{
+  "name": "desk-hub",
+  "owner": { "name": "Tomas Navedo" },
+  "plugins": [
+    { "name": "desk-hub", "source": "./claude-plugin", "description": "Send tasks, notes and finished work from Claude to your Desk Hub dashboard." }
+  ]
+}
