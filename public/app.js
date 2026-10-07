@@ -1,4 +1,5 @@
 import { openKeyboard } from './keyboard.js';
+import { nightSky } from './stars.js';
 
 // ---------------------------------------------------------------------------
 // Basics
@@ -294,12 +295,21 @@ function renderLock() {
         </div></div>`;
   } else {
     const active = T.running || T.remaining != null;
+    // The task being worked on, in full, with its steps to tick off along the way.
+    const task = isFocus && T.label ? D.todos.find((t) => !t.done && t.text === T.label) : null;
+    const subs = task?.subtasks || [];
+    const left = subs.filter((x) => !x.done).length;
+    const panel = task ? `<div class="fl-task">
+        <div class="fl-task-h"><b>${esc(task.text)}</b><span>${[task.tag, task.due ? `Due ${new Date(task.due).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}` : '', subs.length ? (left ? `${subs.length - left} of ${subs.length} steps done` : 'All steps done') : ''].filter(Boolean).map(esc).join(' · ')}</span></div>
+        ${subs.length ? `<div class="fl-steps">${subs.map((x) => `<button class="sub ${x.done ? 'done' : ''}" data-act="sub-toggle" data-id="${task.id}" data-sid="${x.id}"><i class="check small ${x.done ? 'done' : ''}">${x.done ? icon('check') : ''}</i><span>${esc(x.text)}</span></button>`).join('')}</div>` : ''}
+        <button class="fl-addstep" data-act="sub-add" data-id="${task.id}">${icon('plus')} Add a step</button>
+      </div>` : '';
     html = `<div class="fl-top">${isFocus ? `Focus · session ${T.cycle + 1} of 4` : PHASES[T.phase]}</div>
-      <div class="fl-ring ${T.running ? 'running' : 'paused'} ${isFocus ? 'focus' : 'break'}">
+      <div class="fl-ring ${T.running ? 'running' : 'paused'} ${isFocus ? 'focus' : 'break'} ${task ? 'compact' : ''}">
         ${ring(520, 3, active ? 1 - tLeft() / tTotal() : 0, '#f5f5f7')}
         <div class="fl-center"><div class="fl-time" data-timer>${fmtLeft(tLeft())}</div>
-          <div class="fl-label">${T.running ? esc(T.label || (isFocus ? 'Stay with it' : 'Rest')) : 'Paused'}</div></div>
-      </div>
+          <div class="fl-label">${T.running ? esc(task ? 'Stay with it' : T.label || (isFocus ? 'Stay with it' : 'Rest')) : 'Paused'}</div></div>
+      </div>${panel}
       <div class="fl-controls">
         ${T.running ? `<button class="fpill" data-act="t-pause">Pause</button>` : `<button class="fpill solid" data-act="lock-resume">Resume</button>`}
         <button class="fpill" data-act="t-adj" data-min="5">+5 min</button>
@@ -389,7 +399,8 @@ function notConfigured(what, hint) {
 
 // The widget beside the clock: conditions now, and the next 12 hours as a
 // chart. Rain chance when rain is on the way, otherwise the temperature curve.
-function weatherWidget(w) {
+// `tap: false` draws it as a plain panel (the morning brief is one big button already).
+function weatherWidget(w, { tap = true } = {}) {
   if (!w) return '<div class="wxw"><div class="wxw-cap">Weather loading…</div></div>';
   const [label, ic] = wx(w.code);
   const hours = (w.hours || []).slice(0, 12);
@@ -420,10 +431,10 @@ function weatherWidget(w) {
         <polyline points="${pts.join(' ')}" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
       </svg>${hi !== lo ? mark(iHi, hi, 'hi') + mark(iLo, lo, 'lo') : ''}</div>`;
   }
-  return `<button class="wxw" data-act="weather">
+  return `<${tap ? 'button class="wxw" data-act="weather"' : 'div class="wxw"'}>
     <div class="wxw-top">${icon(ic)}<b>${w.temp}°</b><span>${esc(label)}<br>H ${w.hi}° · L ${w.lo}°</span></div>
     <div class="wxw-cap">${esc(cap)}</div>${chart.startsWith('<div') ? chart : `<div class="wxw-plot">${chart}</div>`}${ticks}
-  </button>`;
+  </${tap ? 'button' : 'div'}>`;
 }
 
 function clockHtml() {
@@ -963,14 +974,16 @@ function windHome() {
   const left = open.filter((t) => !t.due || t.due < dayStart(1)).slice(0, 4);
   const r = D.recap?.headline ? D.recap : null;
   const doneToday = D.todos.filter((t) => t.done && t.doneAt >= dayStart()).length;
+  const w = D.weather?.data;
+  const tw = w?.tomorrow;
   return `<div class="wind">
     <section class="card clock">
       <div class="card-h">${icon('moon')}<span class="grow">Winding down</span><span class="link">Sleep mode at ${esc(D.settings.sleepAt)}</span></div>
-      <div class="time" id="clock-time">${clockHtml()}</div>
+      <div class="constel" id="constel" role="img" aria-label="${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}"></div>
       <div class="date">${doneToday ? `${doneToday} thing${doneToday > 1 ? 's' : ''} done today` : 'The day is done'}${D.focus.todayMinutes ? ` · ${D.focus.todayMinutes} min of focus` : ''}</div>
     </section>
     <section class="card">
-      <div class="card-h">${icon('schedule')}<span class="grow">Tomorrow</span></div>
+      <div class="card-h">${icon('schedule')}<span class="grow">Tomorrow</span>${tw ? `<span class="wind-wx">${icon(wx(tw.code)[1])}${tw.hi}° / ${tw.lo}°${w.tomorrowRain >= 30 ? ` · ${w.tomorrowRain}% rain` : ''}</span>` : ''}</div>
       <div class="list">${tomorrowEvents.map(eventRow).join('')}${tomorrowTasks.map((t) => todoRow(t)).join('')
         || (tomorrowEvents.length ? '' : '<div class="empty">Nothing scheduled for tomorrow yet.</div>')}</div>
     </section>
@@ -998,8 +1011,6 @@ function renderMorning() {
   if (!show) { el.hidden = true; el.dataset.html = ''; return; }
   const h = new Date().getHours();
   const w = D.weather?.data;
-  const [wxLabel] = w ? wx(w.code) : [''];
-  const rainH = w?.nextRain ? new Date(w.nextRain.time).getHours() : 0;
   const open = realTodos().filter((t) => !t.done).sort(todoSort);
   const today = open.filter((t) => t.due && t.due >= dayStart() && t.due < dayStart(1));
   const carried = open.filter((t) => t.due && t.due < dayStart());
@@ -1013,7 +1024,7 @@ function renderMorning() {
     <div class="m-body">
       <h1>${h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'}</h1>
       <p class="m-date">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-      ${w ? `<p class="m-wx"><b>${w.temp}°</b> ${esc(wxLabel)} · high ${w.hi}°, low ${w.lo}°${w.nextRain ? ` · rain around ${rainH % 12 || 12}${rainH < 12 ? 'am' : 'pm'}` : w.rainChance >= 30 ? ` · ${w.rainChance}% chance of rain` : ' · no rain expected'}</p>` : ''}
+      ${w ? weatherWidget(w, { tap: false }) : ''}
       ${D.digest?.headline ? `<p class="m-digest">${esc(D.digest.headline)}</p>` : ''}
       <div class="m-grid">
         ${block('On your calendar', events.map((e) => line(e.title, e.allDay ? 'All day' : hm(e.start))))}
@@ -1022,7 +1033,7 @@ function renderMorning() {
         ${block('Email you haven\'t dealt with', missed.map((m) => line(m.action || m.summary, m.from)))}
         ${!events.length && !today.length && !carried.length && !missed.length ? '<div class="m-block"><h3>A clear day</h3><ul><li><b>Nothing scheduled, nothing overdue.</b></li></ul></div>' : ''}
       </div>
-      <button class="btn primary m-go" data-act="morning-done">Start the day</button>
+      <button class="btn m-go" data-act="morning-done">Start the day</button>
     </div>`;
   if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
   el.hidden = false;
@@ -1050,6 +1061,7 @@ function renderRail() {
 function render() {
   if (!D) return;
   document.documentElement.classList.toggle('winddown', winding());
+  nightSky(winding());
   if (winding() && !WIND_VIEWS.includes(view)) view = 'home';
   renderRail();
   $('#view').innerHTML = winding() && view === 'home' ? windHome() : VIEWS[view]();

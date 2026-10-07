@@ -7,7 +7,7 @@ The whole hub is drawn as translucent glass panels over a soft colour backdrop t
 | Screen | What it does |
 |---|---|
 | **Home** | Clock, a weather widget beside it charting the next 12 hours (rain chance when rain is coming, otherwise temperature) that opens the full forecast (hourly, rain, wind, sunrise and sunset, tomorrow), focus timer, today's to-dos, PayIt today, the mail digest, and what's up next |
-| **Focus** | Pomodoro timer (focus / short / long break). Starting a session locks the screen to it: a settle-in count, a breathing ring, a finish screen that offers the break, and press-and-hold to leave. "Working on" comes from your to-dos; minutes per day are charted. |
+| **Focus** | Pomodoro timer (focus / short / long break). Starting a session locks the screen to it, with the task you picked shown in full and its steps there to tick off as you go: a settle-in count, a breathing ring, a finish screen that offers the break, and press-and-hold to leave. "Working on" comes from your to-dos; minutes per day are charted. |
 | **To do** | Tasks with tags (School / PayIt / Personal), due dates, stars; on-screen keyboard |
 | **PayIt** | Gross volume vs. this time yesterday, sales, avg ticket, declines, active merchants, by-hour and 7-day charts, payment-method split, live status from `admin_system_checks` |
 | **Mail** | Tap an email to read it as it was sent, images and all (in a sandbox: its scripts can't run and it can't reach the hub). A daily digest from Claude (7:30 by default) of the last 24 hours across all accounts, which is also what Home shows. Below it, unread mail per account, each summarized in one line with an urgency flag and a suggested action. Mail is never marked read. |
@@ -17,8 +17,8 @@ The whole hub is drawn as translucent glass panels over a soft colour backdrop t
 | **Journal** | Voice notes from the ring (or typed on your phone) and an evening recap of your day from Claude, built from your notes, finished tasks and focus time. Anything you say you need to do is added to To do. |
 | **Schedule** | A week view: the selected day's summary and tasks due on top, an hour-by-hour timeline of its events, and a seven-day strip to switch days |
 | **Settings** | Brightness, wind-down and sleep schedule, digest and recap times, timer lengths, Pi health, and a two-tap **Restart the Pi** |
-| **Wind-down** | From 10 PM (adjustable) until wake time, the desk screen dims and warms, and puts mail and PayIt away: just tomorrow's schedule, today's recap, what's still open, and a place to leave a note. Only real problems interrupt. "Show everything" overrides it for the night. |
-| **Morning brief** | A sunrise screen at wake time with the forecast, today's calendar and to-dos, anything left from yesterday, and email you haven't dealt with. It stays until you tap it. |
+| **Wind-down** | From 10 PM (adjustable) until wake time, the desk screen turns to a night sky (drifting stars, the odd shooting star, and the time drawn as a constellation whose stars slide into the next number) and puts mail and PayIt away: just tomorrow's schedule, today's recap, what's still open, and a place to leave a note. Only real problems interrupt. "Show everything" overrides it for the night. |
+| **Morning brief** | A sunrise screen at wake time with the forecast and its 12-hour chart, today's calendar and to-dos, anything left from yesterday, and email you haven't dealt with. It stays until you tap it. |
 | **Sleep** | Moon button or schedule: backlight drops to ~4% with a dim warm clock and tomorrow's first event. Tap the sleeping screen and it lights up for six seconds with a glowing Wake button, so it can be found in daylight. A wind-down banner appears 30 min before. |
 
 Anything that needs attention (PayIt system down, lots of declines, urgent mail, a class starting in 15 min, overdue tasks, Pi overheating, a source failing to load) shows up as a toast + chime and in the bell drawer.
