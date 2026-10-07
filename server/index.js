@@ -447,6 +447,7 @@ function dashboard() {
         return { date: new Date(start).toISOString(), minutes: state.focusLog.filter((f) => f.at >= start && f.at < end).reduce((s, f) => s + f.minutes, 0) };
       }),
       recent: state.focusLog.slice(-8).reverse(),
+      today: focusToday.map((f) => ({ at: f.at, minutes: f.minutes, label: f.label || null })),
     },
     ...snap,
     system: systemStats(),

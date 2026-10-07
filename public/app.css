@@ -805,3 +805,108 @@ html:not(.remote) .kv.four span { font-size: 13px; }
 @media (orientation: landscape) { .fl-ring { --d: min(46vw, 62vh); } .focuslock { gap: 20px; } .fl-time { font-size: min(11vw, 17vh); } }
 @media (max-width: 600px) { .fl-controls .btn { height: 50px; padding: 0 16px; } .fl-done h1 { font-size: 34px; } .fl-top { font-size: 15px; } .fl-label { font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { .fl-bg, .fl-halo, .fl-num, .fl-burst, .fl-burst::before, .fl-burst::after { animation: none; } }
+
+/* ==========================================================================
+   Focus page: a dial you wind
+   ========================================================================== */
+.focus2 { --a: #f5a524; --b: #ff6b3d; position: relative; height: 100%; display: grid; grid-template-rows: auto auto auto auto auto; align-content: space-between; gap: 14px; overflow: hidden; border-radius: var(--radius); padding: 6px 4px 2px; }
+.focus2.is-break { --a: #6cb4ff; --b: #4cc3b0; }
+.focus2 > :not(.f2-bg) { position: relative; z-index: 1; }
+.f2-bg { position: absolute; inset: -20%; z-index: 0; opacity: .5; filter: blur(70px); pointer-events: none;
+  background: radial-gradient(36% 30% at 50% 34%, color-mix(in srgb, var(--a) 34%, transparent), transparent 70%), radial-gradient(30% 26% at 78% 70%, color-mix(in srgb, var(--b) 22%, transparent), transparent 70%);
+  animation: fl-drift 40s ease-in-out infinite alternate; }
+
+.f2-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.f2-phases { display: inline-flex; padding: 5px; border-radius: 30px; background: #ffffff0d; box-shadow: inset 0 0 0 1px #ffffff14; }
+.f2-phases button { height: 46px; padding: 0 18px; border-radius: 24px; font-size: 16px; font-weight: 600; color: var(--text-2); transition: background .2s, color .2s; }
+.f2-phases button.on { background: var(--text); color: var(--bg); }
+.f2-cycle { display: flex; align-items: center; gap: 7px; color: var(--text-2); font-size: 15px; font-weight: 600; }
+.f2-cycle i { width: 26px; height: 8px; border-radius: 4px; background: #ffffff1c; }
+.f2-cycle i.done { background: var(--a); }
+.f2-cycle i.now { background: linear-gradient(90deg, var(--a) 50%, #ffffff1c 50%); background-size: 200% 100%; animation: cyc 2.4s ease-in-out infinite alternate; }
+@keyframes cyc { from { background-position: 100% 0; } to { background-position: 40% 0; } }
+.f2-cycle span { margin-left: 6px; }
+
+.f2-dialwrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.dial { --d: min(560px, 80vw, 47vh); position: relative; width: var(--d); height: var(--d); flex: none; touch-action: none; user-select: none; -webkit-user-select: none; }
+.dial-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.dial-ticks line { stroke: #ffffff26; stroke-width: 2; stroke-linecap: round; }
+.dial-ticks line.mid { stroke: #ffffff40; }
+.dial-ticks line.maj { stroke: #ffffff8c; stroke-width: 3; }
+.dial-track { fill: none; stroke: #ffffff10; stroke-width: 26; }
+.dial-arc { fill: none; stroke: url(#darc); stroke-width: 26; stroke-linecap: round; }
+.dial-glow { fill: none; stroke: var(--a); stroke-width: 26; stroke-linecap: round; filter: url(#dglow); opacity: .55; }
+.arc-a { stop-color: var(--a); } .arc-b { stop-color: var(--b); }
+.dial-face { stroke: #ffffff12; stroke-width: 1.5; }
+.dial-labels text { fill: #ffffff59; font-size: 17px; font-weight: 600; font-family: inherit; }
+.dial-knob { cursor: grab; }
+.dial-knob .k-halo { fill: color-mix(in srgb, var(--a) 30%, transparent); transition: r .15s; }
+.dial-knob .k-body { fill: #fff; filter: drop-shadow(0 2px 6px #000a); }
+.dial-knob .k-dot { fill: var(--b); }
+.dial.dragging .k-halo { r: 38px; }
+.dial.dragging .dial-knob { cursor: grabbing; }
+.dial.idle .dial-arc, .dial.idle .dial-glow { transition: stroke-dashoffset .12s ease-out; }
+.dial.dragging .dial-arc, .dial.dragging .dial-glow { transition: none; }
+.dial.active .dial-glow { animation: dialpulse 4s ease-in-out infinite; }
+@keyframes dialpulse { 50% { opacity: .9; } }
+
+.dial-center { position: absolute; inset: 22%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; pointer-events: none; }
+.dial-center button { pointer-events: auto; }
+.dial-num { display: flex; align-items: baseline; gap: 8px; line-height: 1; }
+.dial-num span { font-size: calc(var(--d) * .25); font-weight: 700; letter-spacing: -.05em; }
+.dial-num small { font-size: calc(var(--d) * .05); font-weight: 600; color: var(--text-2); }
+.dial-time { font-size: calc(var(--d) * .2); font-weight: 700; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+.dial-sub { font-size: calc(var(--d) * .034); color: var(--text-2); font-weight: 500; }
+.dial-btns { display: flex; gap: 12px; margin-top: calc(var(--d) * .03); }
+.go { height: 62px; min-width: 62px; padding: 0 22px; border-radius: 31px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; font-size: 19px; font-weight: 700;
+  color: #1a1203; background: linear-gradient(135deg, var(--a), var(--b)); box-shadow: 0 8px 26px color-mix(in srgb, var(--a) 45%, transparent); }
+.go:active { transform: scale(.96); }
+.go.big { margin-top: calc(var(--d) * .035); padding: 0 34px; }
+.go.ghost { background: #ffffff14; color: var(--text); box-shadow: none; }
+.go svg { width: 24px; height: 24px; }
+.go.big svg { fill: currentColor; }
+.f2-hint { font-size: 14px; color: var(--muted); letter-spacing: .02em; }
+
+.f2-presets { display: flex; justify-content: center; gap: 10px; }
+.f2-presets button { width: 62px; height: 62px; border-radius: 50%; font-size: 19px; font-weight: 700; color: var(--text-2); background: #ffffff0d; box-shadow: inset 0 0 0 1px #ffffff17; transition: transform .15s, background .2s; }
+.f2-presets button.on { color: #1a1203; background: linear-gradient(135deg, var(--a), var(--b)); box-shadow: none; transform: scale(1.08); }
+
+.f2-work h3 { font-size: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px 4px; }
+.f2-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.wcard { text-align: left; padding: 12px 16px; border-radius: 16px; background: #ffffff0a; box-shadow: inset 0 0 0 1px #ffffff14; min-height: 70px; display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 0; transition: background .2s, box-shadow .2s; }
+.wcard b { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wcard span { font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wcard.on { background: color-mix(in srgb, var(--a) 14%, transparent); box-shadow: inset 0 0 0 2px var(--a); }
+
+.f2-day { padding: 14px 16px 10px; border-radius: 16px; background: #ffffff08; }
+.f2-stats { display: flex; gap: 26px; margin-bottom: 12px; }
+.f2-stats div { display: flex; align-items: baseline; gap: 6px; }
+.f2-stats b { font-size: 24px; font-weight: 700; }
+.f2-stats span { font-size: 14px; color: var(--muted); }
+.daystrip { position: relative; height: 16px; border-radius: 8px; background: #ffffff10; overflow: hidden; }
+.daystrip i { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: linear-gradient(90deg, var(--a), var(--b)); }
+.daystrip b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fff; }
+.daystrip-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 5px; }
+
+/* Wide screens: dial on the left, everything else beside it. */
+@media (orientation: landscape) {
+  .focus2 { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto 1fr auto; column-gap: 34px; align-content: stretch; padding: 10px 14px; }
+  .f2-head { grid-column: 1 / -1; }
+  .f2-dialwrap { grid-column: 1; grid-row: 2 / span 3; justify-content: center; }
+  .dial { --d: min(46vw, 66vh, 560px); }
+  .f2-presets { grid-column: 2; justify-content: flex-start; }
+  .f2-work { grid-column: 2; }
+  .f2-day { grid-column: 2; align-self: end; }
+}
+@media (min-width: 900px) { .remote .focus2 { height: calc(100vh - 52px); max-width: 1180px; } }
+@media (max-width: 600px) {
+  .focus2 { height: auto; overflow: visible; gap: 16px; }
+  .dial { --d: min(86vw, 420px); }
+  .f2-head { flex-direction: column; align-items: stretch; }
+  .f2-phases { justify-content: space-between; } .f2-phases button { flex: 1; padding: 0 8px; font-size: 14px; height: 42px; }
+  .f2-cycle { justify-content: center; }
+  .f2-presets button { width: 52px; height: 52px; font-size: 16px; }
+  .f2-cards { grid-template-columns: 1fr; }
+  .go { height: 54px; min-width: 54px; font-size: 17px; }
+}
+@media (prefers-reduced-motion: reduce) { .f2-bg, .f2-cycle i.now, .dial.active .dial-glow { animation: none; } }

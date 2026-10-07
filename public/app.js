@@ -143,7 +143,7 @@ const T = Object.assign(
 );
 const saveT = () => localStorage.setItem('timer', JSON.stringify(T));
 if (T.lock && !T.running && T.remaining == null && !T.done) T.lock = false;
-const phaseMinutes = (p) => (p === 'focus' ? D?.settings.focusMinutes : p === 'short' ? D?.settings.shortBreak : D?.settings.longBreak) || 25;
+const phaseMinutes = (p) => T.custom?.[p] || (p === 'focus' ? D?.settings.focusMinutes : p === 'short' ? D?.settings.shortBreak : D?.settings.longBreak) || 25;
 function tLeft() {
   if (T.running) return Math.max(0, T.endsAt - Date.now());
   return T.remaining ?? phaseMinutes(T.phase) * 60e3;
@@ -279,7 +279,7 @@ setInterval(() => {
   if (T.running && tLeft() <= 0) timerFinish();
   const left = tLeft(), frac = 1 - left / tTotal();
   document.querySelectorAll('[data-timer]').forEach((el) => (el.textContent = fmtLeft(left)));
-  document.querySelectorAll('.ring-fg').forEach((el) => el.setAttribute('stroke-dashoffset', el.dataset.c * (1 - (T.running || T.remaining != null ? frac : 0))));
+  document.querySelectorAll('.ring-fg, [data-follow]').forEach((el) => el.setAttribute('stroke-dashoffset', el.dataset.c * (1 - (T.running || T.remaining != null ? frac : 0))));
   if (view === 'home') { const el = $('#clock-time'); if (el) el.innerHTML = clockHtml(); }
   if (D?.mode && D.mode !== 'day') renderSleep();
   renderBanner();
@@ -384,6 +384,106 @@ function eventRow(e) {
     <span class="when ${soon || now ? 'soon' : ''}">${esc(when)}</span></div>`;
 }
 
+// ---------------------------------------------------------------------------
+// The focus dial: a ring you drag to set the session length, like winding a
+// kitchen timer. One turn is 90 minutes for focus, 30 for a break.
+// ---------------------------------------------------------------------------
+
+const dialMax = (phase) => (phase === 'focus' ? 90 : 30);
+const dialPresets = (phase) => (phase === 'focus' ? [15, 25, 45, 60, 90] : [3, 5, 10, 15, 20]);
+const DIAL = { c: 300, r: 244 };
+const polar = (r, frac) => { const a = frac * 2 * Math.PI - Math.PI / 2; return [DIAL.c + r * Math.cos(a), DIAL.c + r * Math.sin(a)]; };
+
+/** minutes = null draws the running state (an arc that fills with elapsed time, no knob). */
+function dialSvg(minutes, max, elapsedFrac) {
+  const circ = 2 * Math.PI * DIAL.r;
+  const frac = minutes == null ? elapsedFrac : minutes / max;
+  const step = max / 90 >= 1 ? 1 : max / 30 >= 1 ? 1 : 1; // one tick per minute
+  let ticks = '';
+  for (let m = 0; m < max; m += step) {
+    const major = m % (max === 90 ? 15 : 5) === 0, mid = m % 5 === 0;
+    const [x1, y1] = polar(major ? 272 : mid ? 278 : 282, m / max), [x2, y2] = polar(292, m / max);
+    ticks += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="${major ? 'maj' : mid ? 'mid' : ''}"/>`;
+  }
+  let labels = '';
+  for (let m = max === 90 ? 15 : 5; m <= max; m += max === 90 ? 15 : 5) {
+    const [x, y] = polar(204, m / max);
+    labels += `<text x="${x.toFixed(1)}" y="${(y + 6).toFixed(1)}" text-anchor="middle">${m}</text>`;
+  }
+  const [kx, ky] = polar(DIAL.r, frac);
+  return `<svg viewBox="0 0 600 600" class="dial-svg">
+    <defs>
+      <radialGradient id="dface" cx="50%" cy="38%" r="70%"><stop offset="0%" stop-color="#262b33"/><stop offset="100%" stop-color="#101216"/></radialGradient>
+      <linearGradient id="darc" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" class="arc-a"/><stop offset="100%" class="arc-b"/></linearGradient>
+      <filter id="dglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7"/></filter>
+    </defs>
+    <g class="dial-ticks">${ticks}</g>
+    <circle cx="300" cy="300" r="${DIAL.r}" class="dial-track"/>
+    <g transform="rotate(-90 300 300)">
+      <circle cx="300" cy="300" r="${DIAL.r}" class="dial-glow" stroke-dasharray="${circ}" stroke-dashoffset="${circ * (1 - frac)}" data-c="${circ}" ${minutes == null ? 'data-follow' : ''}/>
+      <circle cx="300" cy="300" r="${DIAL.r}" class="dial-arc ${minutes == null ? 'ring-fg' : ''}" stroke-dasharray="${circ}" stroke-dashoffset="${circ * (1 - frac)}" data-c="${circ}"/>
+    </g>
+    <circle cx="300" cy="300" r="212" fill="url(#dface)" class="dial-face"/>
+    <g class="dial-labels">${labels}</g>
+    ${minutes == null ? '' : `<g class="dial-knob" transform="translate(${kx.toFixed(1)} ${ky.toFixed(1)})"><circle r="26" class="k-halo"/><circle r="17" class="k-body"/><circle r="6" class="k-dot"/></g>`}
+  </svg>`;
+}
+
+/** Set the dial to `m` minutes without re-rendering the page (called many times a second while dragging). */
+function dialShow(m) {
+  const d = $('[data-dial]');
+  if (!d) return;
+  const max = dialMax(T.phase), frac = m / max, circ = 2 * Math.PI * DIAL.r;
+  d.querySelectorAll('.dial-arc, .dial-glow').forEach((el) => el.setAttribute('stroke-dashoffset', circ * (1 - frac)));
+  const [x, y] = polar(DIAL.r, frac);
+  d.querySelector('.dial-knob')?.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+  const num = d.querySelector('[data-dial-num]'); if (num) num.textContent = m;
+  const ends = d.querySelector('[data-dial-ends]'); if (ends) ends.textContent = `until ${hm(Date.now() + m * 60e3)}`;
+  document.querySelectorAll('.f2-presets button').forEach((b) => b.classList.toggle('on', Number(b.dataset.min) === m));
+}
+
+function dialSet(m) {
+  T.custom = { ...(T.custom || {}), [T.phase]: m };
+  T.remaining = null; T.total = null;
+  saveT();
+}
+
+// Dragging the ring. Works with a finger, a mouse, or the Pi's touch-as-mouse.
+let dialDrag = null;
+document.addEventListener('pointerdown', (e) => {
+  const d = e.target.closest?.('[data-dial].idle');
+  if (!d || e.target.closest('button')) return;
+  const box = d.getBoundingClientRect();
+  const dx = e.clientX - (box.left + box.width / 2), dy = e.clientY - (box.top + box.height / 2);
+  const dist = Math.hypot(dx, dy) / (box.width / 2);
+  if (dist < 0.62 || dist > 1.08) return; // only the ring itself, not the face
+  dialDrag = { box, value: phaseMinutes(T.phase) };
+  d.classList.add('dragging');
+  d.setPointerCapture?.(e.pointerId);
+  dialMove(e);
+  e.preventDefault();
+});
+function dialMove(e) {
+  if (!dialDrag) return;
+  const { box } = dialDrag, max = dialMax(T.phase), snap = max === 90 ? 5 : 1, min = max === 90 ? 5 : 1;
+  let frac = Math.atan2(e.clientX - (box.left + box.width / 2), -(e.clientY - (box.top + box.height / 2))) / (2 * Math.PI);
+  if (frac < 0) frac += 1;
+  let m = Math.round((frac * max) / snap) * snap;
+  // Don't jump across the top: crossing 12 o'clock stops at the nearest end.
+  if (Math.abs(m - dialDrag.value) > max / 2) m = dialDrag.value > max / 2 ? max : min;
+  m = Math.min(max, Math.max(min, m));
+  if (m !== dialDrag.value) { dialDrag.value = m; dialShow(m); }
+}
+document.addEventListener('pointermove', dialMove);
+for (const ev of ['pointerup', 'pointercancel']) {
+  document.addEventListener(ev, () => {
+    if (!dialDrag) return;
+    dialSet(dialDrag.value);
+    dialDrag = null;
+    $('[data-dial]')?.classList.remove('dragging');
+  });
+}
+
 const VIEWS = {
   home() {
     const w = D.weather?.data;
@@ -455,37 +555,66 @@ const VIEWS = {
   },
 
   focus() {
-    const hasTimer = T.running || T.remaining != null;
-    const openTodos = realTodos().filter((t) => !t.done).sort(todoSort).slice(0, 6);
-    const week = D.focus.week;
-    return `<div class="focus">
-      <section class="card main">
-        <div class="phases">${Object.entries(PHASES).map(([k, v]) => `<button class="chip ${T.phase === k ? 'on' : ''}" data-act="t-phase" data-phase="${k}">${v} · ${phaseMinutes(k)}m</button>`).join('')}</div>
-        <div class="bigring">${ring(400, 18, hasTimer ? 1 - tLeft() / tTotal() : 0, T.phase === 'focus' ? 'var(--accent)' : 'var(--info)')}
-          <div class="center"><div class="clock-txt" data-timer>${fmtLeft(tLeft())}</div>
-            <div class="lbl">${esc(T.label || PHASES[T.phase])}</div>
-            <div class="cycle">${[0, 1, 2, 3].map((i) => `<i class="${i < T.cycle ? 'on' : ''}"></i>`).join('')}</div></div>
+    const active = T.running || T.remaining != null;
+    const isFocus = T.phase === 'focus';
+    const mins = phaseMinutes(T.phase);
+    const max = dialMax(T.phase);
+    const open = realTodos().filter((t) => !t.done).sort(todoSort).slice(0, 3);
+    const sessions = D.focus.today || [];
+
+    // The day as a strip, 6am to midnight, with each finished session where it happened.
+    const dayFrom = dayStart() + 6 * 3600e3, daySpan = 18 * 3600e3;
+    const pos = (ms) => Math.min(100, Math.max(0, ((ms - dayFrom) / daySpan) * 100));
+    const strip = `<div class="daystrip">
+        ${sessions.map((f) => `<i style="left:${pos(f.at - f.minutes * 60e3)}%;width:${Math.max(1.2, (f.minutes * 60e3 / daySpan) * 100)}%" title="${f.minutes} min"></i>`).join('')}
+        <b style="left:${pos(Date.now())}%"></b>
+      </div>
+      <div class="daystrip-labels"><span>6 AM</span><span>12 PM</span><span>6 PM</span><span>12 AM</span></div>`;
+
+    return `<div class="focus2 ${isFocus ? 'is-focus' : 'is-break'}">
+      <div class="f2-bg"></div>
+
+      <header class="f2-head">
+        <div class="f2-phases">${Object.entries(PHASES).map(([k, v]) => `<button class="${T.phase === k ? 'on' : ''}" data-act="t-phase" data-phase="${k}">${v}</button>`).join('')}</div>
+        <div class="f2-cycle" aria-label="Session ${T.cycle + 1} of 4">${[0, 1, 2, 3].map((i) => `<i class="${i < T.cycle ? 'done' : i === T.cycle && isFocus ? 'now' : ''}"></i>`).join('')}<span>${isFocus ? `Session ${T.cycle + 1} of 4` : 'Break'}</span></div>
+      </header>
+
+      <div class="f2-dialwrap">
+        <div class="dial ${active ? 'active' : 'idle'}" data-dial data-noscroll>
+          ${dialSvg(active ? null : mins, max, active ? 1 - tLeft() / tTotal() : 0)}
+          <div class="dial-center">
+            ${active
+              ? `<div class="dial-time" data-timer>${fmtLeft(tLeft())}</div>
+                 <div class="dial-sub">${T.running ? `ends at ${hm(T.endsAt)}` : 'Paused'}</div>
+                 <div class="dial-btns">
+                   ${T.running ? `<button class="go ghost" data-act="t-pause">${icon('pause')}</button>` : `<button class="go" data-act="t-start">${icon('play')}</button>`}
+                   <button class="go ghost" data-act="t-reset" aria-label="Reset">${icon('reset')}</button>
+                 </div>`
+              : `<div class="dial-num"><span data-dial-num>${mins}</span><small>min</small></div>
+                 <div class="dial-sub" data-dial-ends>until ${hm(Date.now() + mins * 60e3)}</div>
+                 <button class="go big" data-act="t-start">${icon('play')}<span>${isFocus ? 'Begin' : 'Start break'}</span></button>`}
+          </div>
         </div>
-        <div class="controls">
-          <button class="btn" data-act="t-adj" data-min="-5">−5</button>
-          ${T.running ? `<button class="btn primary" data-act="t-pause">${icon('pause')} Pause</button>` : `<button class="btn primary" data-act="t-start">${icon('play')} ${hasTimer ? 'Resume' : 'Start'}</button>`}
-          <button class="btn" data-act="t-adj" data-min="5">+5</button>
-          <button class="btn" data-act="t-reset">${icon('reset')}</button>
-          <button class="btn" data-act="t-skip">${icon('skip')}</button>
+        ${active ? '' : `<div class="f2-hint">Drag the ring to set the time</div>`}
+      </div>
+
+      ${active ? '' : `<div class="f2-presets">${dialPresets(T.phase).map((m) => `<button class="${m === mins ? 'on' : ''}" data-act="t-set" data-min="${m}">${m}</button>`).join('')}</div>`}
+
+      <section class="f2-work">
+        <h3>Working on</h3>
+        <div class="f2-cards">
+          <button class="wcard ${!T.label ? 'on' : ''}" data-act="t-label" data-label=""><b>Just focus</b><span>No task attached</span></button>
+          ${open.map((t) => { const subs = t.subtasks || [], left = subs.filter((x) => !x.done).length;
+            return `<button class="wcard ${T.label === t.text ? 'on' : ''}" data-act="t-label" data-label="${esc(t.text)}"><b>${esc(t.text)}</b>
+              <span>${esc([t.tag, subs.length ? `${subs.length - left}/${subs.length} steps` : '', t.due && t.due < dayStart(1) ? 'due today' : ''].filter(Boolean).join(' · ') || 'Task')}</span></button>`; }).join('')}
         </div>
       </section>
-      <div class="focus-side">
-        <section class="card">
-          <div class="card-h">Today</div>
-          <div class="row" style="gap:28px"><div><div class="big-num" style="font-size:44px">${D.focus.todayMinutes}<span class="muted" style="font-size:20px"> min</span></div></div>
-            <div><div class="big-num" style="font-size:44px">${D.focus.todaySessions}</div><span class="muted">sessions</span></div></div>
-          <div style="margin-top:12px">${bars('focusweek', week.map((d) => d.minutes), week.map((d) => new Date(d.date).toLocaleDateString('en-US', { weekday: 'narrow' })), (v) => `${v} min`, { height: 110, cls: 'focus-c', capLabel: (i) => new Date(week[i].date).toLocaleDateString('en-US', { weekday: 'long' }) })}</div>
-        </section>
-        <section class="card working">
-          <div class="card-h">Working on</div>
-          <div class="chips">${['', ...openTodos.map((t) => t.text)].map((txt) => `<button class="chip ${T.label === txt ? 'on' : ''}" data-act="t-label" data-label="${esc(txt)}" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;line-height:44px">${esc(txt || 'Nothing specific')}</button>`).join('')}</div>
-        </section>
-      </div>
+
+      <section class="f2-day">
+        <div class="f2-stats"><div><b>${D.focus.todayMinutes}</b><span>min today</span></div><div><b>${D.focus.todaySessions}</b><span>session${D.focus.todaySessions === 1 ? '' : 's'}</span></div>
+          <div><b>${D.focus.week.reduce((a, d) => a + d.minutes, 0)}</b><span>min this week</span></div></div>
+        ${strip}
+      </section>
     </div>`;
   },
 
@@ -1070,6 +1199,7 @@ document.addEventListener('click', async (e) => {
       case 't-skip': timerFinish(true); break;
       case 't-adj': timerAdjust(Number(el.dataset.min)); break;
       case 't-phase': timerReset(el.dataset.phase); break;
+      case 't-set': dialSet(Number(el.dataset.min)); dialShow(Number(el.dataset.min)); break;
       case 't-label': T.label = el.dataset.label; saveT(); render(); break;
       case 'todo-add': addTask(); break;
       case 'todo-toggle': {
@@ -1236,7 +1366,7 @@ function enableDragScroll(doc, findScroller) {
   let drag = null, coast = 0;
   doc.addEventListener('pointerdown', (e) => {
     cancelAnimationFrame(coast);
-    if (e.pointerType !== 'mouse' || e.button !== 0 || e.target.closest?.('input, .kb')) return;
+    if (e.pointerType !== 'mouse' || e.button !== 0 || e.target.closest?.('input, .kb, [data-noscroll]')) return;
     const sc = findScroller(e.target);
     if (sc) drag = { sc, y: e.clientY, top: sc.scrollTop, moved: false, lastY: e.clientY, lastT: performance.now(), v: 0 };
   }, true);
