@@ -2,9 +2,11 @@
 
 A touchscreen desk dashboard for a Raspberry Pi 5 + Raspberry Pi Touch Display 2 (7", in its native portrait orientation at 720×1280; landscape works too).
 
+The whole hub is drawn as translucent glass panels over a soft colour backdrop that follows the sun: cool blue in the morning, fading to warm plum and amber as the sun goes down, and easing back before dawn. Panels are brighter and more solid in daylight and darker after sunset, using the real sunrise and sunset for `WEATHER_LAT`/`WEATHER_LON`. PayIt's screen switches to a deep version of its own teal-green. To try a look, open the hub with `#sky=<warm>,<day>` (each 0 to 1) and optionally `&view=<screen>`.
+
 | Screen | What it does |
 |---|---|
-| **Home** | Clock, weather, focus timer, today's to-dos, PayIt today, unread mail, what's up next |
+| **Home** | Clock, a weather chip that opens the day's forecast (hourly, rain, wind, sunrise and sunset, tomorrow), focus timer, today's to-dos, PayIt today, the mail digest, and what's up next |
 | **Focus** | Pomodoro timer (focus / short / long break). Starting a session locks the screen to it: a settle-in count, a breathing ring, a finish screen that offers the break, and press-and-hold to leave. "Working on" comes from your to-dos; minutes per day are charted. |
 | **To do** | Tasks with tags (School / PayIt / Personal), due dates, stars; on-screen keyboard |
 | **PayIt** | Gross volume vs. this time yesterday, sales, avg ticket, declines, active merchants, by-hour and 7-day charts, payment-method split, live status from `admin_system_checks` |

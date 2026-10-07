@@ -81,7 +81,15 @@ export function calendar() {
 }
 
 export function weather() {
-  return { unit: 'F', temp: 74, feels: 76, code: 2, isDay: true, hi: 81, lo: 63, rainChance: 40, nextRain: { time: new Date(Date.now() + 4 * H).toISOString().slice(0, 16), chance: 60 }, tomorrow: { hi: 78, lo: 61, code: 61 }, sunset: '' };
+  const local = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+  const today = startOfDay();
+  const nowH = new Date().getHours();
+  return {
+    unit: 'F', temp: 74, feels: 76, code: 2, isDay: nowH >= 7 && nowH < 19, hi: 81, lo: 63, rainChance: 40,
+    nextRain: { time: local(Date.now() + 4 * H), chance: 60 }, tomorrow: { hi: 78, lo: 61, code: 61 }, tomorrowRain: 70,
+    sunrise: local(today + 7.6 * H), sunset: local(today + 19.2 * H), sunriseTomorrow: local(today + 31.6 * H), wind: 6, windUnit: 'mph', humidity: 58,
+    hours: Array.from({ length: 18 }, (_, i) => ({ time: local(Date.now() + i * H).slice(0, 13) + ':00', temp: Math.round(74 - Math.abs(i - 2) * 1.1 + Math.sin(i / 3) * 3), code: i >= 4 && i <= 6 ? 61 : i > 9 ? 0 : 2, rain: i >= 4 && i <= 6 ? 60 : i === 3 || i === 7 ? 30 : 5 })),
+  };
 }
 
 export function digest() {

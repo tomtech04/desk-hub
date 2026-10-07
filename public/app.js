@@ -11,6 +11,7 @@ import { openKeyboard } from './keyboard.js';
 const KIOSK = ['localhost', '127.0.0.1'].includes(location.hostname) && !new URLSearchParams(location.search).has('remote');
 window.HUB_REMOTE = !KIOSK;
 document.documentElement.classList.toggle('remote', !KIOSK);
+document.documentElement.classList.toggle('kiosk', KIOSK);
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -27,6 +28,7 @@ const ICONS = {
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
   bell: '<path d="M6 16v-5a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 21h4"/>',
   check: '<path d="m5 12 5 5 9-10"/>',
+  chev: '<path d="m9 6 6 6-6 6"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
@@ -78,6 +80,62 @@ function wx(code) {
   return ['Storms', 'storm'];
 }
 
+// ---------------------------------------------------------------------------
+// The sky. The backdrop is Aurora (cool blue) in the morning and fades to Dusk
+// (warm plum and amber) as the sun goes down; it eases back before dawn. The
+// glass is brighter and more solid while the sun is up, darker after sunset.
+// Both follow the real sunrise and sunset for the hub's location.
+// ---------------------------------------------------------------------------
+
+const SKY = {
+  aurora: { base: [14, 20, 36], b1: [42, 79, 168], b2: [90, 71, 166], b3: [31, 127, 134] },
+  dusk: { base: [26, 18, 32], b1: [168, 85, 63], b2: [122, 63, 143], b3: [156, 106, 42] },
+  // PayIt's own screen: a deep take on its brand teal-green, whatever the hour.
+  payit: { base: [6, 26, 23], b1: [13, 128, 116], b2: [9, 82, 74], b3: [20, 112, 82] },
+};
+const lerp = (a, b, t) => a + (b - a) * t;
+const ramp = (x, from, to) => { const t = Math.min(1, Math.max(0, (x - from) / (to - from))); return t * t * (3 - 2 * t); };
+
+/** @returns {{ warm: number, day: number }}  warm: 0 = Aurora, 1 = Dusk.  day: 0 = night, 1 = full daylight. */
+function skyAt(now, sunrise, sunset) {
+  const M = 60e3, noon = (sunrise + sunset) / 2;
+  const day = Math.min(ramp(now, sunrise - 25 * M, sunrise + 25 * M), 1 - ramp(now, sunset - 25 * M, sunset + 25 * M));
+  let warm;
+  if (now < sunrise - 90 * M) warm = 1;                                // deep night: still Dusk
+  else if (now < sunrise) warm = 1 - ramp(now, sunrise - 90 * M, sunrise); // pre-dawn: easing to Aurora
+  else if (now < noon) warm = 0;                                       // morning: Aurora
+  else warm = ramp(now, noon, sunset);                                 // afternoon: fading to Dusk, complete at sunset
+  return { warm, day };
+}
+
+function applySky() {
+  const w = D?.weather?.data;
+  const now = Date.now();
+  // Real sun times when the forecast has them; otherwise a plain 7am-7pm day.
+  let rise = w?.sunrise ? new Date(w.sunrise).getTime() : dayStart() + 7 * 3600e3;
+  let set = w?.sunset ? new Date(w.sunset).getTime() : dayStart() + 19 * 3600e3;
+  if (!(rise < set)) { rise = dayStart() + 7 * 3600e3; set = dayStart() + 19 * 3600e3; }
+  const sky = window.__sky || skyAt(now, rise, set); // window.__sky = { warm, day } pins it, for trying looks out
+  const brand = view === 'payit';
+  const mix = (k) => `rgb(${(brand ? SKY.payit[k] : SKY.aurora[k].map((v, i) => Math.round(lerp(v, SKY.dusk[k][i], sky.warm)))).join(' ')})`;
+  // PayIt stays on the darker side even at midday.
+  const st = document.documentElement.style, d = brand ? sky.day * 0.35 : sky.day;
+  document.documentElement.classList.toggle('skin-payit', brand);
+  for (const k of ['base', 'b1', 'b2', 'b3']) st.setProperty(`--sky-${k}`, mix(k));
+  st.setProperty('--sky-glow', lerp(0.55, 0.72, d).toFixed(3));
+  st.setProperty('--sky-bright', lerp(1, 1.2, d).toFixed(3));
+  st.setProperty('--smoke', lerp(0.3, 0.2, d).toFixed(3));
+  st.setProperty('--fill-a', lerp(0.13, 0.24, d).toFixed(3));
+  st.setProperty('--fill-b', lerp(0.05, 0.13, d).toFixed(3));
+  st.setProperty('--edge', lerp(0.3, 0.5, d).toFixed(3));
+  st.setProperty('--text-2', `rgba(255,255,255,${lerp(0.74, 0.9, d).toFixed(2)})`);
+  st.setProperty('--muted', `rgba(255,255,255,${lerp(0.52, 0.7, d).toFixed(2)})`);
+  st.setProperty('--line', `rgba(255,255,255,${lerp(0.14, 0.22, d).toFixed(2)})`);
+  document.documentElement.classList.toggle('daylight', d > 0.5);
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', mix('base'));
+}
+setInterval(applySky, 60e3);
+
 async function api(method, url, body) {
   const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   if (res.status === 401 && url !== '/api/login') {
@@ -100,6 +158,7 @@ const ui = { taskFilter: 'open', chartSel: {}, schedDay: 0, drawer: 'alerts', re
 async function load() {
   try {
     D = await api('GET', '/api/dashboard');
+    applySky();
     syncMode();
     handleAlerts();
     render();
@@ -229,9 +288,9 @@ function renderLock() {
         <p>${d.wasFocus ? `${d.minutes} minute${d.minutes === 1 ? '' : 's'} of focus${T.label ? ` on ${esc(T.label)}` : ''} · ${D.focus.todayMinutes} min today` : 'Ready for the next one?'}</p>
         <div class="cycle">${[0, 1, 2, 3].map((i) => `<i class="${i < (T.cycle || (d.wasFocus ? 4 : 0)) ? 'on' : ''}"></i>`).join('')}</div>
         <div class="fl-actions">
-          ${d.wasFocus ? `<button class="pill solid wide" data-act="lock-break">${T.phase === 'long' ? 'Long break' : 'Break'} · ${phaseMinutes(T.phase)} min</button>`
-                       : `<button class="pill solid wide" data-act="lock-next">Focus · ${phaseMinutes('focus')} min</button>`}
-          <button class="pill" data-act="lock-leave">Done</button>
+          ${d.wasFocus ? `<button class="fpill solid wide" data-act="lock-break">${T.phase === 'long' ? 'Long break' : 'Break'} · ${phaseMinutes(T.phase)} min</button>`
+                       : `<button class="fpill solid wide" data-act="lock-next">Focus · ${phaseMinutes('focus')} min</button>`}
+          <button class="fpill" data-act="lock-leave">Done</button>
         </div></div>`;
   } else {
     const active = T.running || T.remaining != null;
@@ -242,9 +301,9 @@ function renderLock() {
           <div class="fl-label">${T.running ? esc(T.label || (isFocus ? 'Stay with it' : 'Rest')) : 'Paused'}</div></div>
       </div>
       <div class="fl-controls">
-        ${T.running ? `<button class="pill" data-act="t-pause">Pause</button>` : `<button class="pill solid" data-act="lock-resume">Resume</button>`}
-        <button class="pill" data-act="t-adj" data-min="5">+5 min</button>
-        <button class="pill" data-act="t-skip">${isFocus ? 'End' : 'Skip'}</button>
+        ${T.running ? `<button class="fpill" data-act="t-pause">Pause</button>` : `<button class="fpill solid" data-act="lock-resume">Resume</button>`}
+        <button class="fpill" data-act="t-adj" data-min="5">+5 min</button>
+        <button class="fpill" data-act="t-skip">${isFocus ? 'End' : 'Skip'}</button>
       </div>${hold('Hold to leave')}`;
   }
   // The time text and ring are updated by the per-second tick; only redraw when the shape changes.
@@ -490,7 +549,7 @@ const VIEWS = {
       <section class="card a-clock clock">
         <div class="time" id="clock-time">${clockHtml()}</div>
         <div class="date">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
-        <div class="wx">${w ? `${icon(wxIcon)}<b>${w.temp}°</b> ${esc(wxLabel)} · H ${w.hi}° L ${w.lo}°${esc(rain)}` : '<span class="muted">Weather loading…</span>'}</div>
+        ${w ? `<button class="wxchip" data-act="weather">${icon(wxIcon)}<b>${w.temp}°</b><span>${esc(wxLabel)} · H ${w.hi}° L ${w.lo}°${esc(rain)}</span>${icon('chev')}</button>` : '<div class="wx"><span class="muted">Weather loading…</span></div>'}
       </section>
 
       <section class="card a-focus">
@@ -566,9 +625,9 @@ const VIEWS = {
           </div>
         </div>
         ${active
-          ? `<div class="f3-actions">${T.running ? `<button class="pill" data-act="t-pause">Pause</button>` : `<button class="pill solid" data-act="t-start">Resume</button>`}<button class="pill" data-act="t-reset">Reset</button></div>`
+          ? `<div class="f3-actions">${T.running ? `<button class="fpill" data-act="t-pause">Pause</button>` : `<button class="fpill solid" data-act="t-start">Resume</button>`}<button class="fpill" data-act="t-reset">Reset</button></div>`
           : `<div class="f3-presets">${dialPresets(T.phase).map((m) => `<button class="${m === mins ? 'on' : ''}" data-act="t-set" data-min="${m}">${m}</button>`).join('')}</div>
-             <div class="f3-actions"><button class="pill solid wide" data-act="t-start">${isFocus ? 'Begin' : 'Start break'}</button></div>`}
+             <div class="f3-actions"><button class="fpill solid wide" data-act="t-start">${isFocus ? 'Begin' : 'Start break'}</button></div>`}
       </div>
 
       <section class="f3-list">
@@ -959,8 +1018,39 @@ function render() {
   if (!$('#drawer').hidden) renderDrawer();
 }
 
+// The day's weather: now, the next hours, sun times, and tomorrow.
+function renderWeather() {
+  const w = D.weather?.data;
+  if (!w) { $('#drawer').hidden = true; return; }
+  const [label, ic] = wx(w.code);
+  const t = (s) => new Date(s).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const hr = (s) => { const h = new Date(s).getHours(); return `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`; };
+  const temps = (w.hours || []).slice(0, 12).map((h) => h.temp), lo = Math.min(...temps), hi = Math.max(...temps);
+  const [tLabel, tIcon] = wx(w.tomorrow.code);
+  $('#drawer').innerHTML = `<div class="panel sheet weather" data-stop>
+    <div class="page-h"><h1>Weather</h1><button class="btn small" data-act="close-drawer">Close</button></div>
+    <div class="wx-now">${icon(ic)}<div class="wx-temp">${w.temp}°</div>
+      <div class="wx-desc"><b>${esc(label)}</b><span>Feels like ${w.feels}° · High ${w.hi}° · Low ${w.lo}°</span></div></div>
+    <div class="wx-facts">
+      <div><span>Rain today</span><b>${w.rainChance ?? 0}%</b></div>
+      <div><span>Wind</span><b>${w.wind ?? '–'} ${esc(w.windUnit || '')}</b></div>
+      <div><span>Humidity</span><b>${w.humidity ?? '–'}%</b></div>
+      <div><span>Sunrise</span><b>${w.sunrise ? t(w.sunrise) : '–'}</b></div>
+      <div><span>Sunset</span><b>${w.sunset ? t(w.sunset) : '–'}</b></div>
+    </div>
+    ${w.nextRain ? `<div class="wx-note">${icon('rain')} Rain likely around ${hr(w.nextRain.time)} (${w.nextRain.chance}%)</div>` : ''}
+    <h3 class="wx-h">Next hours</h3>
+    <div class="wx-hours">${(w.hours || []).slice(0, 12).map((h, i) => `<div class="wx-hour">
+        <span>${i === 0 ? 'Now' : hr(h.time)}</span>${icon(wx(h.code)[1])}
+        <i style="--p:${hi > lo ? ((h.temp - lo) / (hi - lo)).toFixed(2) : 0.5}"></i>
+        <b>${h.temp}°</b><em class="${h.rain >= 30 ? 'wet' : ''}">${h.rain >= 10 ? `${h.rain}%` : ''}</em></div>`).join('')}</div>
+    <div class="wx-tomorrow">${icon(tIcon)}<div><b>Tomorrow</b><span>${esc(tLabel)} · High ${w.tomorrow.hi}° · Low ${w.tomorrow.lo}°${w.tomorrowRain >= 20 ? ` · ${w.tomorrowRain}% rain` : ''}</span></div></div>
+  </div>`;
+}
+
 function renderDrawer() {
   if (ui.drawer === 'mail') return renderReader();
+  if (ui.drawer === 'weather') return renderWeather();
   const alerts = D.alerts;
   $('#drawer').innerHTML = `<div class="panel" data-stop>
     <div class="page-h"><h1>Alerts</h1><button class="btn small ghost" data-act="close-drawer">Close</button></div>
@@ -1118,7 +1208,7 @@ function toast(a) {
 // Interactions (one delegated handler)
 // ---------------------------------------------------------------------------
 
-function go(v) { view = v; ui.chartSel = {}; if (v === 'schedule') ui.schedDay = 0; render(); }
+function go(v) { view = v; ui.chartSel = {}; if (v === 'schedule') ui.schedDay = 0; applySky(); render(); }
 
 async function addTask(preset = {}) {
   const tags = D.settings.tags;
@@ -1260,6 +1350,7 @@ document.addEventListener('click', async (e) => {
         if (!KIOSK) toast({ level: 'info', title: el.dataset.mode === 'day' ? 'Desk display is awake' : 'Desk display is asleep' });
         if (el.dataset.mode === 'day') load();
         break;
+      case 'weather': ui.drawer = 'weather'; $('#drawer').hidden = false; renderWeather(); break;
       case 'alerts': ui.drawer = 'alerts'; $('#drawer').hidden = false; renderDrawer(); break;
       case 'close-drawer': $('#drawer').hidden = true; break;
       case 'dismiss':
@@ -1389,11 +1480,16 @@ setInterval(() => {
 window.addEventListener('resize', () => drawCharts());
 
 // Deep link: /#read=<email id> opens that email (handy from a notification or for testing).
+// The address can carry a starting point: #view=payit, #read=<email id>,
+// #open=weather, and #sky=<warm>,<day> (each 0..1) to pin the backdrop while
+// trying looks out. Combine with &.
+const hashArgs = new URLSearchParams(location.hash.slice(1));
+if (hashArgs.has('sky')) { const [warm, day] = hashArgs.get('sky').split(',').map(Number); window.__sky = { warm: warm || 0, day: day || 0 }; }
 load().then(() => {
-  const m = /^#read=(.+)$/.exec(location.hash);
-  if (!m || !D) return;
-  go('mail');
-  document.querySelector(`.msg[data-id="${CSS.escape(decodeURIComponent(m[1]))}"]`)?.click();
+  if (!D) return;
+  if (VIEWS[hashArgs.get('view')]) go(hashArgs.get('view'));
+  if (hashArgs.get('open') === 'weather') { ui.drawer = 'weather'; $('#drawer').hidden = false; renderWeather(); }
+  if (hashArgs.has('read')) { go('mail'); document.querySelector(`.msg[data-id="${CSS.escape(hashArgs.get('read'))}"]`)?.click(); }
 });
 setInterval(load, 20e3);
 // Midnight rollover and long-running kiosk hygiene: full reload once a day at 4am.

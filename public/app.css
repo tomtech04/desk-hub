@@ -745,11 +745,11 @@ html:not(.remote) .kv.four span { font-size: 13px; }
 .ring-fg { transition: stroke-dashoffset 1s linear; }
 
 /* Quiet outlined buttons; one solid white one for the main action. */
-.pill { height: 54px; padding: 0 26px; border-radius: 27px; font-size: 17px; font-weight: 500; letter-spacing: -.01em; color: var(--ink); background: transparent; box-shadow: inset 0 0 0 1px var(--hair); transition: transform .18s ease, background .2s ease, opacity .2s ease; }
-.pill:active { transform: scale(.97); background: #ffffff10; }
-.pill.solid { background: var(--ink); color: #000; box-shadow: none; }
-.pill.solid:active { background: #d1d1d6; }
-.pill.wide { min-width: 220px; }
+.fpill { height: 54px; padding: 0 26px; border-radius: 27px; font-size: 17px; font-weight: 500; letter-spacing: -.01em; color: var(--ink); background: transparent; box-shadow: inset 0 0 0 1px var(--hair); transition: transform .18s ease, background .2s ease, opacity .2s ease; }
+.fpill:active { transform: scale(.97); background: #ffffff10; }
+.fpill.solid { background: var(--ink); color: #000; box-shadow: none; }
+.fpill.solid:active { background: #d1d1d6; }
+.fpill.wide { min-width: 220px; }
 
 /* ---------- the page ---------- */
 .f3 { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 24px; padding: 10px 14px 22px; background: #000; border-radius: var(--radius); }
@@ -856,8 +856,218 @@ html:not(.remote) .kv.four span { font-size: 13px; }
   .dial { --d: min(84vw, 400px); }
   .f3-tabs { gap: 20px; } .f3-tabs button { font-size: 15px; }
   .f3-presets button { width: 52px; }
-  .pill { height: 48px; padding: 0 20px; font-size: 16px; } .pill.wide { min-width: 180px; }
+  .fpill { height: 48px; padding: 0 20px; font-size: 16px; } .fpill.wide { min-width: 180px; }
   .f3-day .f3-line { flex-wrap: wrap; gap: 8px 20px; }
   .fl-done h1 { font-size: 32px; }
 }
 @media (prefers-reduced-motion: reduce) { .focuslock, .fl-num, .fl-done, .fl-burst svg { animation: none; } .fl-burst svg { stroke-dashoffset: 0; } }
+
+/* ==========================================================================
+   GLASS. The whole hub sits on a soft colour backdrop that follows the sun
+   (see applySky in app.js); panels are translucent layers with a bright top
+   edge. Everything below overrides the earlier flat-dark styling.
+   ========================================================================== */
+:root {
+  /* Until the first forecast arrives: Aurora at night. */
+  --sky-base: rgb(14 20 36); --sky-b1: rgb(42 79 168); --sky-b2: rgb(90 71 166); --sky-b3: rgb(31 127 134);
+  --sky-glow: .55; --sky-bright: 1; --smoke: .3; --fill-a: .13; --fill-b: .05; --edge: .3;
+
+  --glass: linear-gradient(180deg, rgba(255,255,255,var(--fill-a)), rgba(255,255,255,var(--fill-b))), rgba(14,16,24,var(--smoke));
+  --glass-edge: inset 0 1.5px 0 rgba(255,255,255,var(--edge)), inset 0 0 0 1px rgba(255,255,255,.09), 0 16px 40px rgba(0,0,0,.2);
+  /* For things that sit on top of content (sheets, keyboard, toasts): nearly solid. */
+  --sheet: color-mix(in srgb, var(--sky-base) 78%, #5b6480);
+
+  --bg: #10131c;                 /* the dark ink used on white controls */
+  --surface: rgba(255,255,255,.08); --surface-2: rgba(255,255,255,.10); --surface-3: rgba(255,255,255,.17);
+  --line: rgba(255,255,255,.14);
+  --text: #fff; --text-2: rgba(255,255,255,.74); --muted: rgba(255,255,255,.52);
+  --accent: #ffd27a; --accent-ink: #1a1203;
+  --money: #8ff0c0; --good: #8ff0c0; --warn: #ffd27a; --bad: #ff9d9d; --info: #a9ccff;
+  --radius: 30px;
+}
+html { background: var(--sky-base); }
+body { background: transparent; }
+
+#wall { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--sky-base); filter: brightness(var(--sky-bright)); pointer-events: none; }
+#wall::before, #wall::after, #wall i { content: ""; position: absolute; border-radius: 50%; filter: blur(90px); opacity: var(--sky-glow); }
+#wall::before { width: 110vmax; height: 110vmax; left: -42vmax; top: -34vmax; background: var(--sky-b1); }
+#wall::after  { width: 100vmax; height: 100vmax; right: -44vmax; top: 22vmax; background: var(--sky-b2); }
+#wall i       { width: 92vmax; height: 92vmax; left: 4vmax; bottom: -46vmax; background: var(--sky-b3); }
+.winddown #wall { filter: brightness(.6) saturate(.85); }
+
+/* ---------- surfaces ---------- */
+.card, .weekstrip .day, .f3-day, .review { background: var(--glass); box-shadow: var(--glass-edge); border-radius: var(--radius); }
+.tile { background: rgba(255,255,255,.1); border-radius: 20px; }
+/* Real blur only where there's the horsepower; the Pi gets the same look from the smooth backdrop. */
+.remote .card, .remote .rail, .remote .wxchip { -webkit-backdrop-filter: blur(30px) saturate(125%); backdrop-filter: blur(30px) saturate(125%); }
+
+/* ---------- controls ---------- */
+.btn { background: rgba(255,255,255,.15); box-shadow: inset 0 1px 0 rgba(255,255,255,.22); border-radius: 26px; }
+.btn.small { border-radius: 24px; }
+.btn.primary, .kb .krow .done { background: #fff; color: var(--bg); box-shadow: none; }
+.btn.ghost { background: transparent; border: 0; box-shadow: inset 0 0 0 1px rgba(255,255,255,.3); }
+.btn.danger { color: var(--bad); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad) 55%, transparent); }
+.chip { background: rgba(255,255,255,.13); color: var(--text-2); }
+.chip.on { background: #fff; color: var(--bg); }
+.chip.review-chip { background: rgba(255,210,122,.2); color: var(--accent); }
+.check { border-color: rgba(255,255,255,.62); }
+.check.done { background: var(--good); border-color: var(--good); color: #0b3d24; }
+.toggle { background: rgba(255,255,255,.2); }
+.toggle::after { background: #fff; }
+.toggle.on { background: #fff; }
+.toggle.on::after { background: var(--bg); }
+.stepper button { background: rgba(255,255,255,.16); border-radius: 50%; }
+input[type=range] { background: rgba(255,255,255,.22); }
+.tag, .steps, .pill { background: rgba(255,255,255,.16); }
+.fpill { background: rgba(255,255,255,.12); box-shadow: inset 0 1px 0 rgba(255,255,255,.2); }
+.fpill.solid { background: #fff; color: var(--bg); }
+.icon-btn.on { color: var(--accent); }
+
+/* ---------- navigation: a floating capsule ---------- */
+.rail { background: var(--glass); box-shadow: var(--glass-edge); border: 0; }
+.rail button { color: var(--text-2); border-radius: 50%; }
+.rail button.on { background: rgba(255,255,255,.22); box-shadow: inset 0 1px 0 rgba(255,255,255,.4); color: #fff; }
+.rail .moon { color: var(--accent); }
+@media (orientation: landscape) { .rail { margin: 16px 0 16px 16px; border-radius: 36px; height: auto; } }
+@media (orientation: portrait) {
+  .rail { margin: 0 22px 20px; width: auto; border-radius: 52px; border: 0; padding: 0 12px; }
+  main { padding-bottom: 14px; }
+}
+@media (min-width: 900px) { .remote .rail { margin: 16px 0 16px 16px; border-radius: 30px; border: 0; } .remote .rail button { border-radius: 12px; } }
+
+/* ---------- home ---------- */
+.home .a-clock, .wind > .card.clock { background: none; box-shadow: none; padding: 4px 10px 0; }
+.clock .time { font-weight: 300; letter-spacing: -.045em; }
+.clock .time small { color: var(--text-2); }
+.wxchip { margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px 0 18px; border-radius: 28px;
+  background: var(--glass); box-shadow: var(--glass-edge); color: var(--text-2); font-size: 19px; max-width: 100%; }
+.wxchip b { color: #fff; font-size: 24px; font-weight: 600; }
+.wxchip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.wxchip > svg:first-child { width: 28px; height: 28px; color: var(--accent); }
+.wxchip > svg:last-child { width: 18px; height: 18px; opacity: .6; }
+.wxchip:active { transform: scale(.98); }
+.big-num.money, .money { color: #fff; }
+.delta.up { color: var(--good); } .delta.down { color: var(--bad); }
+.kv .profit b { color: var(--good); }
+.cal-bar { background: var(--info); }
+
+/* ---------- overlays ---------- */
+.drawer { background: rgba(6,8,14,.5); }
+.drawer .panel { background: var(--sheet); box-shadow: -20px 0 60px rgba(0,0,0,.35); }
+.toast, #banner .b { background: var(--sheet); box-shadow: var(--glass-edge), 0 14px 40px rgba(0,0,0,.4); border-radius: 22px; color: var(--text); }
+#banner .b { color: var(--accent); }
+.alert { background: rgba(255,255,255,.1); border-radius: 20px; }
+.kb { background: rgba(6,8,14,.62); }
+.kb .keys { background: var(--sheet); border-radius: 30px 30px 0 0; }
+.kb .field { background: rgba(255,255,255,.14); }
+.kb .krow button { background: rgba(255,255,255,.15); border-radius: 14px; }
+.kb.native .top { background: var(--sheet); }
+.login { background: radial-gradient(70% 50% at 25% 10%, color-mix(in srgb, var(--sky-b1) 50%, transparent), transparent 70%), radial-gradient(70% 50% at 85% 80%, color-mix(in srgb, var(--sky-b2) 45%, transparent), transparent 70%), var(--sky-base); }
+.login-card { background: var(--glass); box-shadow: var(--glass-edge); border-radius: 30px; }
+.login-card input, .kb.native input.field { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.2); }
+.r-summary { background: rgba(255,255,255,.1); }
+.task-update { background: rgba(169,204,255,.16); }
+
+/* ---------- schedule ---------- */
+.tl-hour { left: 72px; }
+.tl-hour span { left: -72px; background: none; }
+.tl-ev::before { background: rgba(169,204,255,.24); border-left-color: var(--info); border-radius: 14px; }
+.weekstrip .day { border-radius: 24px; }
+.weekstrip .day.on { background: #fff; color: var(--bg); box-shadow: none; }
+.weekstrip .day.on b { color: var(--bg); }
+.chip.allday { background: rgba(169,204,255,.22); }
+
+/* ---------- focus: the dial on a glass disc ---------- */
+.f3, .focuslock { --ink: #fff; --dim: var(--text-2); --faint: var(--muted); --hair: var(--line); }
+.f3 { background: none; padding: 8px 6px 4px; }
+.dial::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--glass); box-shadow: var(--glass-edge); }
+.dial-marks line { stroke: rgba(255,255,255,.4); stroke-width: 2; }
+.dial-track { stroke: rgba(255,255,255,.22); stroke-width: 3; }
+.dial-arc { stroke-width: 8; }
+.dial-knob .k-body { r: 15px; }
+.dial-knob .k-hit { fill: rgba(255,255,255,.2); r: 27px; }
+.dial.dragging .dial-knob .k-body { r: 18px; }
+.dial-num span { font-weight: 300; }
+.dial-time, .fl-time { font-weight: 300; }
+.dial-sub { color: var(--text-2); }
+.f3-tabs { gap: 6px; padding: 6px; border-radius: 34px; background: var(--glass); box-shadow: var(--glass-edge); }
+.f3-tabs button { height: 50px; padding: 0 20px; border-radius: 25px; color: var(--text-2); }
+.f3-tabs button.on { background: #fff; color: var(--bg); font-weight: 600; }
+.f3-presets { gap: 12px; }
+.f3-presets button { width: 66px; height: 66px; border-radius: 50%; background: var(--glass); box-shadow: var(--glass-edge); color: var(--text-2); font-weight: 500; }
+.f3-presets button.on { background: #fff; color: var(--bg); box-shadow: none; font-weight: 600; }
+.f3-list { background: var(--glass); box-shadow: var(--glass-edge); border-radius: var(--radius); padding: 18px 22px 8px; }
+.f3-row:first-of-type { border-top: 0; }
+.f3-day { padding: 16px 22px 18px; }
+.f3-strip { height: 5px; border-radius: 3px; background: rgba(255,255,255,.2); }
+.f3-strip i { background: #fff; border-radius: 3px; }
+.f3-strip b { background: var(--accent); width: 2px; }
+.focuslock { background: radial-gradient(80% 55% at 20% 8%, color-mix(in srgb, var(--sky-b1) 55%, transparent), transparent 70%), radial-gradient(80% 55% at 88% 78%, color-mix(in srgb, var(--sky-b2) 50%, transparent), transparent 70%), radial-gradient(60% 40% at 40% 110%, color-mix(in srgb, var(--sky-b3) 45%, transparent), transparent 70%), var(--sky-base); }
+.fl-ring::before { content: ""; position: absolute; inset: -5%; border-radius: 50%; background: var(--glass); box-shadow: var(--glass-edge); }
+.fl-ring > svg circle:first-child { stroke: rgba(255,255,255,.22); stroke-width: 3; }
+.fl-ring > svg .ring-fg { stroke-width: 8; }
+.fl-burst { box-shadow: inset 0 0 0 2px #fff; background: var(--glass); }
+.fl-done h1 { font-weight: 500; }
+.fl-exit { background: rgba(255,255,255,.1); color: var(--text-2); }
+
+/* ---------- weather sheet ---------- */
+.drawer:has(.sheet) { justify-content: center; align-items: center; padding: 20px; }
+.drawer .panel.sheet { width: min(660px, 100%); height: auto; max-height: 92%; border-radius: 36px; padding: 24px 26px 26px; gap: 18px; box-shadow: var(--glass-edge), 0 30px 80px rgba(0,0,0,.5); }
+.wx-now { display: flex; align-items: center; gap: 18px; }
+.wx-now > svg { width: 76px; height: 76px; color: var(--accent); flex: none; }
+.wx-temp { font-size: 96px; font-weight: 300; letter-spacing: -.05em; line-height: 1; }
+.wx-desc { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wx-desc b { font-size: 26px; font-weight: 600; }
+.wx-desc span { font-size: 17px; color: var(--text-2); }
+.wx-facts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.wx-facts div { background: rgba(255,255,255,.1); border-radius: 18px; padding: 12px 10px; text-align: center; }
+.wx-facts span { display: block; font-size: 13px; color: var(--muted); }
+.wx-facts b { font-size: 19px; font-weight: 600; white-space: nowrap; }
+.wx-note { display: flex; align-items: center; gap: 10px; font-size: 18px; color: var(--info); }
+.wx-h { font-size: 14px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 2px 0 -6px; }
+.wx-hours { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.wx-hour { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 12px 4px 10px; border-radius: 18px; background: rgba(255,255,255,.08); }
+.wx-hour span { font-size: 15px; color: var(--text-2); }
+.wx-hour svg { width: 26px; height: 26px; color: var(--text); }
+.wx-hour i { display: block; width: 5px; height: 34px; border-radius: 3px; background: linear-gradient(to top, #fff calc(var(--p) * 100%), rgba(255,255,255,.2) 0); }
+.wx-hour b { font-size: 19px; font-weight: 600; }
+.wx-hour em { font-style: normal; font-size: 13px; height: 16px; color: var(--muted); }
+.wx-hour em.wet { color: var(--info); font-weight: 600; }
+.wx-tomorrow { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 20px; background: rgba(255,255,255,.1); }
+.wx-tomorrow svg { width: 34px; height: 34px; flex: none; }
+.wx-tomorrow b { display: block; font-size: 18px; } .wx-tomorrow span { font-size: 16px; color: var(--text-2); }
+@media (max-width: 600px) { .wx-facts { grid-template-columns: repeat(3, 1fr); } .wx-hours { grid-template-columns: repeat(4, 1fr); } .wx-temp { font-size: 72px; } .wxchip { font-size: 16px; height: 50px; } }
+
+/* Backdrop colours are registered so they can fade (sunset, and switching to PayIt's green). */
+@property --sky-base { syntax: "<color>"; inherits: true; initial-value: rgb(14 20 36); }
+@property --sky-b1 { syntax: "<color>"; inherits: true; initial-value: rgb(42 79 168); }
+@property --sky-b2 { syntax: "<color>"; inherits: true; initial-value: rgb(90 71 166); }
+@property --sky-b3 { syntax: "<color>"; inherits: true; initial-value: rgb(31 127 134); }
+html { transition: --sky-base 1.1s ease, --sky-b1 1.1s ease, --sky-b2 1.1s ease, --sky-b3 1.1s ease; }
+
+/* PayIt's screen wears PayIt's colours. */
+.skin-payit { --money: #5eead4; --good: #5eead4; --info: #5eead4; }
+.skin-payit .big-num.money, .skin-payit .money { color: #5eead4; }
+.skin-payit .kept b { color: #5eead4; }
+
+/* Numerals: heavy and compact, as in the earlier design (not thin and tall). */
+.clock .time { font-weight: 600; letter-spacing: -.04em; }
+.dial-num span { font-size: calc(var(--d) * .27); font-weight: 700; letter-spacing: -.05em; line-height: 1; }
+.dial-time { font-size: calc(var(--d) * .2); font-weight: 700; letter-spacing: -.04em; }
+.fl-time { font-size: calc(var(--d) * .21); font-weight: 600; letter-spacing: -.04em; }
+.fl-num { font-weight: 700; }
+.wx-temp { font-weight: 700; letter-spacing: -.04em; }
+.fl-done h1 { font-weight: 700; }
+.dial-sub .unit { font-weight: 600; }
+.big-num { font-weight: 700; }
+
+/* Focus page fit with the glass disc and cards. */
+.f3 { gap: 16px; grid-template-rows: auto auto auto auto; align-content: space-between; }
+.f3 .dial { --d: min(470px, 70vw, 37vh); }
+.f3-stage { gap: 18px; }
+.f3-row { min-height: 52px; }
+@media (orientation: landscape) { .f3 { grid-template-rows: auto minmax(0, 1fr) auto; align-content: stretch; } .f3 .dial { --d: min(40vw, 56vh, 500px); } }
+@media (max-width: 600px) { .f3 .dial { --d: min(82vw, 380px); } }
+.drawer .wx-now > svg.i { width: 76px; height: 76px; }
+.drawer .wx-hour svg.i { width: 26px; height: 26px; }
+.drawer .wx-tomorrow svg.i { width: 34px; height: 34px; }

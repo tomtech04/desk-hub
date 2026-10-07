@@ -51,9 +51,9 @@ export async function loadWeather() {
   const q = new URLSearchParams({
     latitude: LAT, longitude: LON, timezone: 'auto', forecast_days: '2',
     temperature_unit: UNITS, wind_speed_unit: UNITS === 'celsius' ? 'kmh' : 'mph',
-    current: 'temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m',
+    current: 'temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,relative_humidity_2m',
     daily: 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,sunrise,sunset',
-    hourly: 'precipitation_probability',
+    hourly: 'temperature_2m,weather_code,precipitation_probability',
   });
   const w = await fetchJson(`https://api.open-meteo.com/v1/forecast?${q}`);
   // Next 12h rain chance, so the hub can say "rain around 3pm".
@@ -72,6 +72,16 @@ export async function loadWeather() {
     rainChance: w.daily.precipitation_probability_max[0],
     nextRain: nextRain ? { time: nextRain.t, chance: nextRain.p } : null,
     tomorrow: { hi: Math.round(w.daily.temperature_2m_max[1]), lo: Math.round(w.daily.temperature_2m_min[1]), code: w.daily.weather_code[1] },
+    sunrise: w.daily.sunrise[0],
     sunset: w.daily.sunset[0],
+    sunriseTomorrow: w.daily.sunrise[1],
+    wind: Math.round(w.current.wind_speed_10m),
+    windUnit: UNITS === 'celsius' ? 'km/h' : 'mph',
+    humidity: Math.round(w.current.relative_humidity_2m),
+    // The next 18 hours, for the forecast panel.
+    hours: w.hourly.time.slice(nowIdx, nowIdx + 18).map((t, i) => ({
+      time: t, temp: Math.round(w.hourly.temperature_2m[nowIdx + i]), code: w.hourly.weather_code[nowIdx + i], rain: w.hourly.precipitation_probability[nowIdx + i],
+    })),
+    tomorrowRain: w.daily.precipitation_probability_max[1],
   };
 }
