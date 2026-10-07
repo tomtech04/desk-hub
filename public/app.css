@@ -1160,3 +1160,10 @@ html { transition: --sky-base 1.1s ease, --sky-b1 1.1s ease, --sky-b2 1.1s ease,
 .card-h + .night-hint { margin-top: 0; padding-top: 0; font-size: 17px; }
 .card-h + .night-hint + .night-type { margin-top: 2px; }
 .night-type { align-self: flex-start; height: 40px; font-size: 14px; font-weight: 600; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.wind .clock .date { color: var(--text); font-weight: 600; font-size: 26px; letter-spacing: -.01em; }
+/* ---------- a task finishing itself when its last step is ticked ---------- */
+.task.finishing, .item.finishing, .fl-task.finishing { animation: finish 1.1s cubic-bezier(.4, 0, .2, 1) both; pointer-events: none; }
+.task.finishing .item b, .item.finishing b, .fl-task.finishing .fl-task-h b { text-decoration: line-through; }
+.finishing .check.done { animation: pop .45s cubic-bezier(.2, 1.6, .4, 1) both; }
+@keyframes finish { 0%, 45% { opacity: 1; transform: none; filter: none; } 100% { opacity: 0; transform: translateX(46px) scale(.97); filter: blur(3px); } }
+@keyframes pop { from { transform: scale(.5); } }

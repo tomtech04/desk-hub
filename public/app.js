@@ -299,7 +299,7 @@ function renderLock() {
     const task = isFocus && T.label ? D.todos.find((t) => !t.done && t.text === T.label) : null;
     const subs = task?.subtasks || [];
     const left = subs.filter((x) => !x.done).length;
-    const panel = task ? `<div class="fl-task">
+    const panel = task ? `<div class="fl-task ${task.finishing ? 'finishing' : ''}">
         <div class="fl-task-h"><b>${esc(task.text)}</b><span>${[task.tag, task.due ? `Due ${new Date(task.due).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}` : '', subs.length ? (left ? `${subs.length - left} of ${subs.length} steps done` : 'All steps done') : ''].filter(Boolean).map(esc).join(' · ')}</span></div>
         ${subs.length ? `<div class="fl-steps">${subs.map((x) => `<button class="sub ${x.done ? 'done' : ''}" data-act="sub-toggle" data-id="${task.id}" data-sid="${x.id}"><i class="check small ${x.done ? 'done' : ''}">${x.done ? icon('check') : ''}</i><span>${esc(x.text)}</span></button>`).join('')}</div>` : ''}
         <button class="fl-addstep" data-act="sub-add" data-id="${task.id}">${icon('plus')} Add a step</button>
@@ -462,8 +462,8 @@ function todoRow(t, full = false) {
   const subs = t.subtasks || [];
   const left = subs.filter((x) => !x.done).length;
   const progress = subs.length ? `<span class="steps ${left ? '' : 'all'}">${subs.length - left}/${subs.length}</span>` : '';
-  const row = `<div class="item ${t.done ? 'done' : ''}">
-    <button class="check ${t.done ? 'done' : ''}" data-act="todo-toggle" data-id="${t.id}">${t.done ? icon('check') : ''}</button>
+  const row = `<div class="item ${t.done ? 'done' : ''} ${t.finishing && !full ? 'finishing' : ''}">
+    <button class="check ${t.done || t.finishing ? 'done' : ''}" data-act="todo-toggle" data-id="${t.id}">${t.done || t.finishing ? icon('check') : ''}</button>
     <div class="t"><b class="wrap">${esc(t.text)}</b>${full && t.source?.why ? `<span>${esc(t.source.why)}</span>` : ''}</div>
     ${progress}
     ${t.tag ? `<span class="tag">${esc(t.tag)}</span>` : ''}
@@ -473,7 +473,7 @@ function todoRow(t, full = false) {
   </div>`;
   if (!full) return row;
   // The full list shows the steps under each task, plus any change that came in by email.
-  return `<div class="task ${t.done ? 'done' : ''}">${row}
+  return `<div class="task ${t.done ? 'done' : ''} ${t.finishing ? 'finishing' : ''}">${row}
     ${(t.updates || []).map((u) => `<div class="task-update">${icon('mail')}<span>${esc(u.note)}${u.from ? ` <i>· ${esc(u.from.replace(/\s*<.*>/, ''))}</i>` : ''}</span><button class="icon-btn" data-act="update-clear" data-id="${t.id}" aria-label="Dismiss">${icon('x')}</button></div>`).join('')}
     ${subs.length || !t.done ? `<div class="subs">
       ${subs.map((x) => `<div class="sub ${x.done ? 'done' : ''}"><button class="check small ${x.done ? 'done' : ''}" data-act="sub-toggle" data-id="${t.id}" data-sid="${x.id}">${x.done ? icon('check') : ''}</button><span>${esc(x.text)}</span>
@@ -1398,9 +1398,12 @@ document.addEventListener('click', async (e) => {
         }
         t.subtasks = act === 'sub-del' ? t.subtasks.filter((x) => x.id !== el.dataset.sid)
           : t.subtasks.map((x) => (x.id === el.dataset.sid ? { ...x, done: !x.done } : x));
-        if (act === 'sub-toggle' && t.subtasks.find((x) => x.id === el.dataset.sid)?.done) chime('soft');
+        // Ticking the last step finishes the task: it plays out, then moves to Done.
+        const allDone = act === 'sub-toggle' && !t.done && t.subtasks.length && t.subtasks.every((x) => x.done);
+        if (allDone) { t.finishing = true; chime('done'); setTimeout(() => { delete t.finishing; t.done = true; t.doneAt = Date.now(); render(); }, 1100); }
+        else if (act === 'sub-toggle' && t.subtasks.find((x) => x.id === el.dataset.sid)?.done) chime('soft');
         render();
-        await api('PATCH', `/api/todos/${t.id}`, { subtasks: t.subtasks });
+        await api('PATCH', `/api/todos/${t.id}`, allDone ? { subtasks: t.subtasks, done: true } : { subtasks: t.subtasks });
         break;
       }
       case 'mode':
