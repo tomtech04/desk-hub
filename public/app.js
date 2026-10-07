@@ -229,28 +229,27 @@ function renderLock() {
         <p>${d.wasFocus ? `${d.minutes} minute${d.minutes === 1 ? '' : 's'} of focus${T.label ? ` on ${esc(T.label)}` : ''} · ${D.focus.todayMinutes} min today` : 'Ready for the next one?'}</p>
         <div class="cycle">${[0, 1, 2, 3].map((i) => `<i class="${i < (T.cycle || (d.wasFocus ? 4 : 0)) ? 'on' : ''}"></i>`).join('')}</div>
         <div class="fl-actions">
-          ${d.wasFocus ? `<button class="btn primary" data-act="lock-break">${icon('play')} ${T.phase === 'long' ? 'Long break' : 'Short break'} · ${phaseMinutes(T.phase)} min</button>`
-                       : `<button class="btn primary" data-act="lock-next">${icon('play')} Next focus · ${phaseMinutes('focus')} min</button>`}
-          <button class="btn ghost" data-act="lock-leave">Done for now</button>
+          ${d.wasFocus ? `<button class="pill solid wide" data-act="lock-break">${T.phase === 'long' ? 'Long break' : 'Break'} · ${phaseMinutes(T.phase)} min</button>`
+                       : `<button class="pill solid wide" data-act="lock-next">Focus · ${phaseMinutes('focus')} min</button>`}
+          <button class="pill" data-act="lock-leave">Done</button>
         </div></div>`;
   } else {
     const active = T.running || T.remaining != null;
     html = `<div class="fl-top">${isFocus ? `Focus · session ${T.cycle + 1} of 4` : PHASES[T.phase]}</div>
       <div class="fl-ring ${T.running ? 'running' : 'paused'} ${isFocus ? 'focus' : 'break'}">
-        <div class="fl-halo"></div>
-        ${ring(520, 14, active ? 1 - tLeft() / tTotal() : 0, color)}
+        ${ring(520, 3, active ? 1 - tLeft() / tTotal() : 0, '#f5f5f7')}
         <div class="fl-center"><div class="fl-time" data-timer>${fmtLeft(tLeft())}</div>
           <div class="fl-label">${T.running ? esc(T.label || (isFocus ? 'Stay with it' : 'Rest')) : 'Paused'}</div></div>
       </div>
       <div class="fl-controls">
-        ${T.running ? `<button class="btn" data-act="t-pause">${icon('pause')} Pause</button>` : `<button class="btn primary" data-act="lock-resume">${icon('play')} Resume</button>`}
-        <button class="btn" data-act="t-adj" data-min="5">+5 min</button>
-        <button class="btn" data-act="t-skip">${icon('skip')} ${isFocus ? 'End early' : 'Skip break'}</button>
+        ${T.running ? `<button class="pill" data-act="t-pause">Pause</button>` : `<button class="pill solid" data-act="lock-resume">Resume</button>`}
+        <button class="pill" data-act="t-adj" data-min="5">+5 min</button>
+        <button class="pill" data-act="t-skip">${isFocus ? 'End' : 'Skip'}</button>
       </div>${hold('Hold to leave')}`;
   }
   // The time text and ring are updated by the per-second tick; only redraw when the shape changes.
   const key = html.replace(/data-timer>[^<]*</, 'data-timer><').replace(/stroke-dashoffset="[^"]*"/, '');
-  if (el.dataset.html !== key) { el.innerHTML = `<div class="fl-bg ${isFocus ? 'focus' : 'break'}"></div>${html}`; el.dataset.html = key; }
+  if (el.dataset.html !== key) { el.innerHTML = html; el.dataset.html = key; }
   el.hidden = false;
 }
 
@@ -391,41 +390,27 @@ function eventRow(e) {
 
 const dialMax = (phase) => (phase === 'focus' ? 90 : 30);
 const dialPresets = (phase) => (phase === 'focus' ? [15, 25, 45, 60, 90] : [3, 5, 10, 15, 20]);
-const DIAL = { c: 300, r: 244 };
+const DIAL = { c: 300, r: 250 };
 const polar = (r, frac) => { const a = frac * 2 * Math.PI - Math.PI / 2; return [DIAL.c + r * Math.cos(a), DIAL.c + r * Math.sin(a)]; };
 
-/** minutes = null draws the running state (an arc that fills with elapsed time, no knob). */
+/** minutes = null draws the running state (an arc that fills with elapsed time, no handle). */
 function dialSvg(minutes, max, elapsedFrac) {
   const circ = 2 * Math.PI * DIAL.r;
   const frac = minutes == null ? elapsedFrac : minutes / max;
-  const step = max / 90 >= 1 ? 1 : max / 30 >= 1 ? 1 : 1; // one tick per minute
-  let ticks = '';
-  for (let m = 0; m < max; m += step) {
-    const major = m % (max === 90 ? 15 : 5) === 0, mid = m % 5 === 0;
-    const [x1, y1] = polar(major ? 272 : mid ? 278 : 282, m / max), [x2, y2] = polar(292, m / max);
-    ticks += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="${major ? 'maj' : mid ? 'mid' : ''}"/>`;
-  }
-  let labels = '';
-  for (let m = max === 90 ? 15 : 5; m <= max; m += max === 90 ? 15 : 5) {
-    const [x, y] = polar(204, m / max);
-    labels += `<text x="${x.toFixed(1)}" y="${(y + 6).toFixed(1)}" text-anchor="middle">${m}</text>`;
+  // Twelve quiet marks, like a watch face; nothing else on the ring.
+  let marks = '';
+  for (let i = 0; i < 12; i++) {
+    const [x1, y1] = polar(DIAL.r + 16, i / 12), [x2, y2] = polar(DIAL.r + (i % 3 === 0 ? 28 : 23), i / 12);
+    marks += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
   }
   const [kx, ky] = polar(DIAL.r, frac);
   return `<svg viewBox="0 0 600 600" class="dial-svg">
-    <defs>
-      <radialGradient id="dface" cx="50%" cy="38%" r="70%"><stop offset="0%" stop-color="#262b33"/><stop offset="100%" stop-color="#101216"/></radialGradient>
-      <linearGradient id="darc" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" class="arc-a"/><stop offset="100%" class="arc-b"/></linearGradient>
-      <filter id="dglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7"/></filter>
-    </defs>
-    <g class="dial-ticks">${ticks}</g>
+    <g class="dial-marks">${marks}</g>
     <circle cx="300" cy="300" r="${DIAL.r}" class="dial-track"/>
     <g transform="rotate(-90 300 300)">
-      <circle cx="300" cy="300" r="${DIAL.r}" class="dial-glow" stroke-dasharray="${circ}" stroke-dashoffset="${circ * (1 - frac)}" data-c="${circ}" ${minutes == null ? 'data-follow' : ''}/>
       <circle cx="300" cy="300" r="${DIAL.r}" class="dial-arc ${minutes == null ? 'ring-fg' : ''}" stroke-dasharray="${circ}" stroke-dashoffset="${circ * (1 - frac)}" data-c="${circ}"/>
     </g>
-    <circle cx="300" cy="300" r="212" fill="url(#dface)" class="dial-face"/>
-    <g class="dial-labels">${labels}</g>
-    ${minutes == null ? '' : `<g class="dial-knob" transform="translate(${kx.toFixed(1)} ${ky.toFixed(1)})"><circle r="26" class="k-halo"/><circle r="17" class="k-body"/><circle r="6" class="k-dot"/></g>`}
+    ${minutes == null ? '' : `<g class="dial-knob" transform="translate(${kx.toFixed(1)} ${ky.toFixed(1)})"><circle r="30" class="k-hit"/><circle r="11" class="k-body"/></g>`}
   </svg>`;
 }
 
@@ -434,12 +419,12 @@ function dialShow(m) {
   const d = $('[data-dial]');
   if (!d) return;
   const max = dialMax(T.phase), frac = m / max, circ = 2 * Math.PI * DIAL.r;
-  d.querySelectorAll('.dial-arc, .dial-glow').forEach((el) => el.setAttribute('stroke-dashoffset', circ * (1 - frac)));
+  d.querySelectorAll('.dial-arc').forEach((el) => el.setAttribute('stroke-dashoffset', circ * (1 - frac)));
   const [x, y] = polar(DIAL.r, frac);
   d.querySelector('.dial-knob')?.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
   const num = d.querySelector('[data-dial-num]'); if (num) num.textContent = m;
-  const ends = d.querySelector('[data-dial-ends]'); if (ends) ends.textContent = `until ${hm(Date.now() + m * 60e3)}`;
-  document.querySelectorAll('.f2-presets button').forEach((b) => b.classList.toggle('on', Number(b.dataset.min) === m));
+  const ends = d.querySelector('[data-dial-ends]'); if (ends) ends.textContent = `Ends ${hm(Date.now() + m * 60e3)}`;
+  document.querySelectorAll('.f3-presets button').forEach((b) => b.classList.toggle('on', Number(b.dataset.min) === m));
 }
 
 function dialSet(m) {
@@ -558,63 +543,46 @@ const VIEWS = {
     const active = T.running || T.remaining != null;
     const isFocus = T.phase === 'focus';
     const mins = phaseMinutes(T.phase);
-    const max = dialMax(T.phase);
     const open = realTodos().filter((t) => !t.done).sort(todoSort).slice(0, 3);
     const sessions = D.focus.today || [];
-
-    // The day as a strip, 6am to midnight, with each finished session where it happened.
     const dayFrom = dayStart() + 6 * 3600e3, daySpan = 18 * 3600e3;
     const pos = (ms) => Math.min(100, Math.max(0, ((ms - dayFrom) / daySpan) * 100));
-    const strip = `<div class="daystrip">
-        ${sessions.map((f) => `<i style="left:${pos(f.at - f.minutes * 60e3)}%;width:${Math.max(1.2, (f.minutes * 60e3 / daySpan) * 100)}%" title="${f.minutes} min"></i>`).join('')}
-        <b style="left:${pos(Date.now())}%"></b>
-      </div>
-      <div class="daystrip-labels"><span>6 AM</span><span>12 PM</span><span>6 PM</span><span>12 AM</span></div>`;
 
-    return `<div class="focus2 ${isFocus ? 'is-focus' : 'is-break'}">
-      <div class="f2-bg"></div>
-
-      <header class="f2-head">
-        <div class="f2-phases">${Object.entries(PHASES).map(([k, v]) => `<button class="${T.phase === k ? 'on' : ''}" data-act="t-phase" data-phase="${k}">${v}</button>`).join('')}</div>
-        <div class="f2-cycle" aria-label="Session ${T.cycle + 1} of 4">${[0, 1, 2, 3].map((i) => `<i class="${i < T.cycle ? 'done' : i === T.cycle && isFocus ? 'now' : ''}"></i>`).join('')}<span>${isFocus ? `Session ${T.cycle + 1} of 4` : 'Break'}</span></div>
+    return `<div class="f3">
+      <header class="f3-head">
+        <nav class="f3-tabs">${Object.entries(PHASES).map(([k, v]) => `<button class="${T.phase === k ? 'on' : ''}" data-act="t-phase" data-phase="${k}">${v}</button>`).join('')}</nav>
+        <div class="f3-cycle" aria-label="Session ${T.cycle + 1} of 4">${[0, 1, 2, 3].map((i) => `<i class="${i < T.cycle ? 'done' : i === T.cycle && isFocus ? 'now' : ''}"></i>`).join('')}</div>
       </header>
 
-      <div class="f2-dialwrap">
+      <div class="f3-stage">
         <div class="dial ${active ? 'active' : 'idle'}" data-dial data-noscroll>
-          ${dialSvg(active ? null : mins, max, active ? 1 - tLeft() / tTotal() : 0)}
+          ${dialSvg(active ? null : mins, dialMax(T.phase), active ? 1 - tLeft() / tTotal() : 0)}
           <div class="dial-center">
             ${active
               ? `<div class="dial-time" data-timer>${fmtLeft(tLeft())}</div>
-                 <div class="dial-sub">${T.running ? `ends at ${hm(T.endsAt)}` : 'Paused'}</div>
-                 <div class="dial-btns">
-                   ${T.running ? `<button class="go ghost" data-act="t-pause">${icon('pause')}</button>` : `<button class="go" data-act="t-start">${icon('play')}</button>`}
-                   <button class="go ghost" data-act="t-reset" aria-label="Reset">${icon('reset')}</button>
-                 </div>`
-              : `<div class="dial-num"><span data-dial-num>${mins}</span><small>min</small></div>
-                 <div class="dial-sub" data-dial-ends>until ${hm(Date.now() + mins * 60e3)}</div>
-                 <button class="go big" data-act="t-start">${icon('play')}<span>${isFocus ? 'Begin' : 'Start break'}</span></button>`}
+                 <div class="dial-sub">${T.running ? `Ends ${hm(T.endsAt)}` : 'Paused'}</div>`
+              : `<div class="dial-num"><span data-dial-num>${mins}</span></div>
+                 <div class="dial-sub"><span class="unit">minutes</span><span data-dial-ends>Ends ${hm(Date.now() + mins * 60e3)}</span></div>`}
           </div>
         </div>
-        ${active ? '' : `<div class="f2-hint">Drag the ring to set the time</div>`}
+        ${active
+          ? `<div class="f3-actions">${T.running ? `<button class="pill" data-act="t-pause">Pause</button>` : `<button class="pill solid" data-act="t-start">Resume</button>`}<button class="pill" data-act="t-reset">Reset</button></div>`
+          : `<div class="f3-presets">${dialPresets(T.phase).map((m) => `<button class="${m === mins ? 'on' : ''}" data-act="t-set" data-min="${m}">${m}</button>`).join('')}</div>
+             <div class="f3-actions"><button class="pill solid wide" data-act="t-start">${isFocus ? 'Begin' : 'Start break'}</button></div>`}
       </div>
 
-      ${active ? '' : `<div class="f2-presets">${dialPresets(T.phase).map((m) => `<button class="${m === mins ? 'on' : ''}" data-act="t-set" data-min="${m}">${m}</button>`).join('')}</div>`}
-
-      <section class="f2-work">
+      <section class="f3-list">
         <h3>Working on</h3>
-        <div class="f2-cards">
-          <button class="wcard ${!T.label ? 'on' : ''}" data-act="t-label" data-label=""><b>Just focus</b><span>No task attached</span></button>
-          ${open.map((t) => { const subs = t.subtasks || [], left = subs.filter((x) => !x.done).length;
-            return `<button class="wcard ${T.label === t.text ? 'on' : ''}" data-act="t-label" data-label="${esc(t.text)}"><b>${esc(t.text)}</b>
-              <span>${esc([t.tag, subs.length ? `${subs.length - left}/${subs.length} steps` : '', t.due && t.due < dayStart(1) ? 'due today' : ''].filter(Boolean).join(' · ') || 'Task')}</span></button>`; }).join('')}
-        </div>
+        <button class="f3-row ${!T.label ? 'on' : ''}" data-act="t-label" data-label=""><span>Nothing in particular</span><i></i></button>
+        ${open.map((t) => { const subs = t.subtasks || [], left = subs.filter((x) => !x.done).length;
+          return `<button class="f3-row ${T.label === t.text ? 'on' : ''}" data-act="t-label" data-label="${esc(t.text)}"><span>${esc(t.text)}</span>
+            <em>${esc(subs.length ? `${subs.length - left} of ${subs.length}` : t.due && t.due < dayStart(1) ? 'Today' : t.tag || '')}</em><i></i></button>`; }).join('')}
       </section>
 
-      <section class="f2-day">
-        <div class="f2-stats"><div><b>${D.focus.todayMinutes}</b><span>min today</span></div><div><b>${D.focus.todaySessions}</b><span>session${D.focus.todaySessions === 1 ? '' : 's'}</span></div>
-          <div><b>${D.focus.week.reduce((a, d) => a + d.minutes, 0)}</b><span>min this week</span></div></div>
-        ${strip}
-      </section>
+      <footer class="f3-day">
+        <div class="f3-line"><span><b>${D.focus.todayMinutes}</b> min today</span><span><b>${D.focus.todaySessions}</b> session${D.focus.todaySessions === 1 ? '' : 's'}</span><span><b>${D.focus.week.reduce((a, d) => a + d.minutes, 0)}</b> min this week</span></div>
+        <div class="f3-strip">${sessions.map((f) => `<i style="left:${pos(f.at - f.minutes * 60e3)}%;width:${Math.max(0.8, (f.minutes * 60e3 / daySpan) * 100)}%"></i>`).join('')}<b style="left:${pos(Date.now())}%"></b></div>
+      </footer>
     </div>`;
   },
 
