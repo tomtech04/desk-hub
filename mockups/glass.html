@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desk Hub · Glass mockup</title>
+<style>
+  /* A static mockup: nothing here is wired to the hub. Three screens at the
+     Pi's 720×1280, drawn at half size, with a backdrop and day/night switch. */
+  :root {
+    --ink: #ffffff; --ink-2: rgba(255,255,255,.74); --ink-3: rgba(255,255,255,.5);
+    --fill-a: .13; --fill-b: .05; --edge: .30; --line: rgba(255,255,255,.14);
+    --accent: #ffd27a;
+    font-family: -apple-system, "SF Pro Display", "SF Pro Text", Inter, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0d0e12; color: #e9eaee; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+
+  .page { max-width: 1240px; margin: 0 auto; padding: 28px 24px 60px; }
+  .page h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; }
+  .page p.lead { margin: 0 0 20px; color: #9aa0ab; font-size: 14px; max-width: 70ch; line-height: 1.5; }
+  .controls { display: flex; flex-wrap: wrap; gap: 22px; align-items: center; margin-bottom: 26px; }
+  .controls .grp { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #9aa0ab; }
+  .seg { display: inline-flex; padding: 4px; border-radius: 12px; background: #1b1d23; }
+  .seg button { padding: 8px 14px; border-radius: 9px; font-size: 13px; font-weight: 500; color: #9aa0ab; }
+  .seg button.on { background: #f2f3f5; color: #111; }
+  .frames { display: flex; flex-wrap: wrap; gap: 26px; }
+  .frame-wrap { width: 360px; }
+  .frame-wrap h2 { font-size: 13px; font-weight: 600; color: #9aa0ab; margin: 0 0 10px; letter-spacing: .04em; text-transform: uppercase; }
+  .scaler { width: 360px; height: 640px; border-radius: 22px; overflow: hidden; box-shadow: 0 0 0 1px #2a2d35, 0 24px 60px #0009; }
+
+  /* ---------- the device, at real size, scaled to half ---------- */
+  .device { position: relative; width: 720px; height: 1280px; transform: scale(.5); transform-origin: top left; overflow: hidden; color: var(--ink); }
+  .wall { position: absolute; inset: 0; background: var(--base); }
+  .wall::before, .wall::after, .wall i { content: ""; position: absolute; border-radius: 50%; filter: blur(90px); }
+  .wall::before { width: 760px; height: 760px; left: -260px; top: -200px; background: var(--b1); opacity: var(--bo); }
+  .wall::after  { width: 700px; height: 700px; right: -260px; top: 380px; background: var(--b2); opacity: var(--bo); }
+  .wall i       { width: 640px; height: 640px; left: 60px; bottom: -280px; background: var(--b3); opacity: var(--bo); }
+
+  body[data-wall="aurora"]   { --base: #0e1424; --b1: #2a4fa8; --b2: #5a47a6; --b3: #1f7f86; }
+  body[data-wall="dusk"]     { --base: #1a1220; --b1: #a8553f; --b2: #7a3f8f; --b3: #9c6a2a; }
+  body[data-wall="graphite"] { --base: #16181d; --b1: #4a556b; --b2: #3a4152; --b3: #5d6678; }
+  body[data-time="night"] { --bo: .55; --smoke: .30; }
+  /* Daytime: brighter backdrop, more solid panels, heavier text. */
+  body[data-time="day"]   { --bo: .8; --smoke: .12; --fill-a: .24; --fill-b: .13; --edge: .5; --ink-2: rgba(255,255,255,.9); --ink-3: rgba(255,255,255,.7); --line: rgba(255,255,255,.22); }
+  body[data-time="day"] .wall { filter: brightness(1.38); }
+  body[data-time="day"] .device { font-weight: 500; }
+
+  .glass {
+    /* A light sheen over a faint smoke tint, so text stays readable on any backdrop. */
+    background: linear-gradient(180deg, rgba(255,255,255,var(--fill-a)), rgba(255,255,255,var(--fill-b))), rgba(14,16,24,var(--smoke));
+    -webkit-backdrop-filter: blur(34px) saturate(125%); backdrop-filter: blur(34px) saturate(125%);
+    border-radius: 34px;
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,var(--edge)), inset 0 0 0 1px rgba(255,255,255,.09), 0 18px 44px rgba(0,0,0,.22);
+  }
+  .screen { position: absolute; inset: 0; padding: 30px 26px 150px; display: flex; flex-direction: column; gap: 18px; }
+  .label { font-size: 15px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); display: flex; align-items: center; gap: 10px; }
+  .label .r { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--ink-3); }
+  svg.i { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* floating tab bar */
+  .tabbar { position: absolute; left: 26px; right: 26px; bottom: 26px; height: 100px; border-radius: 50px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; }
+  .tabbar span { width: 72px; height: 72px; border-radius: 36px; display: grid; place-items: center; color: var(--ink-2); }
+  .tabbar span svg { width: 34px; height: 34px; }
+  .tabbar span.on { color: #fff; background: rgba(255,255,255,.22); box-shadow: inset 0 1px 0 rgba(255,255,255,.4); }
+
+  /* ---------- home ---------- */
+  .hero { padding: 6px 8px 0; }
+  .hero .time { font-size: 150px; font-weight: 300; letter-spacing: -.045em; line-height: .95; }
+  .hero .time small { font-size: 40px; font-weight: 400; color: var(--ink-2); letter-spacing: 0; margin-left: 8px; }
+  .hero .date { font-size: 28px; font-weight: 500; margin-top: 8px; }
+  .hero .wx { font-size: 21px; color: var(--ink-2); margin-top: 6px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .card { padding: 24px; display: flex; flex-direction: column; gap: 12px; }
+  .big { font-size: 58px; font-weight: 600; letter-spacing: -.035em; line-height: 1; }
+  .sub { font-size: 18px; color: var(--ink-2); }
+  .kv { display: flex; gap: 18px; margin-top: 4px; }
+  .kv div b { display: block; font-size: 24px; font-weight: 600; }
+  .kv div span { font-size: 15px; color: var(--ink-3); }
+  .up { color: #8ff0c0; font-weight: 600; font-size: 17px; }
+  .minirow { display: flex; align-items: center; gap: 18px; }
+  .miniring { width: 92px; height: 92px; border-radius: 50%; box-shadow: inset 0 0 0 5px rgba(255,255,255,.22); display: grid; place-items: center; font-size: 24px; font-weight: 600; }
+  .cta { height: 62px; padding: 0 30px; border-radius: 31px; background: #fff; color: #111; font-size: 20px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+  .rows { display: flex; flex-direction: column; }
+  .rowi { display: flex; align-items: center; gap: 16px; padding: 15px 0; border-top: 1px solid var(--line); }
+  .rowi:first-child { border-top: 0; padding-top: 4px; }
+  .rowi .t { flex: 1; min-width: 0; }
+  .rowi .t b { display: block; font-size: 21px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rowi .t span { font-size: 16px; color: var(--ink-3); }
+  .rowi .when { font-size: 17px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+  .rowi .when.now { color: var(--accent); }
+  .bar { width: 5px; height: 42px; border-radius: 3px; background: #9cc4ff; }
+  .chk { width: 36px; height: 36px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255,255,255,.55); flex: none; }
+  .chk.done { background: #8ff0c0; box-shadow: none; display: grid; place-items: center; color: #0b3d24; }
+  .chk.done svg { width: 20px; height: 20px; stroke-width: 3; }
+  .tag { font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 5px 10px; border-radius: 9px; background: rgba(255,255,255,.16); color: var(--ink-2); }
+  .digest b { font-size: 20px; font-weight: 600; line-height: 1.3; display: block; }
+  .digest ul { margin: 8px 0 0; padding-left: 20px; color: var(--ink-2); font-size: 17px; line-height: 1.4; }
+
+  /* ---------- focus ---------- */
+  .tabs { display: flex; gap: 8px; padding: 6px; border-radius: 34px; align-self: flex-start; }
+  .tabs span { height: 52px; padding: 0 22px; border-radius: 26px; display: inline-flex; align-items: center; font-size: 19px; font-weight: 500; color: var(--ink-2); }
+  .tabs span.on { background: rgba(255,255,255,.9); color: #111; font-weight: 600; }
+  .dialwrap { display: grid; place-items: center; padding: 6px 0 2px; }
+  .dial { position: relative; width: 520px; height: 520px; border-radius: 50%; }
+  .dial svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .dial .c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .dial .n { font-size: 178px; font-weight: 300; letter-spacing: -.05em; line-height: .9; }
+  .dial .u { font-size: 17px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-2); margin-top: 10px; }
+  .dial .e { font-size: 20px; color: var(--ink-2); margin-top: 6px; }
+  .presets { display: flex; justify-content: center; gap: 12px; }
+  .presets span { width: 70px; height: 70px; border-radius: 50%; display: grid; place-items: center; font-size: 22px; font-weight: 500; color: var(--ink-2); }
+  .presets span.on { background: rgba(255,255,255,.9); color: #111; font-weight: 600; }
+  .center { display: flex; justify-content: center; }
+  .cta.wide { min-width: 280px; height: 72px; border-radius: 36px; font-size: 23px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255,255,255,.5); flex: none; }
+  .dot.on { background: #fff; box-shadow: none; }
+
+  /* ---------- to do ---------- */
+  .head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; }
+  .head h3 { font-size: 46px; font-weight: 600; letter-spacing: -.03em; margin: 0; }
+  .chips { display: flex; gap: 10px; }
+  .chips span { height: 50px; padding: 0 20px; border-radius: 25px; display: inline-flex; align-items: center; font-size: 18px; font-weight: 500; color: var(--ink-2); }
+  .chips span.on { background: rgba(255,255,255,.9); color: #111; font-weight: 600; }
+  .keep { height: 50px; padding: 0 20px; border-radius: 25px; background: #fff; color: #111; font-weight: 600; font-size: 17px; display: inline-flex; align-items: center; }
+  .steps { margin: -4px 0 8px 52px; display: flex; flex-direction: column; gap: 12px; color: var(--ink-2); font-size: 19px; }
+  .steps div { display: flex; align-items: center; gap: 14px; }
+  .steps .chk { width: 28px; height: 28px; }
+  .steps .chk.done svg { width: 15px; height: 15px; }
+  .steps .struck { text-decoration: line-through; color: var(--ink-3); }
+  .count { font-size: 14px; font-weight: 700; padding: 5px 10px; border-radius: 9px; background: rgba(255,255,255,.16); }
+
+  .notes { margin-top: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; font-size: 13.5px; line-height: 1.5; color: #9aa0ab; }
+  .notes b { color: #e9eaee; display: block; margin-bottom: 4px; font-size: 14px; }
+</style>
+</head>
+<body data-wall="aurora" data-time="night">
+<div class="page">
+  <h1>Desk Hub · Glass direction</h1>
+  <p class="lead">A mockup only. Nothing on the hub or the Pi has changed. Three screens at the Pi's real proportions. Try the backdrops and the Day setting, then tell me which combination to build.</p>
+
+  <div class="controls">
+    <div class="grp">Backdrop
+      <div class="seg" id="wall"><button data-v="aurora" class="on">Aurora</button><button data-v="dusk">Dusk</button><button data-v="graphite">Graphite</button></div>
+    </div>
+    <div class="grp">Time of day
+      <div class="seg" id="time"><button data-v="night" class="on">Night</button><button data-v="day">Day (brighter)</button></div>
+    </div>
+  </div>
+
+  <div class="frames">
+    <!-- ================= HOME ================= -->
+    <div class="frame-wrap"><h2>Home</h2><div class="scaler"><div class="device">
+      <div class="wall"><i></i></div>
+      <div class="screen">
+        <div class="hero">
+          <div class="time">3:40<small>PM</small></div>
+          <div class="date">Wednesday, October 7</div>
+          <div class="wx">76° and clear · high 81° · rain around 9pm</div>
+        </div>
+        <div class="grid2">
+          <div class="glass card">
+            <div class="label">Focus <span class="r">50 min today</span></div>
+            <div class="minirow"><div class="miniring">25</div><div class="cta" style="flex:1">Begin</div></div>
+          </div>
+          <div class="glass card">
+            <div class="label">PayIt today <span class="r">All up</span></div>
+            <div class="big">$186</div>
+            <div class="up">▲ 12% vs. yesterday</div>
+            <div class="kv"><div><b>8</b><span>sales</span></div><div><b>$5.78</b><span>profit</span></div></div>
+          </div>
+        </div>
+        <div class="glass card">
+          <div class="label">Up next</div>
+          <div class="rows">
+            <div class="rowi"><span class="bar"></span><div class="t"><b>Studio Workshop</b><span>Maker Space</span></div><span class="when now">6:00 PM</span></div>
+            <div class="rowi"><span class="bar"></span><div class="t"><b>PSYC 2220 Team Meeting</b><span>Tomorrow</span></div><span class="when">Thu 6:15 PM</span></div>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="glass card">
+            <div class="label">To do <span class="r">2 due</span></div>
+            <div class="rows">
+              <div class="rowi"><span class="chk"></span><div class="t"><b>Lab 2 report</b></div></div>
+              <div class="rowi"><span class="chk"></span><div class="t"><b>Problem set 4</b></div></div>
+            </div>
+          </div>
+          <div class="glass card digest">
+            <div class="label">Mail digest</div>
+            <b>Lab 2 is now due Thursday night.</b>
+            <ul><li>Rubric adds an uncertainty section</li><li>Exam 2 is Oct 14 in Klaus</li></ul>
+          </div>
+        </div>
+      </div>
+      <div class="glass tabbar"></div>
+    </div></div></div>
+
+    <!-- ================= FOCUS ================= -->
+    <div class="frame-wrap"><h2>Focus</h2><div class="scaler"><div class="device">
+      <div class="wall"><i></i></div>
+      <div class="screen">
+        <div class="glass tabs"><span class="on">Focus</span><span>Short break</span><span>Long break</span></div>
+        <div class="dialwrap"><div class="glass dial">
+          <svg viewBox="0 0 520 520">
+            <circle cx="260" cy="260" r="222" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="3"/>
+            <g transform="rotate(-90 260 260)"><circle cx="260" cy="260" r="222" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-dasharray="1394.9" stroke-dashoffset="1007.4"/></g>
+            <circle cx="476.5" cy="309.2" r="17" fill="#fff"/><circle cx="476.5" cy="309.2" r="30" fill="rgba(255,255,255,.22)"/>
+          </svg>
+          <div class="c"><div class="n">25</div><div class="u">minutes</div><div class="e">Ends 4:05 PM</div></div>
+        </div></div>
+        <div class="presets"><span class="glass">15</span><span class="on">25</span><span class="glass">45</span><span class="glass">60</span><span class="glass">90</span></div>
+        <div class="center"><div class="cta wide">Begin</div></div>
+        <div class="glass card">
+          <div class="label">Working on</div>
+          <div class="rows">
+            <div class="rowi"><div class="t"><b>Lab 2 report</b><span>1 of 3 steps · due Thursday</span></div><span class="dot on"></span></div>
+            <div class="rowi"><div class="t"><b>Problem set 4 (Dynamics)</b><span>School</span></div><span class="dot"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="glass tabbar"></div>
+    </div></div></div>
+
+    <!-- ================= TO DO ================= -->
+    <div class="frame-wrap"><h2>To do</h2><div class="scaler"><div class="device">
+      <div class="wall"><i></i></div>
+      <div class="screen">
+        <div class="head"><h3>To do</h3><div class="cta" style="height:58px;padding:0 26px">+ Add</div></div>
+        <div class="glass card">
+          <div class="label">Suggested from email <span class="r">Keep the real ones</span></div>
+          <div class="rows">
+            <div class="rowi"><div class="t"><b>Add uncertainty analysis to Lab 2</b><span>Prof. Ramirez · rubric update</span></div><span class="keep">Keep</span></div>
+          </div>
+        </div>
+        <div class="chips"><span class="on">All open</span><span class="glass">Due today</span><span class="glass">School</span><span class="glass">PayIt</span></div>
+        <div class="glass card" style="flex:1">
+          <div class="rows">
+            <div class="rowi"><span class="chk"></span><div class="t"><b>Finish Lab 2 report</b><span>Prof. Ramirez · rubric update</span></div><span class="count">1/3</span><span class="tag">School</span><span class="when now">Thu</span></div>
+            <div class="steps">
+              <div><span class="chk done"><svg class="i" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span><span class="struck">Add the uncertainty section</span></div>
+              <div><span class="chk"></span>Re-check figures against the rubric</div>
+              <div><span class="chk"></span>Submit on Canvas by 11:59pm</div>
+            </div>
+            <div class="rowi"><span class="chk"></span><div class="t"><b>Problem set 4 (Dynamics)</b></div><span class="tag">School</span><span class="when">Tomorrow</span></div>
+            <div class="rowi"><span class="chk"></span><div class="t"><b>Review payout reconciliation</b></div><span class="tag">PayIt</span><span class="when now">Today</span></div>
+            <div class="rowi"><span class="chk"></span><div class="t"><b>Call the dentist</b><span>Voice note</span></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="glass tabbar"></div>
+    </div></div></div>
+  </div>
+
+  <div class="notes">
+    <div><b>What makes it "glass"</b>Panels are translucent and blur what's behind them, with a thin bright edge on top so they read as a physical layer. The nav bar floats as its own glass capsule instead of being a strip.</div>
+    <div><b>Daytime</b>"Day" brightens the backdrop, makes panels more solid and text heavier, so it holds up in a bright room. The hub could switch by time of day, the same way it already handles wind-down.</div>
+    <div><b>On the Pi</b>Real blur is heavy for the Pi's browser. Because the backdrop never moves, I can pre-blur it once and get this same look without the cost. I'd confirm it runs smoothly on the Pi before finishing.</div>
+  </div>
+</div>
+
+<script>
+  // Tab bar icons, the same set the hub uses.
+  const ICONS = {
+    home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+    focus: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
+    tasks: '<rect x="3" y="3" width="18" height="18" rx="5"/><path d="m8 12 3 3 5-6"/>',
+    payit: '<path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m3 7 9 6 9-6"/>',
+    journal: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+    schedule: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/>',
+    moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  };
+  const active = ['home', 'focus', 'tasks'];
+  document.querySelectorAll('.tabbar').forEach((bar, i) => {
+    bar.innerHTML = Object.entries(ICONS).map(([k, d]) => `<span class="${k === active[i] ? 'on' : ''}"><svg class="i" viewBox="0 0 24 24">${d}</svg></span>`).join('');
+  });
+  for (const id of ['wall', 'time']) {
+    document.getElementById(id).addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      document.body.dataset[id] = b.dataset.v;
+      document.querySelectorAll(`#${id} button`).forEach((x) => x.classList.toggle('on', x === b));
+    });
+  }
+</script>
+</body>
+</html>
