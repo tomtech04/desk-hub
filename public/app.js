@@ -138,10 +138,11 @@ function chime(kind = 'soft') {
 
 const PHASES = { focus: 'Focus', short: 'Short break', long: 'Long break' };
 const T = Object.assign(
-  { phase: 'focus', running: false, endsAt: 0, remaining: null, total: null, label: '', cycle: 0 },
+  { phase: 'focus', running: false, endsAt: 0, remaining: null, total: null, label: '', cycle: 0, lock: false, done: null },
   JSON.parse(localStorage.getItem('timer') || '{}'),
 );
 const saveT = () => localStorage.setItem('timer', JSON.stringify(T));
+if (T.lock && !T.running && T.remaining == null && !T.done) T.lock = false;
 const phaseMinutes = (p) => (p === 'focus' ? D?.settings.focusMinutes : p === 'short' ? D?.settings.shortBreak : D?.settings.longBreak) || 25;
 function tLeft() {
   if (T.running) return Math.max(0, T.endsAt - Date.now());
@@ -161,6 +162,7 @@ function timerAdjust(min) {
 }
 async function timerFinish(skipped = false) {
   const wasFocus = T.phase === 'focus';
+  const doneTotal = tTotal() - (skipped ? tLeft() : 0);
   T.running = false;
   if (wasFocus) {
     const minutes = Math.round((tTotal() - (skipped ? tLeft() : 0)) / 60e3);
@@ -170,7 +172,98 @@ async function timerFinish(skipped = false) {
   } else {
     timerReset('focus');
   }
-  if (!skipped) { chime('done'); toast({ level: 'info', title: wasFocus ? 'Focus session done — take a break' : 'Break over — ready to focus?' }); }
+  if (T.lock) {
+    // Stay in the locked screen and show what just happened.
+    T.done = { wasFocus, minutes: Math.round(doneTotal / 60e3), skipped };
+    saveT();
+    if (!skipped) chime('done');
+    renderLock();
+  } else if (!skipped) { chime('done'); toast({ level: 'info', title: wasFocus ? 'Focus session done — take a break' : 'Break over — ready to focus?' }); }
+}
+
+// ---------------------------------------------------------------------------
+// Focus lock: starting a focus session takes over the whole screen. Nothing
+// else is reachable, ordinary notifications wait, and leaving takes a
+// deliberate press-and-hold.
+// ---------------------------------------------------------------------------
+
+let lockCount = 0, lockCountTimer = null;
+const lockOn = () => D?.settings.focusLock !== false;
+
+function startFocus() {
+  if (!lockOn()) return timerStart();
+  T.lock = true; T.done = null; saveT();
+  // A fresh session gets a short "settle in" count; resuming a paused one doesn't.
+  if (!T.running && T.remaining == null) {
+    lockCount = 3; renderLock();
+    clearInterval(lockCountTimer);
+    lockCountTimer = setInterval(() => {
+      lockCount--;
+      if (lockCount <= 0) { clearInterval(lockCountTimer); if (T.lock) timerStart(); }
+      renderLock();
+    }, 1000);
+  } else timerStart();
+}
+
+function exitLock() {
+  clearInterval(lockCountTimer); lockCount = 0;
+  T.lock = false; T.done = null; saveT();
+  render();
+}
+
+function renderLock() {
+  const el = $('#focuslock');
+  if (!T.lock) { el.hidden = true; el.dataset.html = ''; return; }
+  const isFocus = T.phase === 'focus';
+  const color = isFocus ? 'var(--accent)' : 'var(--info)';
+  const hold = (label) => `<button class="fl-exit" data-hold="lock-exit"><i></i><span>${label}</span></button>`;
+  let html;
+  if (lockCount > 0) {
+    html = `<div class="fl-count"><div class="fl-kicker">Settle in</div><div class="fl-num" data-n="${lockCount}">${lockCount}</div>
+      <div class="fl-label">${esc(T.label || `${phaseMinutes('focus')} minutes of focus`)}</div></div>${hold('Hold to cancel')}`;
+  } else if (T.done) {
+    const d = T.done;
+    html = `<div class="fl-done ${d.wasFocus ? 'focus' : 'break'}">
+        <div class="fl-burst">${icon('check')}</div>
+        <h1>${d.wasFocus ? (d.skipped ? 'Session ended' : 'Session complete') : 'Break over'}</h1>
+        <p>${d.wasFocus ? `${d.minutes} minute${d.minutes === 1 ? '' : 's'} of focus${T.label ? ` on ${esc(T.label)}` : ''} · ${D.focus.todayMinutes} min today` : 'Ready for the next one?'}</p>
+        <div class="cycle">${[0, 1, 2, 3].map((i) => `<i class="${i < (T.cycle || (d.wasFocus ? 4 : 0)) ? 'on' : ''}"></i>`).join('')}</div>
+        <div class="fl-actions">
+          ${d.wasFocus ? `<button class="btn primary" data-act="lock-break">${icon('play')} ${T.phase === 'long' ? 'Long break' : 'Short break'} · ${phaseMinutes(T.phase)} min</button>`
+                       : `<button class="btn primary" data-act="lock-next">${icon('play')} Next focus · ${phaseMinutes('focus')} min</button>`}
+          <button class="btn ghost" data-act="lock-leave">Done for now</button>
+        </div></div>`;
+  } else {
+    const active = T.running || T.remaining != null;
+    html = `<div class="fl-top">${isFocus ? `Focus · session ${T.cycle + 1} of 4` : PHASES[T.phase]}</div>
+      <div class="fl-ring ${T.running ? 'running' : 'paused'} ${isFocus ? 'focus' : 'break'}">
+        <div class="fl-halo"></div>
+        ${ring(520, 14, active ? 1 - tLeft() / tTotal() : 0, color)}
+        <div class="fl-center"><div class="fl-time" data-timer>${fmtLeft(tLeft())}</div>
+          <div class="fl-label">${T.running ? esc(T.label || (isFocus ? 'Stay with it' : 'Rest')) : 'Paused'}</div></div>
+      </div>
+      <div class="fl-controls">
+        ${T.running ? `<button class="btn" data-act="t-pause">${icon('pause')} Pause</button>` : `<button class="btn primary" data-act="lock-resume">${icon('play')} Resume</button>`}
+        <button class="btn" data-act="t-adj" data-min="5">+5 min</button>
+        <button class="btn" data-act="t-skip">${icon('skip')} ${isFocus ? 'End early' : 'Skip break'}</button>
+      </div>${hold('Hold to leave')}`;
+  }
+  // The time text and ring are updated by the per-second tick; only redraw when the shape changes.
+  const key = html.replace(/data-timer>[^<]*</, 'data-timer><').replace(/stroke-dashoffset="[^"]*"/, '');
+  if (el.dataset.html !== key) { el.innerHTML = `<div class="fl-bg ${isFocus ? 'focus' : 'break'}"></div>${html}`; el.dataset.html = key; }
+  el.hidden = false;
+}
+
+// Press and hold to leave the lock (a stray tap shouldn't break a session).
+let holdTimer = null;
+document.addEventListener('pointerdown', (e) => {
+  const b = e.target.closest?.('[data-hold]');
+  if (!b) return;
+  b.classList.add('holding');
+  holdTimer = setTimeout(() => { b.classList.remove('holding'); if (b.dataset.hold === 'lock-exit') exitLock(); }, 1200);
+});
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) {
+  document.addEventListener(ev, () => { clearTimeout(holdTimer); document.querySelectorAll('.holding').forEach((b) => b.classList.remove('holding')); }, true);
 }
 
 function ring(size, stroke, frac, color) {
@@ -624,6 +717,7 @@ const VIEWS = {
           row('Focus length', '', step('focusMinutes', st.focusMinutes, 'm')),
           row('Short break', '', step('shortBreak', st.shortBreak, 'm')),
           row('Long break', '', step('longBreak', st.longBreak, 'm')),
+          row('Focus lock', 'A focus session takes over the screen until you hold to leave', toggle('focusLock')),
         ])}
         ${group('This hub', [
           row(esc(sys.host), `${sys.tempC != null ? `${sys.tempC.toFixed(0)}°C · ` : ''}load ${sys.load.toFixed(2)} · memory ${sys.memUsedPct}% · up ${sys.uptimeH}h`, ''),
@@ -763,6 +857,7 @@ function render() {
   renderRail();
   $('#view').innerHTML = winding() && view === 'home' ? windHome() : VIEWS[view]();
   renderMorning();
+  renderLock();
   drawCharts();
   if (!$('#drawer').hidden) renderDrawer();
 }
@@ -904,7 +999,7 @@ function handleAlerts() {
   if (seenAlerts) {
     const fresh = D.alerts.filter((a) => !seenAlerts.has(a.id));
     // During wind-down only real problems interrupt; everything else waits for morning.
-    if (winding()) fresh.splice(0, fresh.length, ...fresh.filter((a) => a.level !== 'info'));
+    if (winding() || (T.lock && T.running && T.phase === 'focus')) fresh.splice(0, fresh.length, ...fresh.filter((a) => a.level !== 'info'));
     if (fresh.length && D.mode === 'day') {
       fresh.slice(0, 3).forEach(toast);
       chime(fresh.some((a) => a.level !== 'info') ? 'alert' : 'soft');
@@ -965,7 +1060,11 @@ document.addEventListener('click', async (e) => {
     switch (act) {
       case 'go': go(el.dataset.view); break;
       case 'chart': ui.chartSel[el.dataset.id] = Number(el.dataset.i); render(); break;
-      case 't-start': timerStart(); break;
+      case 't-start': if (T.phase === 'focus') startFocus(); else timerStart(); break;
+      case 'lock-resume': timerStart(); break;
+      case 'lock-break': T.done = null; timerStart(); break;
+      case 'lock-next': T.done = null; lockCount = 0; timerStart(); break;
+      case 'lock-leave': exitLock(); break;
       case 't-pause': timerPause(); break;
       case 't-reset': timerReset(); break;
       case 't-skip': timerFinish(true); break;

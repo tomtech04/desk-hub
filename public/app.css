@@ -736,3 +736,72 @@ html:not(.remote) .kv.four span { font-size: 13px; }
 /* ---------- Microsoft sign-in code ---------- */
 .code-box { padding: 16px 0; font-size: 17px; line-height: 1.45; border-bottom: 1px solid var(--line); }
 .code-box .code { font-size: 44px; font-weight: 700; letter-spacing: .12em; color: var(--accent); margin: 10px 0 6px; font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   Focus lock: the timer takes over the screen
+   ========================================================================== */
+.ring-fg { transition: stroke-dashoffset 1s linear; }
+
+.focuslock { position: fixed; inset: 0; z-index: 25; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px;
+  background: #07080a; color: var(--text); animation: fl-in .5s ease-out both; }
+@keyframes fl-in { from { opacity: 0; transform: scale(1.03); } }
+/* Slow drifting colour behind everything: warm for focus, cool for breaks. */
+.fl-bg { position: absolute; inset: -30%; z-index: 0; opacity: .55; filter: blur(60px); animation: fl-drift 38s ease-in-out infinite alternate; }
+.fl-bg.focus { background: radial-gradient(40% 34% at 30% 30%, #f5a52455, transparent 70%), radial-gradient(38% 36% at 72% 68%, #d9605a3d, transparent 70%), radial-gradient(30% 28% at 60% 22%, #7a4bd12e, transparent 70%); }
+.fl-bg.break { background: radial-gradient(40% 34% at 30% 30%, #6cb4ff4d, transparent 70%), radial-gradient(38% 36% at 72% 68%, #4cc38a38, transparent 70%), radial-gradient(30% 28% at 60% 22%, #7a4bd12e, transparent 70%); }
+@keyframes fl-drift { from { transform: translate(-4%, -3%) rotate(0deg); } to { transform: translate(5%, 4%) rotate(14deg); } }
+.focuslock > :not(.fl-bg) { position: relative; z-index: 1; }
+
+.fl-top { font-size: 20px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); }
+.fl-ring { --d: min(74vw, 58vh); position: relative; width: var(--d); height: var(--d); flex: none; }
+.fl-ring > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.fl-ring > svg circle:first-child { stroke: #ffffff12; }
+.fl-ring.running > svg { filter: drop-shadow(0 0 18px #f5a52466); }
+.fl-ring.break.running > svg { filter: drop-shadow(0 0 18px #6cb4ff66); }
+/* A slow breath around the ring while the session runs. */
+.fl-halo { position: absolute; inset: 7%; border-radius: 50%; background: radial-gradient(circle, #f5a52426 0%, transparent 68%); animation: fl-breathe 7s ease-in-out infinite; }
+.fl-ring.break .fl-halo { background: radial-gradient(circle, #6cb4ff26 0%, transparent 68%); }
+.fl-ring.paused .fl-halo { animation-play-state: paused; opacity: .35; }
+@keyframes fl-breathe { 0%, 100% { transform: scale(.86); opacity: .5; } 50% { transform: scale(1.06); opacity: 1; } }
+.fl-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+.fl-time { font-size: min(19vw, 15vh); font-weight: 600; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+.fl-ring.paused .fl-time { animation: fl-blink 1.6s ease-in-out infinite; }
+@keyframes fl-blink { 50% { opacity: .35; } }
+.fl-label { font-size: 22px; color: var(--text-2); max-width: 78%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fl-controls { flex: none; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+.fl-controls .btn { background: #ffffff14; height: 60px; padding: 0 24px; }
+.fl-controls .btn.primary { background: var(--accent); }
+
+/* Hold to leave: the bar fills while the button is held. */
+.fl-exit { position: relative; overflow: hidden; flex: none; height: 56px; padding: 0 28px; border-radius: 28px; background: #ffffff0d; color: var(--muted); font-size: 16px; font-weight: 600; box-shadow: inset 0 0 0 1px #ffffff1f; }
+.fl-exit i { position: absolute; inset: 0; background: #ffffff2e; transform: scaleX(0); transform-origin: left; }
+.fl-exit.holding i { transform: scaleX(1); transition: transform 1.2s linear; }
+.fl-exit.holding { color: var(--text); }
+.fl-exit span { position: relative; }
+
+/* Settle-in count */
+.fl-count { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.fl-kicker { font-size: 20px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); }
+.fl-num { font-size: min(46vw, 38vh); font-weight: 700; line-height: 1; color: var(--accent); animation: fl-pop 1s ease-out both; }
+@keyframes fl-pop { 0% { transform: scale(.55); opacity: 0; } 30% { transform: scale(1.06); opacity: 1; } 100% { transform: scale(1); opacity: .9; } }
+
+/* Finish */
+.fl-done { display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; padding: 0 28px; animation: fl-rise .6s ease-out both; }
+@keyframes fl-rise { from { transform: translateY(26px); opacity: 0; } }
+.fl-done h1 { font-size: 46px; font-weight: 700; letter-spacing: -.02em; }
+.fl-done p { font-size: 20px; color: var(--text-2); }
+.fl-burst { position: relative; width: 150px; height: 150px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; animation: fl-stamp .7s cubic-bezier(.2, 1.4, .4, 1) both; }
+.fl-done.break .fl-burst { background: var(--info); color: #06121f; }
+.fl-burst svg { width: 78px; height: 78px; stroke-width: 3; }
+.fl-burst::before, .fl-burst::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--accent); animation: fl-ripple 1.8s ease-out infinite; }
+.fl-burst::after { animation-delay: .6s; }
+.fl-done.break .fl-burst::before, .fl-done.break .fl-burst::after { border-color: var(--info); }
+@keyframes fl-stamp { from { transform: scale(0); } }
+@keyframes fl-ripple { from { transform: scale(1); opacity: .7; } to { transform: scale(2.1); opacity: 0; } }
+.fl-actions { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; justify-content: center; }
+.fl-actions .btn { height: 62px; padding: 0 26px; font-size: 19px; }
+.fl-actions .btn.ghost { border-color: #ffffff2e; }
+
+@media (orientation: landscape) { .fl-ring { --d: min(46vw, 62vh); } .focuslock { gap: 20px; } .fl-time { font-size: min(11vw, 17vh); } }
+@media (max-width: 600px) { .fl-controls .btn { height: 50px; padding: 0 16px; } .fl-done h1 { font-size: 34px; } .fl-top { font-size: 15px; } .fl-label { font-size: 17px; } }
+@media (prefers-reduced-motion: reduce) { .fl-bg, .fl-halo, .fl-num, .fl-burst, .fl-burst::before, .fl-burst::after { animation: none; } }

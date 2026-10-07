@@ -13,6 +13,7 @@ import { calendarConfigured, loadCalendar } from './calendar.js';
 import { setBrightness, hasBacklight, systemStats, loadWeather } from './system.js';
 import { readVoiceRequest, interpretVoice, buildRecap } from './voice.js';
 import { msStatus, startSignIn, signOut as msSignOut, whenConnected } from './msgraph.js';
+import { createMcp } from './mcp.js';
 import * as demo from './demo.js';
 
 const PORT = Number(process.env.PORT || 8080);
@@ -20,6 +21,7 @@ const DEMO = process.env.DEMO === '1';
 const NOTIFY_TOKEN = process.env.HUB_NOTIFY_TOKEN || '';
 const HUB_PASSWORD = process.env.HUB_PASSWORD || '';
 const VOICE_TOKEN = process.env.HUB_VOICE_TOKEN || '';
+const MCP_TOKEN = process.env.HUB_MCP_TOKEN || '';
 
 // ---------------------------------------------------------------------------
 // Persistent state (data/state.json)
@@ -54,6 +56,7 @@ const DEFAULT_STATE = {
     windDown: true,
     windDownAt: '22:00',
     morningBrief: true,
+    focusLock: true,
     emailTasks: true,
   },
 };
@@ -453,6 +456,7 @@ function dashboard() {
     recap: state.recap?.day === localDay() ? state.recap : state.recap?.error ? { error: state.recap.error } : null,
     recapRunning,
     voiceReady: Boolean(VOICE_TOKEN),
+    claudeReady: Boolean(MCP_TOKEN),
     aiEnabled: DEMO || aiEnabled(),
     alerts: buildAlerts(snap),
   };
@@ -556,6 +560,13 @@ function logout(req, res) {
   res.setHeader('Set-Cookie', 'hub_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
   return send(res, 200, { ok: true });
 }
+
+// Claude's way in (see server/mcp.js): tasks, notes and finished work.
+const mcp = createMcp({
+  state, save, newTodo, makeSubtasks, dayToMs, localDay, startOfDay,
+  notify: (title, body) => { state.notifications = [...state.notifications, { id: crypto.randomUUID(), level: 'info', source: 'claude', at: Date.now(), title, body: String(body || '').slice(0, 300) }].slice(-50); save(); },
+  snapshot: () => ({ calendar: sources.calendar?.get().data?.events || [], digestHeadline: state.digest?.day === localDay() ? state.digest.headline : null }),
+});
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
 const PUBLIC = path.join(ROOT, 'public');
@@ -702,6 +713,7 @@ function match(method, url) {
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
+    if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) return await mcp(req, res, url, MCP_TOKEN);
     if (url.pathname.startsWith('/api/')) {
       if (url.pathname === '/api/login' && req.method === 'POST') return login(req, res, await readBody(req));
       if (url.pathname === '/api/logout' && req.method === 'POST') return logout(req, res);
