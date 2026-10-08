@@ -604,7 +604,7 @@ const VIEWS = {
         ${weatherWidget(w)}
       </section>
 
-      <section class="card a-focus">
+      <section class="card a-focus tap" data-act="go" data-view="focus">
         <div class="card-h">${icon('focus')}<span class="grow">Focus</span><span class="link">${D.focus.todayMinutes} min today</span></div>
         <div class="mini-focus">
           <div class="ring">${ring(120, 10, hasTimer ? 1 - tLeft() / tTotal() : 0, T.phase === 'focus' ? 'var(--accent)' : 'var(--info)')}<span data-timer>${fmtLeft(tLeft())}</span></div>
@@ -627,12 +627,12 @@ const VIEWS = {
           : D.payit?.configured === false ? notConfigured('PayIt', 'Add SUPABASE_URL + key to .env') : `<div class="empty">${esc(D.payit?.error || 'Loading…')}</div>`}
       </section>
 
-      <section class="card a-next">
+      <section class="card a-next tap" data-act="go" data-view="schedule">
         <div class="card-h">${icon('schedule')}<span class="grow">Up next</span></div>
         <div class="list">${events.length ? events.map(eventRow).join('') : D.calendar?.configured === false ? notConfigured('Calendar', 'Add CALENDAR_FEEDS (Canvas / Google ICS links) to .env') : '<div class="empty">Nothing in the next few days.</div>'}</div>
       </section>
 
-      <section class="card a-tasks">
+      <section class="card a-tasks tap" data-act="go" data-view="tasks">
         <div class="card-h">${icon('tasks')}<span class="grow">To do</span>${toReview ? `<button class="chip review-chip" data-act="go" data-view="tasks">${toReview} to review</button>` : `<span class="link">${doneToday ? `${doneToday} done today` : ''}</span>`}</div>
         <div class="list">${todos.length ? todos.map((t) => todoRow(t)).join('') : '<div class="empty">All clear. Nice.</div>'}</div>
         <button class="btn small ghost" style="margin-top:auto" data-act="todo-add">${icon('plus')} Add task</button>
@@ -989,7 +989,7 @@ function windHome() {
       <div class="list">${tomorrowEvents.map(eventRow).join('')}${tomorrowTasks.map((t) => todoRow(t)).join('')
         || (tomorrowEvents.length ? '' : '<div class="empty">Nothing scheduled for tomorrow yet.</div>')}</div>
     </section>
-    <section class="card">
+    <section class="card tap" data-act="go" data-view="journal">
       <div class="card-h">${icon('journal')}<span class="grow">Before you sleep</span></div>
       ${tonight.length ? `<div class="night-list">${tonight.map((j) => j.pending
             ? `<div class="night pending"><i>Listening</i><p>Claude is reading what you said…</p></div>`
@@ -999,7 +999,7 @@ function windHome() {
       <div class="night-hint">${icon('journal')}<span>${tonight.length ? 'Press the ring to add more.' : 'Press the ring and say what\'s on your mind. Claude keeps it as a reflection on today or a note for tomorrow.'}</span></div>
       <button class="night-type" data-act="note-add">or type it</button>
     </section>
-    <section class="card">
+    <section class="card tap" data-act="go" data-view="tasks">
       <div class="card-h">${icon('tasks')}<span class="grow">Still open</span></div>
       <div class="list">${left.length ? left.map((t) => todoRow(t)).join('') : '<div class="empty">Nothing left open. Nice.</div>'}</div>
       <button class="btn small ghost" style="margin-top:auto" data-act="todo-add">${icon('plus')} Add for tomorrow</button>
