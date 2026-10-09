@@ -73,7 +73,7 @@ If the organization doesn't let you register apps or approve this permission, it
 
 **Summaries and digest.** Set `ANTHROPIC_API_KEY` (starts with `sk-ant-`). Both use Claude Haiku 4.5 by default, the cheapest current model; for a sharper digest only, set `DIGEST_MODEL=claude-sonnet-5-5`. Each email is summarized once and cached by Message-ID. Without a key, mail still shows with a plain preview and there's no digest.
 
-**Calendars.** Set `CALENDAR_FEEDS=Canvas|https://...,Personal|https://...`. Canvas → Calendar → Calendar Feed gives you a link with every assignment due date.
+**Calendars.** Set `CALENDAR_FEEDS=Canvas|https://...,Personal|https://...`. Canvas → Calendar → Calendar Feed gives you a link with every assignment due date. With a Canvas feed, every assignment due in the next 30 days also becomes a School task with its course and due date; if the due date moves in Canvas the task follows and says so. The feed doesn't say what you've submitted, so you tick those off yourself. An assignment is only ever added once, so deleting its task keeps it gone.
 
 **Voice notes from a Pebble Index 01 ring.** The ring's phone app can POST each recording's transcription to a webhook. Set `HUB_VOICE_TOKEN` to a long random string, then in the Pebble app (Index 01 Settings → Webhook) set the URL to `https://<your hub address>/api/voice`, add a header `Authorization: Bearer <token>`, and send transcription only (audio is accepted but ignored). The app's test event shows a "Ring connected" toast on the hub. The phone sends the request, so the hub has to be reachable from wherever your phone is: a public URL through a tunnel, or Tailscale on the phone. Any tool that can POST `{"text": "..."}` with the same header works too.
 

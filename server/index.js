@@ -34,6 +34,7 @@ const DEFAULT_STATE = {
   suggestedFrom: {}, // emailId -> at, so an email is only ever suggested once
   focusLog: [], // { at, minutes, label }
   notifications: [], // pushed via POST /api/notify
+  canvas: {}, // Canvas assignments already turned into tasks: uid -> due day (so a deleted one isn't re-added)
   journal: [], // voice notes: { id, at, text, note, kind: 'reflection'|'note'|'', evening, tasks: [text], trigger }
   morningSeen: null, // local day the morning brief was last dismissed
   recap: null, // { day, at, headline, bullets, tomorrow }
@@ -80,7 +81,7 @@ const sources = DEMO
   : {
       payit: payitConfigured ? refresher('payit', 60e3, loadPayit) : null,
       mail: mailConfigured ? refresher('mail', 4 * 60e3, async () => { const d = await loadMail(); suggestFromUrgent(d); return d; }) : null,
-      calendar: calendarConfigured ? refresher('calendar', 15 * 60e3, loadCalendar) : null,
+      calendar: calendarConfigured ? refresher('calendar', 15 * 60e3, async () => { const d = await loadCalendar(); syncAssignments(d.assignments || []); return d; }) : null,
       weather: refresher('weather', 15 * 60e3, loadWeather),
     };
 
@@ -283,6 +284,33 @@ setInterval(() => {
 // ---------------------------------------------------------------------------
 
 const weekdayName = () => new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: TZ }).format(new Date());
+// Canvas coursework becomes School tasks. Each assignment is added once (even if the
+// task is later deleted); a moved due date updates the open task and leaves a note on it.
+function syncAssignments(list) {
+  state.canvas ||= {};
+  let changed = false;
+  const clock = (ms) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: TZ });
+  const day = (ms) => new Date(ms).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: TZ });
+  for (const a of list) {
+    const why = ['Canvas', a.course, a.dueAt ? `due ${clock(a.dueAt)}` : ''].filter(Boolean).join(' · ');
+    if (!(a.uid in state.canvas)) {
+      // "ME-3345-A" -> "ME 3345", so "HW#5" says which class it's for.
+      const course = (/^([A-Za-z]+)[- ]?(\d+[A-Za-z]?)/.exec(a.course) || []).slice(1).join(' ');
+      state.todos.push(newTodo({ text: course && !a.title.includes(course) ? `${course}: ${a.title}` : a.title, tag: 'School', due: a.dueDay, source: { why, canvas: a.uid } }));
+      state.canvas[a.uid] = a.dueDay; changed = true;
+      continue;
+    }
+    const t = state.todos.find((x) => x.source?.canvas === a.uid);
+    if (t && !t.done && (t.due !== a.dueDay || t.source.why !== why)) {
+      if (t.due !== a.dueDay) t.updates = [...(t.updates || []), { note: `Due date moved to ${day(a.dueDay)} in Canvas`, at: Date.now() }].slice(-3);
+      t.due = a.dueDay; t.source.why = why; state.canvas[a.uid] = a.dueDay; changed = true;
+    }
+  }
+  // Forget assignments long past, so the list doesn't grow forever.
+  for (const [uid, due] of Object.entries(state.canvas)) if (due < Date.now() - 60 * 86400e3) { delete state.canvas[uid]; changed = true; }
+  if (changed) save();
+}
+
 const dayToMs = (ymd) => { const [y, mo, d] = ymd.split('-').map(Number); return zonedToUtc(TZ, y, mo, d); };
 
 /** Tasks you say out loud are added straight away: you asked for them yourself. */

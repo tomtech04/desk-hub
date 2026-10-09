@@ -10,6 +10,7 @@ export const feeds = (process.env.CALENDAR_FEEDS || '').split(',').map((s) => s.
 export const calendarConfigured = feeds.length > 0;
 
 const HORIZON_DAYS = 7;
+const ASSIGNMENT_DAYS = 30; // how far ahead Canvas coursework becomes a task
 const DAY = 86400e3;
 
 function parseDate(value, params) {
@@ -102,12 +103,21 @@ export async function loadCalendar() {
   const to = startOfDay(now, HORIZON_DAYS);
   const errors = [];
   const all = [];
+  const assignments = [];
   await Promise.all(feeds.map(async (feed) => {
     try {
       const res = await fetch(feed.url.replace(/^webcal:/, 'https:'), { signal: AbortSignal.timeout(20000) });
       if (!res.ok) throw new Error(`responded ${res.status}`);
+      const canvas = /instructure\.com\/feeds\//.test(feed.url);
       for (const ev of parseEvents(await res.text())) {
         if (ev.cancelled) continue;
+        // Canvas marks coursework with an "event-assignment" UID; "Name [COURSE]" is its title.
+        if (canvas && /^event-assignment/.test(ev.uid || '') && ev.start.ms > now - DAY && ev.start.ms < now + ASSIGNMENT_DAYS * DAY) {
+          const m = /^(.*?)\s*\[([^\]]+)\]\s*$/.exec(ev.title || '');
+          // Due at exactly midnight means the end of the day before.
+          const at = !ev.start.allDay && ev.start.ms === startOfDay(ev.start.ms) ? ev.start.ms - 60e3 : ev.start.ms;
+          assignments.push({ uid: ev.uid, title: (m ? m[1] : ev.title || 'Assignment').trim(), course: m ? m[2] : '', dueDay: startOfDay(at), dueAt: ev.start.allDay ? null : at });
+        }
         const dur = ev.end ? ev.end.ms - ev.start.ms : 0;
         for (const start of occurrences(ev, from, to)) {
           const mine = ev.attendees.find((a) => MY_EMAILS.has(a.email));
@@ -127,5 +137,5 @@ export async function loadCalendar() {
   }));
   all.sort((a, b) => a.start - b.start);
   if (errors.length && !all.length) throw new Error(errors.join('; '));
-  return { events: all.slice(0, 40), errors };
+  return { events: all.slice(0, 40), errors, assignments };
 }
