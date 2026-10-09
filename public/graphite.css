@@ -1,0 +1,261 @@
+/* ==========================================================================
+   GRAPHITE. Near-black base, solid panels with a 1px border, and colour only
+   in short saturated gradients: one per section. Loaded after app.css and
+   overrides its look; layout rules there still apply unless changed here.
+   Body text scales with --ts (Settings → Text size); display numerals don't.
+   ========================================================================== */
+@font-face { font-family: 'Geist'; src: url('fonts/Geist.woff2') format('woff2'); font-weight: 300 700; font-display: swap; }
+@font-face { font-family: 'Geist Mono'; src: url('fonts/GeistMono.woff2') format('woff2'); font-weight: 400 600; font-display: swap; }
+
+:root {
+  --ts: 1.15;
+  --bg: #0C0E12; --rail: #0F1115; --panel: #15181D; --panel-2: #1C2027; --control: #1F232A;
+  --line: #232831; --line-soft: #20242B; --border-control: #2C313A; --track: #22262D;
+  --text: #F2F4F7; --text-2: #AEB5C1; --text-3: #8C94A1; --muted: #7A8290; --faint: #5C6370;
+  --amber: #FFB547; --mint: #6EF0B4; --coral: #FF7A7A; --blue: #8AB4FF; --violet: #C59CFF; --pink: #FF9DB0;
+  --g-home: linear-gradient(135deg, #FFFFFF, #DDE2EA);
+  --g-focus: linear-gradient(135deg, #FFC65C 0%, #FF7A45 100%);
+  --g-tasks: linear-gradient(135deg, #FFE07A 0%, #FFAE45 100%);
+  --g-money: linear-gradient(135deg, #6EF0B4 0%, #1FB5C9 100%);
+  --g-mail: linear-gradient(135deg, #C59CFF 0%, #FF8DB9 100%);
+  --g-journal: linear-gradient(135deg, #FF9DB0 0%, #FF9354 100%);
+  --g-cal: linear-gradient(135deg, #8AB4FF 0%, #8C7BFF 100%);
+  --g-bad: linear-gradient(135deg, #FF9A8A 0%, #FF5F6D 100%);
+  --hero-day: linear-gradient(140deg, #1C44B0 0%, #2C6FD0 52%, #1B93A8 100%);
+  --hero-dusk: linear-gradient(140deg, #3B2377 0%, #93407A 55%, #D9683E 100%);
+  --hero-payit: linear-gradient(145deg, #0E5C52 0%, #0F3F45 55%, #12262E 100%);
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --mono: 'Geist Mono', ui-monospace, monospace;
+
+  /* The names the older layers use, pointed at Graphite. */
+  --surface: var(--panel); --surface-2: var(--panel-2); --surface-3: var(--control);
+  --glass: var(--panel); --glass-edge: inset 0 0 0 1px var(--line); --sheet: var(--panel);
+  --accent: var(--amber); --accent-ink: #1A0F05;
+  --money: var(--mint); --good: var(--mint); --warn: var(--amber); --bad: var(--coral); --info: var(--blue);
+  --radius: 24px; --gap: 14px;
+  --sec: var(--g-home);
+}
+html[data-view="focus"] { --sec: var(--g-focus); } html[data-view="tasks"] { --sec: var(--g-tasks); }
+html[data-view="payit"] { --sec: var(--g-money); } html[data-view="mail"] { --sec: var(--g-mail); }
+html[data-view="journal"] { --sec: var(--g-journal); } html[data-view="schedule"] { --sec: var(--g-cal); }
+
+html, body { background: var(--bg); color: var(--text); font-family: 'Geist', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+button, input, textarea { font-family: inherit; }
+.mono { font-family: var(--mono); }
+#wall, #stars { display: none; }
+
+/* ---------- frame: status bar, main, rail ---------- */
+#status { flex: none; height: 56px; padding: 0 18px 0 24px; display: flex; align-items: center; gap: 10px; }
+.st-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mint); flex: none; }
+.st-dot.warn { background: var(--amber); }
+.st-text { flex: 1; min-width: 0; font-family: var(--mono); font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-btn { height: 44px; min-width: 44px; padding: 0 12px; border-radius: 14px; background: #171A1F; border: 1px solid var(--line); color: var(--text-2); display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.st-btn svg.i { width: 20px; height: 20px; }
+.st-btn b { font-size: 16px; font-weight: 500; color: var(--text); }
+.st-btn.has svg.i, .st-btn.hot svg.i { color: var(--coral); }
+main#view, main { padding: 2px 16px 14px; }
+
+html:root .rail { order: 2; margin: 0; width: 100%; height: 104px; padding: 0 6px; border-radius: 0; background: var(--rail); box-shadow: none; border: 0; border-top: 1px solid #1F232A;
+  display: flex; flex-direction: row; align-items: center; justify-content: space-around; gap: 0; }
+html:root .rail button { width: auto; height: auto; flex: 1; min-width: 0; padding: 6px 0; border-radius: 0; background: none; box-shadow: none; display: flex; flex-direction: column; align-items: center; gap: 7px; color: var(--text-3); }
+html:root .rail .pill { position: relative; width: 62px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: none; padding: 0; }
+html:root .rail svg.i { width: 25px; height: 25px; }
+html:root .rail em { font-style: normal; font-size: 12px; font-weight: 500; color: #6F7785; white-space: nowrap; }
+html:root .rail button.on .pill { background: var(--g-home); color: #0C0E12; }
+html:root .rail button.on em { color: var(--text); }
+html:root .rail button.on[data-sec="focus"] .pill { background: var(--g-focus); } html:root .rail button.on[data-sec="tasks"] .pill { background: var(--g-tasks); }
+html:root .rail button.on[data-sec="payit"] .pill { background: var(--g-money); } html:root .rail button.on[data-sec="mail"] .pill { background: var(--g-mail); }
+html:root .rail button.on[data-sec="journal"] .pill { background: var(--g-journal); } html:root .rail button.on[data-sec="schedule"] .pill { background: var(--g-cal); }
+html:root .rail .badge { position: absolute; top: -7px; right: -5px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: #FF5F6D; color: #fff; border: 2px solid var(--rail); font-size: 12px; font-weight: 700; display: grid; place-items: center; box-sizing: border-box; }
+@media (orientation: portrait) { html:root #banner { bottom: 116px; } }
+/* Wide screens keep the rail on the left for now; the status strip sits over the top right. */
+@media (orientation: landscape) {
+  html:root .rail { order: 0; width: 96px; height: auto; flex-direction: column; justify-content: flex-start; padding: 14px 0; gap: 4px; border-top: 0; border-right: 1px solid #1F232A; }
+  html:root .rail button { flex: none; width: 100%; }
+  #status { position: fixed; top: 6px; right: 12px; z-index: 5; padding: 0; height: 52px; }
+  .st-dot, .st-text { display: none; }
+  .page-h { padding-right: 120px; }
+}
+@media (max-width: 600px) { html:root .rail { height: 78px; } html:root .rail .pill { width: 44px; height: 36px; border-radius: 12px; } html:root .rail em { font-size: 10px; } html:root .rail svg.i { width: 21px; height: 21px; } #status { height: 48px; } }
+
+/* ---------- cards, headers, rows ---------- */
+.card, .weekstrip .day, .f3-day, .f3-list, .review { background: var(--panel); box-shadow: none; border: 1px solid var(--line); border-radius: 24px; }
+html:root .card-h { margin-bottom: 12px; gap: 10px; text-transform: none; letter-spacing: 0; font-size: calc(17px * var(--ts)); font-weight: 600; color: #D4D9E1; }
+/* The icon at the start of a card header sits on a gradient tile in its section's colour. */
+html:root .card-h > svg.i:first-child { width: 34px; height: 34px; padding: 7px; border-radius: 11px; background: var(--sec); color: #0C0E12; box-sizing: border-box; flex: none; }
+.a-focus { --sec: var(--g-focus); } .a-payit { --sec: var(--g-money); } .a-next { --sec: var(--g-cal); } .a-tasks { --sec: var(--g-tasks); } .a-mail { --sec: var(--g-mail); }
+html:root .card-h .link, .card-h .meta { font-family: var(--mono); font-size: calc(13px * var(--ts)); font-weight: 400; color: var(--muted); }
+.page-h { height: 60px; margin-bottom: 12px; }
+.page-h h1 { font-size: 36px; font-weight: 600; letter-spacing: -.025em; }
+.item { border-bottom: 0; border-top: 1px solid var(--line-soft); min-height: 56px; }
+.item:first-child { border-top: 0; }
+html:root .item .t b { font-size: calc(18px * var(--ts)); font-weight: 500; }
+html:root .item .t span { font-family: var(--mono); font-size: calc(13px * var(--ts)); color: var(--text-3); }
+html:root .item .when { font-family: var(--mono); font-size: calc(13px * var(--ts)); font-weight: 400; color: var(--text-2); }
+html:root .item .when.soon { color: var(--blue); } html:root .item .when.overdue { color: var(--coral); } html:root .item .when.today { color: var(--amber); }
+.cal-bar { background: var(--g-cal); }
+.empty { color: var(--text-3); font-size: calc(16px * var(--ts)); }
+.tag, .steps { font-family: var(--mono); border-radius: 7px; background: var(--control); color: var(--text-2); }
+.steps.all { background: rgba(94,230,176,.14); color: var(--mint); }
+
+/* ---------- controls ---------- */
+.btn { height: 52px; border-radius: 16px; background: var(--control); border: 1px solid var(--border-control); box-shadow: none; color: var(--text); font-size: calc(18px * var(--ts)); font-weight: 500; }
+.btn.small { height: 44px; border-radius: 14px; font-size: calc(15px * var(--ts)); }
+.btn.primary, .kb .krow .done { background: var(--text); border-color: var(--text); color: #0C0E12; font-weight: 600; box-shadow: none; }
+.btn.ghost { background: transparent; border: 1px solid var(--border-control); box-shadow: none; }
+.btn.danger { color: var(--coral); border-color: rgba(255,122,122,.45); box-shadow: none; }
+.chip { height: 44px; border-radius: 14px; background: var(--panel); border: 1px solid #2A2F38; color: #D4D9E1; font-size: calc(16px * var(--ts)); font-weight: 500; }
+.chip.on { background: var(--text); border-color: var(--text); color: #0C0E12; }
+.chip.review-chip { background: rgba(197,156,255,.14); border: 0; color: var(--violet); }
+.check { width: 30px; height: 30px; border: 2px solid #3A404B; background: transparent; color: #06231A; }
+.check.done { border-color: transparent; background: var(--g-money); color: #06231A; }
+.check.small { width: 26px; height: 26px; }
+.toggle { width: 60px; height: 36px; border-radius: 18px; background: #2A2F38; box-shadow: none; }
+.toggle.on { background: var(--g-focus); }
+.stepper { background: var(--control); border: 1px solid var(--border-control); border-radius: 16px; }
+.stepper b { font-family: var(--mono); font-weight: 500; }
+input[type="range"] { accent-color: #FF9A50; }
+.set-row { min-height: 66px; border-top: 1px solid var(--line-soft); }
+.set-row label { font-size: calc(18px * var(--ts)); }
+.set-row label span { font-size: calc(14px * var(--ts)); color: var(--text-3); }
+.settings .card-h { font-family: var(--mono); font-size: 13px !important; font-weight: 500; letter-spacing: .08em; text-transform: uppercase !important; color: var(--muted) !important; }
+.pill { font-family: var(--mono); border-radius: 8px; background: var(--control); color: var(--text-2); }
+
+/* ---------- Home ---------- */
+@media (orientation: portrait) and (min-width: 601px) {
+  html:root .home { grid-template-rows: 288px auto minmax(0, .8fr) minmax(0, 1fr); gap: 14px; }
+}
+.hero { grid-area: clock; position: relative; overflow: hidden; border-radius: 28px; background: var(--hero-day); padding: 16px 28px 14px; display: flex; flex-direction: column; color: #fff; min-height: 0; }
+.dusk .hero { background: var(--hero-dusk); }
+.hero-ring { position: absolute; width: 300px; height: 300px; right: -60px; top: -110px; border-radius: 50%; border: 1px solid rgba(255,255,255,.16); pointer-events: none; }
+.hero-ring.two { width: 440px; height: 440px; right: -130px; top: -180px; border-color: rgba(255,255,255,.12); }
+.hero-top { display: flex; justify-content: space-between; gap: 12px; flex: 1; min-height: 0; }
+.hero-clock { min-width: 0; display: flex; flex-direction: column; }
+.hero .dotclock { width: 380px; max-width: 100%; height: 150px; margin-left: -6px; }
+.hero-date { display: flex; align-items: center; gap: 10px; font-size: calc(21px * var(--ts)); font-weight: 500; white-space: nowrap; margin-top: -2px; }
+.ampm { font-family: var(--mono); font-size: 14px; font-weight: 600; padding: 3px 7px; border-radius: 7px; background: rgba(255,255,255,.18); }
+.hero-wx { text-align: right; flex: none; padding-top: 18px; position: relative; }
+.hero-temp { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.hero-temp svg.i { width: 42px; height: 42px; }
+.hero-temp b { font-size: 62px; font-weight: 500; letter-spacing: -.04em; line-height: 1; }
+.hero-cond { font-size: calc(18px * var(--ts)); margin-top: 8px; }
+.hero-hl { font-size: calc(13px * var(--ts)); color: rgba(255,255,255,.82); margin-top: 6px; }
+.hero-hours { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 1px solid rgba(255,255,255,.24); margin-top: 10px; padding-top: 9px; text-align: center; }
+.hero-hours span { display: block; font-size: 13px; color: rgba(255,255,255,.75); }
+.hero-hours b { font-size: 20px; font-weight: 600; }
+.hero-hours i { display: block; font-style: normal; font-family: var(--mono); font-size: 11px; color: #BFE0FF; margin-top: -2px; }
+@media (max-width: 600px) { .hero { padding: 12px 16px; } .hero-top { flex-direction: column; } .hero-wx { text-align: left; padding-top: 4px; } .hero-temp { justify-content: flex-start; } .hero-temp b { font-size: 44px; } .hero .dotclock { height: auto; } }
+
+html:root .mini-focus { flex-direction: column; align-items: stretch; gap: 12px; }
+html:root .mini-focus .ring { display: flex; align-items: center; gap: 16px; width: 100%; height: auto; }
+html:root .mini-focus .ring svg { width: 90px; height: 90px; flex: none; }
+html:root .mini-focus .ring span { position: static; font-size: 42px; font-weight: 600; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.mini-focus .ring circle:first-child { stroke: var(--track); }
+html:root .mini-focus .btns { flex-direction: row; }
+html:root .mini-focus .btns .btn { flex: 1; }
+html:root .mini-focus .btns .btn.ghost { display: none; }
+.a-focus .btn.primary, .btn.focus { background: var(--g-focus); border: 0; color: #1A0F05; font-weight: 600; }
+html:root .big-num { font-size: 50px; font-weight: 600; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+html:root .big-num.money, .money { color: var(--text); }
+html:root .delta { font-size: calc(14px * var(--ts)); font-weight: 400; color: var(--text-3); }
+html:root .delta.up { color: var(--mint); } html:root .delta.down { color: var(--coral); }
+html:root .kv { border-top: 1px solid var(--line-soft); padding-top: 10px; }
+html:root .kv b { font-size: 21px; font-weight: 600; font-variant-numeric: tabular-nums; }
+html:root .kv span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+html:root .kv .profit b { color: var(--mint); }
+.status { font-family: var(--mono); font-size: calc(13px * var(--ts)); font-weight: 400; }
+.status.degraded, .status.down { color: var(--amber); } .status.down { color: var(--coral); } .status.up { color: var(--mint); }
+/* Claude's cards wear a thin violet-to-pink outline. */
+.a-mail, .card.digest, .card.ai { border: 1px solid transparent; background: linear-gradient(var(--panel), var(--panel)) padding-box, linear-gradient(135deg, rgba(197,156,255,.7), rgba(255,141,185,.5)) border-box; }
+html[data-view="journal"] .card.digest { background: linear-gradient(var(--panel), var(--panel)) padding-box, linear-gradient(135deg, rgba(255,157,176,.7), rgba(255,147,84,.5)) border-box; }
+html:root .home-digest b { font-size: calc(18px * var(--ts)); font-weight: 500; line-height: 1.3; }
+html:root .home-digest ul { list-style: none; padding: 0; font-size: calc(14px * var(--ts)); color: var(--text-2); }
+html:root .home-digest li { position: relative; padding-left: 14px; }
+html:root .home-digest li::before { content: ""; position: absolute; left: 0; top: .55em; width: 5px; height: 5px; border-radius: 50%; background: var(--violet); }
+.mail-counts { border-top: 1px solid var(--line-soft); }
+
+/* ---------- Focus ---------- */
+.f3, .focuslock { --ink: var(--text); --dim: var(--text-2); --faint: var(--muted); --hair: var(--line); }
+.f3-tabs { background: var(--panel); box-shadow: none; border: 1px solid var(--line); border-radius: 18px; padding: 4px; gap: 4px; }
+.f3-tabs button { border-radius: 14px; height: 48px; font-size: calc(16px * var(--ts)); }
+.f3-tabs button.on { background: var(--text); color: #0C0E12; }
+.dial::before { background: var(--panel); box-shadow: none; border: 1px solid var(--line); }
+.f3-presets button { background: var(--control); box-shadow: none; border: 1px solid var(--border-control); font-family: var(--mono); }
+.f3-presets button.on { background: var(--g-focus); border-color: transparent; color: #1A0F05; }
+.fpill { background: var(--control); border: 1px solid var(--border-control); box-shadow: none; border-radius: 18px; }
+.fpill.solid { background: var(--g-focus); border-color: transparent; color: #1A0F05; }
+.f3-list h3, .fl-top, .fl-kicker { font-family: var(--mono); }
+.f3-strip { background: var(--track); height: 10px; border-radius: 5px; }
+.f3-strip i { background: var(--g-focus); border-radius: 5px; }
+.f3-strip b { background: #fff; }
+.focuslock { background: radial-gradient(90% 50% at 50% 0%, rgba(255,140,70,.16), transparent 70%), #0A0B0E; }
+.fl-ring::before { background: var(--panel); box-shadow: none; border: 1px solid var(--line); }
+.fl-ring > svg circle:first-child { stroke: var(--track); }
+.fl-ring > svg .ring-fg { stroke: #FF9A50; }
+.fl-num { background: var(--g-focus); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.fl-task { background: var(--panel); box-shadow: none; border: 1px solid var(--line); }
+.fl-burst { background: var(--g-money); box-shadow: none; }
+.fl-burst svg { stroke: #06231A; }
+.fl-exit { background: var(--control); border: 1px solid var(--border-control); }
+.fl-exit i { background: rgba(255,122,122,.5); }
+
+/* ---------- PayIt, Mail, Journal, Schedule ---------- */
+html[data-view="payit"] .card:first-of-type { background: var(--hero-payit); border-color: #1C5550; }
+.msg { border-top: 1px solid var(--line-soft); }
+.msg .top b { font-size: calc(17px * var(--ts)); }
+.msg p, .msg .sum { font-size: calc(15px * var(--ts)); color: var(--text-2); }
+.tl-ev { background: var(--g-cal); color: #0B0D1A; box-shadow: none; border: 0; }
+.tl-ev b, .tl-ev span { color: #0B0D1A; }
+.tl-now { background: var(--coral); }
+.tl-hour span { font-family: var(--mono); color: var(--muted); }
+.weekstrip .day.on { background: var(--g-cal); border-color: transparent; color: #0B0D1A; }
+.weekstrip .day.on * { color: #0B0D1A; }
+
+/* ---------- sheets, toasts, keyboard ---------- */
+.drawer { background: rgba(4,5,7,.72); }
+.drawer .panel, .drawer .panel.sheet { background: var(--panel); box-shadow: none; border: 1px solid #2A2F38; }
+.wx-facts div, .wx-hour, .ev-reply, .ev-desc, .night { background: var(--panel-2); }
+.wx-hour i { background: linear-gradient(to top, var(--blue) calc(var(--p) * 100%), var(--track) 0); }
+.toast, #banner .b { background: #1E2229; box-shadow: 0 14px 40px rgba(0,0,0,.5); border: 1px solid #2A2F38; border-radius: 20px; }
+.kb { background: rgba(4,5,7,.72); }
+.kb .key, .kb button { box-shadow: none; }
+.login-card { background: var(--panel); box-shadow: none; border: 1px solid var(--line); }
+
+/* ---------- wind-down: warm, dim, on a faint dot grid ---------- */
+.winddown { --bg: #0E0B09; --panel: #17110D; --panel-2: #1F1611; --control: #241A14; --line: #33251C; --line-soft: #2A1F18; --border-control: #3A2A20; --rail: #110C09;
+  --text: #EADBC9; --text-2: #C4AE99; --text-3: #9C8672; --muted: #8A7563; --sec: linear-gradient(135deg, #E8955A, #D9604A); }
+.winddown body { background: radial-gradient(circle, rgba(217,145,74,.08) 1px, transparent 1.6px) 0 0 / 10px 10px, #0E0B09; }
+.winddown .a-focus, .winddown .a-payit, .winddown .a-next, .winddown .a-tasks, .winddown .a-mail { --sec: linear-gradient(135deg, #E8955A, #D9604A); }
+html:root.winddown .rail button.on .pill { background: linear-gradient(135deg, #E8955A, #D9604A); }
+.wind > .card.wind-hero { background: linear-gradient(165deg, #2C1A12, #180F0B 60%, #110C09); border: 1px solid #33251C; padding: 16px 22px 14px; justify-content: flex-start; align-items: stretch; }
+.wind-top { display: flex; justify-content: space-between; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: #B58A66; }
+.wind-hero .dotclock { align-self: center; width: 624px; max-width: 100%; height: 220px; margin: 2px 0 4px; }
+.wind-bar { height: 6px; border-radius: 3px; background: #2A1D15; overflow: hidden; }
+.wind-bar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #E8955A, #D9604A); }
+.wind-left { font-size: 13px; color: #B58A66; margin-top: 8px; text-align: right; }
+html:root .wind .clock .date { margin-top: -22px; font-size: calc(17px * var(--ts)); font-weight: 500; color: var(--text-2); }
+.winddown .check.done { background: linear-gradient(135deg, #E8955A, #D9604A); }
+.wind-foot .btn[data-mode="sleep"] { background: linear-gradient(135deg, #E8955A, #B5502E); border: 0; color: #1A0F05; font-weight: 600; }
+@media (orientation: portrait) { html:root .wind { grid-template-rows: auto minmax(0, .8fr) minmax(0, 1fr) auto; } }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* Later fixes over older, more specific rules. */
+html:root .home .hero { flex-direction: column; align-items: stretch; gap: 0; padding: 16px 28px 14px; background: var(--hero-day); }
+html:root.dusk .home .hero { background: var(--hero-dusk); }
+html:root .home .item .t b.wrap { white-space: nowrap; display: block; }
+html:root .a-tasks .item { min-height: 52px; }
+
+/* ---------- morning brief: sunrise over a solid sheet ---------- */
+html:root .morning { background: linear-gradient(#0E1A4A 0%, #33389A 22%, #A24F86 40%, #F08A5B 52%, #FFD08A 60%, #0C0E12 60.2%); }
+html:root .morning .sky { height: 42%; }
+html:root .morning .hills { display: none; }
+html:root .morning .m-body { background: #0C0E12; border-radius: 40px 40px 0 0; padding: 26px 24px 24px; }
+html:root .morning .wxw, html:root .morning .m-block, html:root .morning .m-digest { background: var(--panel); box-shadow: none; border: 1px solid var(--line); border-radius: 22px; }
+html:root .morning .m-block h3 { font-family: var(--mono); color: var(--muted); }
+html:root .morning .m-go { background: var(--text); color: #0C0E12; border-radius: 18px; box-shadow: none; }
+html:root .morning .wxw-mark { color: #0C0E12; }
+/* ---------- sleep: embers on black ---------- */
+.sleep { background: #000; }
+.sleep .time, .sleep .clock { color: #6B2A14; }
+.sleep.reveal .time, .sleep.reveal .clock { color: #FFB38A; }

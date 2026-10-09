@@ -43,6 +43,7 @@ const DEFAULT_STATE = {
   mode: 'day', // day | sleep | off
   settings: {
     dayBrightness: 85,
+    textSize: 115, // percent; scales body text on every device
     sleepBrightness: 4,
     autoSleep: true,
     sleepAt: '23:30',
@@ -600,7 +601,7 @@ const mcp = createMcp({
   snapshot: () => ({ calendar: sources.calendar?.get().data?.events || [], digestHeadline: state.digest?.day === localDay() ? state.digest.headline : null }),
 });
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2' };
 const PUBLIC = path.join(ROOT, 'public');
 
 function send(res, status, body) {

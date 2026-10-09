@@ -1,185 +1,172 @@
-// The wind-down sky: a dot grid across the whole screen, with the time lit up on it
-// like a dot-matrix board. The lit points sit exactly on the grid; when the minute
-// changes they travel along the grid's rows and columns to the next number.
-// One canvas behind the UI; the faint grid itself is a CSS background on it (see
-// #stars in app.css, which must use the same pitch), so only lit points are drawn.
+// Dot-matrix clocks: the time lit up on a grid of dots (Home's hero and the
+// wind-down screen). Lit points sit exactly on the grid; when the minute changes
+// they travel along the grid's rows, then its columns, to the next number.
+//
+// Views are re-rendered as HTML strings, so each clock keeps one canvas for its
+// whole life and mountClocks() re-attaches it to its placeholder after a render.
 
-const G = 10;          // grid pitch in px
-const ROWS = 15;       // digit height in grid cells
-const SC = 6;          // glyph sampling: px per cell
 const MOVE_MS = 1100;
 const FRAME_MS = 33;
-const FONT = 'Inter, system-ui, sans-serif';
+const FONT = "600 {px}px Geist, Inter, system-ui, sans-serif";
+
+export const CLOCKS = {
+  // Home hero: white on the blue card.
+  day: { w: 380, h: 150, step: 8, font: 150, r: 2.8, align: 'left', grid: 'rgba(255,255,255,.13)', core: () => '255,255,255', glow: '200,230,255' },
+  // Wind-down: warm, peach to coral across the width.
+  wind: { w: 624, h: 220, step: 10, font: 200, r: 3.5, align: 'center', grid: 'rgba(217,145,74,.15)',
+    core: (f) => `255,${Math.round(214 - 70 * f)},${Math.round(160 - 50 * f)}`, glow: '232,120,60' },
+};
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const clamp01 = (t) => Math.max(0, Math.min(1, t));
-const fontKey = () => (document.fonts?.check?.('700 20px Inter') ? '+' : '-');
+const fontReady = () => (document.fonts?.check?.('600 20px Geist') ? '+' : '-');
+const timeText = () => { const d = new Date(); return `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
-// Which grid cells a character lights: the hub's own bold numerals, sampled onto the grid.
-const glyphs = new Map();
-let sampler;
-function glyph(ch) {
-  const key = ch + fontKey();
-  if (glyphs.has(key)) return glyphs.get(key);
-  if (ch === ':') return { cols: 4, cells: [5, 6, 11, 12].flatMap((r) => [[1, r], [2, r]]) };
-  sampler ||= document.createElement('canvas');
-  const g = sampler.getContext('2d', { willReadFrequently: true });
-  const font = `700 ${(ROWS / 0.727) * SC}px ${FONT}`; // digits are cap-height tall, so they fill ROWS
-  g.font = font;
-  const cols = Math.round(g.measureText('0').width / SC);
-  sampler.width = cols * SC; sampler.height = ROWS * SC;
-  g.font = font; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillStyle = '#fff';
-  g.fillText(ch, sampler.width / 2, ROWS * SC);
-  const px = g.getImageData(0, 0, sampler.width, sampler.height).data;
-  const cells = [];
-  for (let c = 0; c < cols; c++) for (let r = 0; r < ROWS; r++) {
-    let sum = 0;
-    for (let y = 0; y < SC; y++) for (let x = 0; x < SC; x++) sum += px[((r * SC + y) * sampler.width + c * SC + x) * 4 + 3];
-    if (sum / (SC * SC) > 115) cells.push([c, r]);
+class DotClock {
+  constructor(o) {
+    this.o = o;
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = o.w * this.dpr; this.canvas.height = o.h * this.dpr;
+    this.canvas.style.cssText = `width:${o.w}px;height:${o.h}px;max-width:100%;display:block`;
+    this.ctx = this.canvas.getContext('2d');
+    this.cols = Math.floor(o.w / o.step); this.rows = Math.floor(o.h / o.step);
+    this.shown = ''; this.dots = []; this.sparks = []; this.runner = null;
+    // The unlit grid never changes, so it's drawn once and stamped each frame.
+    this.gridLayer = document.createElement('canvas');
+    this.gridLayer.width = this.canvas.width; this.gridLayer.height = this.canvas.height;
+    const g = this.gridLayer.getContext('2d');
+    g.scale(this.dpr, this.dpr); g.fillStyle = o.grid;
+    for (let c = 0; c < this.cols; c++) for (let r = 0; r < this.rows; r++) g.fillRect(c * o.step + o.step / 2 - 1, r * o.step + o.step / 2 - 1, 2, 2);
   }
-  const out = { cols, cells };
-  glyphs.set(key, out);
-  return out;
-}
 
-let canvas, ctx, raf = 0, last = 0, on = false;
-let shown = '', slots = []; // slots are indexed from the right, so the minutes stay put
-let sparks = [], runner = null, nextRun = 0;
+  // Which grid cells the time lights, and which character each belongs to.
+  sample(text) {
+    const o = this.o, c = document.createElement('canvas');
+    c.width = o.w; c.height = o.h;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.font = FONT.replace('{px}', o.font);
+    g.textBaseline = 'alphabetic'; g.fillStyle = '#fff';
+    const width = g.measureText(text).width;
+    const x0 = o.align === 'center' ? (o.w - width) / 2 : 2;
+    // Digits are about 0.71em tall: sit them in the middle of the canvas.
+    g.fillText(text, x0, o.h / 2 + o.font * 0.355);
+    const edges = [...text].map((_, i) => x0 + g.measureText(text.slice(0, i + 1)).width);
+    const px = g.getImageData(0, 0, o.w, o.h).data;
+    const cells = [];
+    for (let col = 0; col < this.cols; col++) for (let row = 0; row < this.rows; row++) {
+      const x = Math.floor(col * o.step + o.step / 2), y = Math.floor(row * o.step + o.step / 2);
+      if (px[(y * o.w + x) * 4 + 3] > 120) cells.push({ c: col, r: row, slot: Math.max(0, edges.findIndex((e) => x < e)) });
+    }
+    return cells;
+  }
 
-// A point holds a cell it came from and a cell it's going to (both relative to its digit).
-const point = (from, to, t0, opts = {}) => ({ fx: from[0], fy: from[1], tx: to[0], ty: to[1], t0, hFirst: Math.random() < 0.5, ...opts });
-
-function setTime(text, now) {
-  const key = text + fontKey();
-  if (key === shown) return;
-  const order = (a, b) => a[0] - b[0] || a[1] - b[1];
-  slots = text.split('').reverse().map((ch, i) => {
-    const old = slots[i];
-    const target = glyph(ch);
-    if (!old) // switching on: a sweep from the left, each point fading up in place
-      return { ch, cols: target.cols, points: target.cells.map((c) => point(c, c, now + c[0] * 30 + rand(0, 200), { born: true })) };
-    if (old.ch === ch && old.cols === target.cols) return old;
-    // Pair old points with new cells in the same reading order, so the moves stay short.
-    const from = old.points.filter((p) => !p.dying).map((p) => [p.tx, p.ty]).sort(order);
-    const to = target.cells.slice().sort(order);
-    const points = [];
-    if (from.length <= to.length) { // fewer points than cells: some split in two
-      to.forEach((b, k) => points.push(point(from.length ? from[Math.floor((k / to.length) * from.length)] : b, b, now + rand(0, 420))));
-    } else { // more points than cells: the spares travel in beside a neighbour and switch off
-      const kept = new Set(to.map((_, k) => Math.floor((k / to.length) * from.length)));
-      let k = 0;
-      from.forEach((a, j) => {
-        if (kept.has(j)) points.push(point(a, to[k++], now + rand(0, 420)));
-        else points.push(point(a, to[Math.min(to.length - 1, k)], now + rand(0, 420), { dying: true }));
+  setTime(text, now) {
+    const key = text + fontReady();
+    if (key === this.shown) return;
+    const cells = this.sample(text);
+    const first = !this.shown, prev = this.shown.slice(0, -1);
+    const sameShape = !first && prev.length === text.length && this.shown.slice(-1) === key.slice(-1);
+    const old = this.dots.filter((d) => !d.dying);
+    const move = (from, to, extra = {}) => ({ fc: from.c, fr: from.r, tc: to.c, tr: to.r, slot: to.slot, t0: now + rand(0, 420), hFirst: true, ...extra });
+    const order = (a, b) => a.c - b.c || a.r - b.r;
+    const pair = (was, will) => {
+      const from = was.map((d) => ({ c: d.tc, r: d.tr })).sort(order), to = will.slice().sort(order), out = [];
+      if (!from.length) return to.map((t) => move(t, t, { born: true }));
+      if (from.length <= to.length) { // short of dots: some split off a neighbour and fade in
+        const stay = new Set(from.map((_, k) => Math.floor((k / from.length) * to.length)));
+        let k = 0;
+        to.forEach((t, j) => { if (stay.has(j)) out.push(move(from[k++], t)); else out.push(move(from[Math.min(from.length - 1, k)], t, { born: true })); });
+      } else { // dots to spare: the extras slide to a neighbour and fade out
+        const keep = new Set(to.map((_, k) => Math.floor((k / to.length) * from.length)));
+        let k = 0;
+        from.forEach((f, j) => { if (keep.has(j)) out.push(move(f, to[k++])); else out.push(move(f, to[Math.min(to.length - 1, k)], { dying: true })); });
+      }
+      return out;
+    };
+    if (first) this.dots = cells.map((t) => ({ fc: t.c, fr: t.r, tc: t.c, tr: t.r, slot: t.slot, t0: now + t.c * 14 + rand(0, 200), born: true }));
+    else if (sameShape) {
+      // Same number of characters: digits that didn't change stay exactly where they are.
+      this.dots = [...text].flatMap((ch, i) => {
+        const was = old.filter((d) => d.slot === i);
+        return ch === prev[i] ? was : pair(was, cells.filter((t) => t.slot === i));
       });
+    } else this.dots = pair(old, cells);
+    this.shown = key;
+  }
+
+  draw(now) {
+    const { o, ctx } = this;
+    this.setTime(timeText(), now);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.drawImage(this.gridLayer, 0, 0);
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const at = (cell) => cell * o.step + o.step / 2;
+
+    // Ambient: a grid point that glows and fades, and now and then a runner along a row.
+    if (Math.random() < 0.25 && this.sparks.length < 14) this.sparks.push({ c: Math.floor(rand(0, this.cols)), r: Math.floor(rand(0, this.rows)), t0: now });
+    this.sparks = this.sparks.filter((s) => now - s.t0 < 1400);
+    for (const s of this.sparks) {
+      ctx.fillStyle = `rgba(${o.core(s.c / this.cols)},${(Math.sin(((now - s.t0) / 1400) * Math.PI) * 0.55).toFixed(3)})`;
+      ctx.fillRect(at(s.c) - 1.5, at(s.r) - 1.5, 3, 3);
     }
-    return { ch, cols: target.cols, points };
-  });
-  shown = key;
-}
+    if (!this.runner && Math.random() < 0.006) this.runner = { r: Math.floor(rand(0, this.rows)), t0: now, back: Math.random() < 0.5 };
+    if (this.runner) {
+      const head = ((now - this.runner.t0) * 0.5) / o.step;
+      if (head > this.cols + 9) this.runner = null;
+      else for (let k = 0; k < 9; k++) {
+        const col = Math.floor(head) - k;
+        if (col < 0 || col >= this.cols) continue;
+        const c = this.runner.back ? this.cols - 1 - col : col;
+        ctx.fillStyle = `rgba(${o.core(c / this.cols)},${((1 - k / 9) * 0.7).toFixed(3)})`;
+        ctx.fillRect(at(c) - 1.5, at(this.runner.r) - 1.5, 3, 3);
+      }
+    }
 
-// Where a point is now: along the row, then the column (or the other way), never diagonally.
-function place(p, now) {
-  const t = ease(clamp01((now - p.t0) / MOVE_MS));
-  const dx = p.tx - p.fx, dy = p.ty - p.fy, ax = Math.abs(dx), ay = Math.abs(dy);
-  const d = t * (ax + ay);
-  const mx = p.hFirst ? Math.min(d, ax) : Math.max(0, d - ay);
-  const my = p.hFirst ? Math.max(0, d - ax) : Math.min(d, ay);
-  return [p.fx + Math.sign(dx) * mx, p.fy + Math.sign(dy) * my, t];
-}
-
-function dot(x, y, a, r) {
-  ctx.fillStyle = `rgba(120,170,255,${(a * 0.2).toFixed(3)})`;
-  ctx.beginPath(); ctx.arc(x, y, r * 2.3, 0, 6.2832); ctx.fill();
-  ctx.fillStyle = `rgba(240,246,255,${a.toFixed(3)})`;
-  ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
-}
-const cx = (cell) => cell * G + G / 2; // centre of a grid cell, matching the CSS grid
-
-function drawClock(now) {
-  const el = document.getElementById('constel');
-  if (!el) { shown = ''; slots = []; return; }
-  const d = new Date();
-  setTime(`${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`, now);
-  const box = el.getBoundingClientRect();
-  if (!box.width) return;
-  const col0 = Math.round((box.left + 12) / G), row0 = Math.round((box.top + (box.height - ROWS * G) / 2) / G);
-  const sec = now / 1000;
-  let col = col0;
-  for (let i = slots.length - 1; i >= 0; i--) {
-    const s = slots[i];
-    for (const p of s.points) {
-      const [gx, gy, t] = place(p, now);
-      let a = p.born ? clamp01((now - p.t0) / 600) : p.dying ? 1 - t : 1;
+    let settled = true;
+    for (const d of this.dots) {
+      const t = ease(clamp01((now - d.t0) / MOVE_MS));
+      if (t < 1) settled = false;
+      // Along the row first, then along the column: never diagonally.
+      const dx = d.tc - d.fc, dy = d.tr - d.fr, ax = Math.abs(dx), ay = Math.abs(dy), run = t * (ax + ay);
+      const x = at(d.fc + Math.sign(dx) * Math.min(run, ax)), y = at(d.fr + Math.sign(dy) * Math.max(0, run - ax));
+      let a = d.born ? clamp01((now - d.t0) / 600) : d.dying ? 1 - t : 1;
       if (a <= 0) continue;
-      const moving = t > 0 && t < 1 && !p.born;
-      // Still points breathe very slightly, in a slow wave across the number.
-      if (!moving) a *= 0.86 + 0.14 * Math.sin(sec * 0.7 + (col + gx) * 0.22 + gy * 0.15);
-      dot(cx(col + gx), cx(row0 + gy), a, G * (moving ? 0.42 : 0.36));
+      a *= 0.8 + 0.2 * Math.sin(now / 1000 - x * 0.012 + y * 0.02);
+      const rgb = o.core(x / o.w);
+      ctx.fillStyle = `rgba(${o.glow},${(a * 0.24).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(x, y, o.r * 1.8, 0, 6.2832); ctx.fill();
+      ctx.fillStyle = `rgba(${rgb},${a.toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(x, y, o.r, 0, 6.2832); ctx.fill();
     }
-    if (s.points.some((p) => p.dying) && s.points.every((p) => now - p.t0 > MOVE_MS)) s.points = s.points.filter((p) => !p.dying);
-    col += s.cols + (s.ch === ':' ? 0 : 1);
+    if (settled && this.dots.some((d) => d.dying || d.born)) this.dots = this.dots.filter((d) => !d.dying).map((d) => ({ ...d, fc: d.tc, fr: d.tr, born: false }));
   }
-  ctx.font = `700 26px ${FONT}`;
-  ctx.fillStyle = 'rgba(214,224,255,.62)';
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillText(d.getHours() < 12 ? 'AM' : 'PM', cx(col) + 2, (row0 + ROWS) * G);
 }
 
-// Background life, all on the grid: single points that glow and fade, and now and
-// then a point that runs along a row or column leaving a short trail.
-function drawField(now, W, H) {
-  const cols = Math.floor(W / G), rows = Math.floor(H / G);
-  while (sparks.length < 70) sparks.push({ c: 0, r: 0, t0: 0, life: 0 });
-  for (const s of sparks) {
-    if (now > s.t0 + s.life) Object.assign(s, { c: Math.floor(rand(0, cols)), r: Math.floor(rand(0, rows)), t0: now + rand(0, 4000), life: rand(3500, 8000), big: Math.random() < 0.2 });
-    const age = (now - s.t0) / s.life;
-    if (age <= 0) continue;
-    ctx.fillStyle = `rgba(200,220,255,${(Math.sin(age * Math.PI) * (s.big ? 0.85 : 0.5)).toFixed(3)})`;
-    ctx.beginPath(); ctx.arc(cx(s.c), cx(s.r), s.big ? 2.1 : 1.5, 0, 6.2832); ctx.fill();
-  }
-  if (!runner && now > nextRun) {
-    const horiz = Math.random() < 0.6;
-    runner = { horiz, back: Math.random() < 0.5, line: Math.floor(rand(2, (horiz ? rows : cols) - 2)), len: horiz ? cols : rows, t0: now };
-    nextRun = now + rand(7000, 16000);
-  }
-  if (runner) {
-    const head = ((now - runner.t0) / 1000) * 46;
-    if (head > runner.len + 16) runner = null;
-    else for (let k = 0; k < 16; k++) {
-      const at = Math.floor(head) - k;
-      if (at < 0 || at >= runner.len) continue;
-      const pos = runner.back ? runner.len - 1 - at : at;
-      ctx.fillStyle = `rgba(210,228,255,${((1 - k / 16) * 0.8).toFixed(3)})`;
-      ctx.beginPath(); ctx.arc(cx(runner.horiz ? pos : runner.line), cx(runner.horiz ? runner.line : pos), k ? 1.6 : 2.4, 0, 6.2832); ctx.fill();
-    }
-  }
-}
+const clocks = new Map();
+let raf = 0, last = 0;
 
 function frame(now) {
-  if (!on) return;
+  raf = 0;
+  const live = [...clocks.values()].filter((c) => c.canvas.isConnected);
+  if (!live.length || document.hidden) return; // nothing on screen: stop until the next mount
   raf = requestAnimationFrame(frame);
   if (now - last < FRAME_MS) return;
   last = now;
-  const W = innerWidth, H = innerHeight;
-  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
-  ctx.clearRect(0, 0, W, H);
-  drawField(now, W, H);
-  drawClock(now);
+  for (const c of live) c.draw(now);
 }
 
-/** Turn the night sky on or off. Safe to call on every render. */
-export function nightSky(want) {
-  if (want === on) return;
-  on = want;
-  if (!canvas) {
-    canvas = document.createElement('canvas');
-    canvas.id = 'stars';
-    document.getElementById('wall').after(canvas);
-    ctx = canvas.getContext('2d');
+/** Attach each clock's canvas to its <div data-dotclock="day|wind"> placeholder. Call after every render. */
+export function mountClocks(root = document) {
+  for (const el of root.querySelectorAll('[data-dotclock]')) {
+    const kind = el.dataset.dotclock;
+    if (!CLOCKS[kind]) continue;
+    if (!clocks.has(kind)) clocks.set(kind, new DotClock(CLOCKS[kind]));
+    const c = clocks.get(kind);
+    if (c.canvas.parentNode !== el) el.replaceChildren(c.canvas);
   }
-  canvas.hidden = !on;
-  cancelAnimationFrame(raf);
-  if (on) { shown = ''; slots = []; last = 0; nextRun = performance.now() + 4000; raf = requestAnimationFrame(frame); }
+  if (!raf) raf = requestAnimationFrame(frame);
 }
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !raf) raf = requestAnimationFrame(frame); });

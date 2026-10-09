@@ -2,7 +2,7 @@
 
 A touchscreen desk dashboard for a Raspberry Pi 5 + Raspberry Pi Touch Display 2 (7", in its native portrait orientation at 720×1280; landscape works too).
 
-The whole hub is drawn as translucent glass panels over a soft colour backdrop that follows the sun: cool blue in the morning, fading to warm plum and amber as the sun goes down, and easing back before dawn. Panels are brighter and more solid in daylight and darker after sunset, using the real sunrise and sunset for `WEATHER_LAT`/`WEATHER_LON`. PayIt's screen switches to a deep version of its own teal-green. To try a look, open the hub with `#sky=<warm>,<day>` (each 0 to 1) and optionally `&view=<screen>`.
+The look is called Graphite: a near-black base, solid panels with a hairline border, and colour only in short gradients, one per section (amber for Focus, mint for PayIt, violet for mail and Claude, and so on). Home opens with a hero card that shows the time as a dot-matrix clock, blue by day and plum-to-orange in the evening; wind-down turns everything warm and dim. Fonts (Geist and Geist Mono) are bundled in `public/fonts`, so the Pi needs no internet to draw the screen. Text size is adjustable in Settings. The styles live in `public/graphite.css`, layered over `public/app.css`; the full design spec is in `mockups/graphite-spec.md`.
 
 | Screen | What it does |
 |---|---|

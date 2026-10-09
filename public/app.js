@@ -1,5 +1,5 @@
 import { openKeyboard } from './keyboard.js';
-import { nightSky } from './stars.js';
+import { mountClocks } from './stars.js';
 
 // ---------------------------------------------------------------------------
 // Basics
@@ -119,23 +119,8 @@ function applySky() {
   let set = w?.sunset ? new Date(w.sunset).getTime() : dayStart() + 19 * 3600e3;
   if (!(rise < set)) { rise = dayStart() + 7 * 3600e3; set = dayStart() + 19 * 3600e3; }
   const sky = window.__sky || skyAt(now, rise, set); // window.__sky = { warm, day } pins it, for trying looks out
-  const brand = view === 'payit';
-  const mix = (k) => `rgb(${(brand ? SKY.payit[k] : SKY.aurora[k].map((v, i) => Math.round(lerp(v, SKY.dusk[k][i], sky.warm)))).join(' ')})`;
-  // PayIt stays on the darker side even at midday.
-  const st = document.documentElement.style, d = brand ? sky.day * 0.35 : sky.day;
-  document.documentElement.classList.toggle('skin-payit', brand);
-  for (const k of ['base', 'b1', 'b2', 'b3']) st.setProperty(`--sky-${k}`, mix(k));
-  st.setProperty('--sky-glow', lerp(0.55, 0.72, d).toFixed(3));
-  st.setProperty('--sky-bright', lerp(1, 1.2, d).toFixed(3));
-  st.setProperty('--smoke', lerp(0.3, 0.2, d).toFixed(3));
-  st.setProperty('--fill-a', lerp(0.13, 0.24, d).toFixed(3));
-  st.setProperty('--fill-b', lerp(0.05, 0.13, d).toFixed(3));
-  st.setProperty('--edge', lerp(0.3, 0.5, d).toFixed(3));
-  st.setProperty('--text-2', `rgba(255,255,255,${lerp(0.74, 0.9, d).toFixed(2)})`);
-  st.setProperty('--muted', `rgba(255,255,255,${lerp(0.52, 0.7, d).toFixed(2)})`);
-  st.setProperty('--line', `rgba(255,255,255,${lerp(0.14, 0.22, d).toFixed(2)})`);
-  document.documentElement.classList.toggle('daylight', d > 0.5);
-  document.querySelector('meta[name=theme-color]')?.setAttribute('content', mix('base'));
+  // Graphite has no backdrop: only Home's hero card shifts, to its dusk gradient late in the day.
+  document.documentElement.classList.toggle('dusk', sky.warm > 0.5 || sky.day < 0.3);
 }
 setInterval(applySky, 60e3);
 
@@ -598,12 +583,20 @@ const VIEWS = {
     const hasTimer = T.running || T.remaining != null;
 
     return `<div class="home">
-      <section class="card a-clock clock">
-        <div class="clock-main">
-          <div class="time" id="clock-time">${clockHtml()}</div>
-          <div class="date">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+      <section class="hero a-clock tap" data-act="weather">
+        <i class="hero-ring"></i><i class="hero-ring two"></i>
+        <div class="hero-top">
+          <div class="hero-clock">
+            <div class="dotclock" data-dotclock="day" role="img" aria-label="${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}"></div>
+            <div class="hero-date"><span class="ampm">${new Date().getHours() < 12 ? 'AM' : 'PM'}</span>${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+          </div>
+          ${w ? `<div class="hero-wx">
+            <div class="hero-temp">${icon(wxIcon)}<b>${w.temp}°</b></div>
+            <div class="hero-cond">${esc(wxLabel)}</div>
+            <div class="hero-hl mono">H ${w.hi}° · L ${w.lo}°${w.rainChance >= 20 ? ` · ${w.rainChance}% rain` : ''}</div>
+          </div>` : ''}
         </div>
-        ${weatherWidget(w)}
+        ${w?.hours?.length ? `<div class="hero-hours">${w.hours.slice(1, 7).map((h) => { const hr = new Date(h.time).getHours(); return `<div><span class="mono">${hr % 12 || 12}${hr < 12 ? 'a' : 'p'}</span><b>${h.temp}°</b>${h.rain >= 30 ? `<i>${h.rain}%</i>` : ''}</div>`; }).join('')}</div>` : ''}
       </section>
 
       <section class="card a-focus tap" data-act="go" data-view="focus">
@@ -905,6 +898,7 @@ const VIEWS = {
 </div>
       <div class="settings">
         ${group('Display', [
+          row('Text size', `Bigger text for reading from your chair · ${st.textSize || 115}%`, `<input type="range" min="100" max="140" step="5" value="${st.textSize || 115}" data-act="set-range" data-k="textSize">`),
           row('Brightness', D.hasBacklight ? 'Desk screen backlight' : 'No backlight here; this controls the desk screen', range('dayBrightness', 10, 100)),
           row('Sleep brightness', 'How dim the bedside clock gets', range('sleepBrightness', 0, 30)),
           row('Sounds', '', toggle('chime')),
@@ -978,12 +972,21 @@ function windHome() {
   const doneToday = D.todos.filter((t) => t.done && t.doneAt >= dayStart()).length;
   const w = D.weather?.data;
   const tw = w?.tomorrow;
+  // How far through wind-down we are, from its start to sleep time.
+  const toMin = (hm) => { const [h, m] = hm.split(':').map(Number); return h * 60 + m; };
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const span = (toMin(D.settings.sleepAt) - toMin(D.settings.windDownAt) + 1440) % 1440 || 1;
+  const into = (nowMin - toMin(D.settings.windDownAt) + 1440) % 1440;
+  const windDone = Math.min(1, into / span), minsLeft = Math.max(0, span - into);
+  const lightsOut = new Date(2000, 0, 1, ...D.settings.sleepAt.split(':').map(Number)).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   // What was said tonight, newest first (D.journal already is).
   const tonight = (D.journal || []).filter((j) => j.evening && j.at > Date.now() - 12 * 3600e3).slice(0, 6);
   return `<div class="wind">
-    <section class="card clock">
-      <div class="card-h">${icon('moon')}<span class="grow">Winding down</span><span class="link">Sleep mode at ${esc(D.settings.sleepAt)}</span></div>
-      <div class="constel" id="constel" role="img" aria-label="${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}"></div>
+    <section class="card clock wind-hero">
+      <div class="wind-top mono"><span>Wind down</span><span>Lights out ${esc(lightsOut)}</span></div>
+      <div class="dotclock" data-dotclock="wind" role="img" aria-label="${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}"></div>
+      <div class="wind-bar"><i style="width:${(windDone * 100).toFixed(1)}%"></i></div>
+      <div class="wind-left mono">${minsLeft > 0 ? `${minsLeft >= 60 ? `${Math.floor(minsLeft / 60)} h ` : ''}${minsLeft % 60} min left` : 'Time for bed'}</div>
       <div class="date">${doneToday ? `${doneToday} thing${doneToday > 1 ? 's' : ''} done today` : 'The day is done'}${D.focus.todayMinutes ? ` · ${D.focus.todayMinutes} min of focus` : ''}</div>
     </section>
     <section class="card">
@@ -1054,25 +1057,36 @@ const winding = () => KIOSK && D?.phase === 'winddown' && ui.windOverride !== ne
 const NAV = [['home', 'Home'], ['focus', 'Focus'], ['tasks', 'To do'], ['payit', 'PayIt'], ['mail', 'Mail'], ['journal', 'Journal'], ['schedule', 'Schedule'], ['settings', 'Settings']];
 
 function renderRail() {
-  const alerts = D?.alerts || [];
-  const serious = alerts.some((a) => a.level !== 'info');
   const urgentMail = (D?.mail?.data?.accounts || []).flatMap((a) => a.messages).filter((m) => m.priority === 'urgent').length;
-  const openToday = (D?.todos || []).filter((t) => !t.done && t.due && t.due < dayStart(1)).length;
+  const openToday = (D?.todos || []).filter((t) => !t.done && !t.suggested && t.due && t.due < dayStart(1)).length;
   const badge = { mail: urgentMail, tasks: openToday + (D ? suggestedTodos().length : 0) };
   const nav = winding() ? NAV.filter(([k]) => WIND_VIEWS.includes(k)) : NAV;
-  $('#rail').innerHTML = nav.map(([k, label]) => `<button class="${view === k ? 'on' : ''}" data-act="go" data-view="${k}" aria-label="${label}">${icon(k)}${badge[k] ? `<span class="badge info">${badge[k]}</span>` : ''}</button>`).join('')
-    + `<div class="spacer"></div>
-      ${winding() && !serious ? '' : `<button data-act="alerts" aria-label="Alerts">${icon('bell')}${alerts.length ? `<span class="badge ${serious ? '' : 'info'}">${alerts.length}</span>` : ''}</button>`}
-      <button class="moon" data-act="mode" data-mode="sleep" aria-label="Sleep">${icon('moon')}</button>`;
+  $('#rail').innerHTML = nav.map(([k, label]) => `<button class="${view === k ? 'on' : ''}" data-act="go" data-view="${k}" data-sec="${k}">
+      <span class="pill">${icon(k)}${badge[k] ? `<span class="badge">${badge[k]}</span>` : ''}</span><em>${label}</em></button>`).join('');
+}
+
+// The strip along the top: which hub this is and how it's doing, plus alerts and sleep.
+function renderStatus() {
+  const alerts = D?.alerts || [];
+  const serious = alerts.some((a) => a.level !== 'info');
+  const temp = D?.system?.tempC;
+  const label = (NAV.find(([k]) => k === view) || [])[1] || view;
+  $('#status').innerHTML = `<span class="st-dot ${D?.payit?.error || D?.mail?.error ? 'warn' : ''}"></span>
+    <span class="st-text">${esc(D?.system?.host || 'deskhub')}${temp ? ` · ${Math.round(temp)}°C` : ''} · ${esc(winding() && view === 'home' ? 'wind down' : label.toLowerCase())}</span>
+    <button class="st-btn ${alerts.length ? (serious ? 'hot' : 'has') : ''}" data-act="alerts" aria-label="Alerts">${icon('bell')}${alerts.length ? `<b>${alerts.length}</b>` : ''}</button>
+    <button class="st-btn" data-act="mode" data-mode="sleep" aria-label="Sleep">${icon('moon')}</button>`;
 }
 
 function render() {
   if (!D) return;
   document.documentElement.classList.toggle('winddown', winding());
-  nightSky(winding());
+  document.documentElement.dataset.view = view;
+  document.documentElement.style.setProperty('--ts', (D.settings.textSize || 115) / 100);
   if (winding() && !WIND_VIEWS.includes(view)) view = 'home';
   renderRail();
+  renderStatus();
   $('#view').innerHTML = winding() && view === 'home' ? windHome() : VIEWS[view]();
+  mountClocks();
   renderMorning();
   renderLock();
   drawCharts();
