@@ -67,14 +67,14 @@ export function mail() {
 
 export function calendar() {
   const today = startOfDay();
-  const ev = (calendar, title, start, mins, location = '') => ({ calendar, title, start, end: start + mins * 60e3, allDay: false, location });
+  const ev = (calendar, title, start, mins, location = '', more = {}) => ({ id: `${title}:${start}`, calendar, title, start, end: start + mins * 60e3, allDay: false, location, description: '', link: '', organizer: '', guests: [], guestCount: 0, myReply: '', ...more });
   return {
     events: [
       ev('Classes', 'ME 3057 Lecture', today + 13.5 * H, 75, 'MRDC 2404'),
       ev('Canvas', 'Lab 2 Report due', today + 23.98 * H, 0),
       ev('Personal', 'Gym', today + 18 * H, 60),
       ev('Classes', 'Dynamics', startOfDay(Date.now(), 1) + 9.5 * H, 50, 'Klaus 1443'),
-      ev('PayIt', 'Merchant onboarding call', startOfDay(Date.now(), 1) + 15 * H, 30, 'Zoom'),
+      ev('PayIt', 'Merchant onboarding call', startOfDay(Date.now(), 1) + 15 * H, 30, 'Zoom', { description: 'Walk Casa Luna through card readers and payouts.\n\nBring: test reader, payout schedule, tax ID checklist.', link: 'https://zoom.us/j/0000000000', organizer: 'Maya Ortiz', guests: [{ name: 'Maya Ortiz', reply: 'yes' }, { name: 'Luis Rivera', reply: 'maybe' }, { name: 'Casa Luna', reply: 'none' }], guestCount: 4, myReply: 'none' }),
     ].filter((e) => e.end >= Date.now()),
     errors: [],
   };

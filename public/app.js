@@ -20,6 +20,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const ICONS = {
   home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   focus: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
+  pin: '<path d="M12 21s7-6.1 7-11a7 7 0 0 0-14 0c0 4.9 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   tasks: '<rect x="3" y="3" width="18" height="18" rx="5"/><path d="m8 12 3 3 5-6"/>',
   payit: '<path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m3 7 9 6 9-6"/>',
@@ -487,7 +489,7 @@ function eventRow(e) {
   const soon = !e.allDay && e.start - Date.now() < 60 * 60e3 && e.start > Date.now();
   const now = !e.allDay && e.start <= Date.now() && e.end > Date.now();
   const when = e.allDay ? 'All day' : now ? 'Now' : e.start < dayStart(1) ? hm(e.start) : `${new Date(e.start).toLocaleDateString('en-US', { weekday: 'short' })} ${hm(e.start)}`;
-  return `<div class="item"><span class="cal-bar"></span>
+  return `<div class="item tap" data-act="event" data-id="${esc(e.id || '')}"><span class="cal-bar"></span>
     <div class="t"><b>${esc(e.title)}</b><span>${esc([e.calendar, e.location].filter(Boolean).join(' · '))}</span></div>
     <span class="when ${soon || now ? 'soon' : ''}">${esc(when)}</span></div>`;
 }
@@ -864,7 +866,7 @@ const VIEWS = {
       <div class="tl-events">${placed.map(({ e, c }) => {
         const top = pct(hourOf(e.start)), h = Math.max(pct(hourOf(e.end)) - top, 0);
         const past = e.end < Date.now();
-        return `<div class="tl-ev ${past ? 'past' : ''}" style="top:min(${top}%, calc(100% - 46px));height:${h}%;left:${(c / cols.length) * 100}%;width:${100 / cols.length}%">
+        return `<div class="tl-ev tap ${past ? 'past' : ''}" data-act="event" data-id="${esc(e.id || '')}" style="top:min(${top}%, calc(100% - 46px));height:${h}%;left:${(c / cols.length) * 100}%;width:${100 / cols.length}%">
           <b>${esc(e.title)}</b><span>${hm(e.start)}${e.end > e.start ? `–${hm(e.end)}` : ''}${e.location ? ` · ${esc(e.location)}` : ''}</span></div>`;
       }).join('')}</div>
       ${timed.length ? '' : '<div class="tl-empty">Nothing on the calendar</div>'}
@@ -1078,6 +1080,32 @@ function render() {
 }
 
 // The day's weather: now, the next hours, sun times, and tomorrow.
+// One calendar event in full: when, where, what it says, who's going, and my reply.
+function renderEvent() {
+  const e = (D.calendar?.data?.events || []).find((x) => x.id === ui.eventId);
+  if (!e) { $('#drawer').hidden = true; return; }
+  const day = new Date(e.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const mins = Math.round((e.end - e.start) / 60e3);
+  const long = mins >= 60 ? `${Math.floor(mins / 60)} hr${mins % 60 ? ` ${mins % 60} min` : ''}` : `${mins} min`;
+  const time = e.allDay ? 'All day' : e.end > e.start ? `${hm(e.start)} – ${hm(e.end)} · ${long}` : hm(e.start);
+  const until = e.start - Date.now();
+  const rel = e.allDay ? '' : until <= 0 && e.end > Date.now() ? 'Happening now' : until > 0 && until < 3600e3 ? `Starts in ${Math.max(1, Math.round(until / 60e3))} min` : '';
+  const REPLY = { yes: 'Going', no: 'Not going', maybe: 'Maybe', none: 'Not answered' };
+  const fact = (ic, main, sub) => `<div class="ev-fact">${icon(ic)}<div><b>${esc(main)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></div>`;
+  $('#drawer').innerHTML = `<div class="panel sheet event" data-stop>
+    <div class="page-h"><h1>${esc(e.title)}</h1><button class="btn small" data-act="close-drawer">Close</button></div>
+    <div class="ev-facts">
+      ${fact('schedule', day, [time, rel, e.repeats ? 'Repeats' : ''].filter(Boolean).join(' · '))}
+      ${e.location ? fact('pin', e.location) : ''}
+      ${e.link ? fact('link', /zoom|meet\.google|teams\.|webex/i.test(e.link) ? 'Video call' : 'Link', e.link.replace(/^https?:\/\//, '')) : ''}
+      ${fact('tasks', e.calendar, e.organizer ? (e.organizedByMe ? 'You organized this' : `Organized by ${e.organizer}`) : '')}
+    </div>
+    ${e.myReply ? `<div class="ev-reply ${e.myReply}"><span>Your reply</span><b>${REPLY[e.myReply]}</b></div>` : ''}
+    ${e.description ? `<div class="ev-desc">${esc(e.description)}</div>` : ''}
+    ${e.guests?.length ? `<h3 class="wx-h">Guests · ${e.guestCount}</h3><div class="ev-guests">${e.guests.map((g) => `<div class="${g.reply}"><i></i><b>${esc(g.name)}</b><span>${REPLY[g.reply]}</span></div>`).join('')}</div>` : ''}
+  </div>`;
+}
+
 function renderWeather() {
   const w = D.weather?.data;
   if (!w) { $('#drawer').hidden = true; return; }
@@ -1110,6 +1138,7 @@ function renderWeather() {
 function renderDrawer() {
   if (ui.drawer === 'mail') return renderReader();
   if (ui.drawer === 'weather') return renderWeather();
+  if (ui.drawer === 'event') return renderEvent();
   const alerts = D.alerts;
   $('#drawer').innerHTML = `<div class="panel" data-stop>
     <div class="page-h"><h1>Alerts</h1><button class="btn small ghost" data-act="close-drawer">Close</button></div>
@@ -1412,6 +1441,7 @@ document.addEventListener('click', async (e) => {
         if (!KIOSK) toast({ level: 'info', title: el.dataset.mode === 'day' ? 'Desk display is awake' : 'Desk display is asleep' });
         if (el.dataset.mode === 'day') load();
         break;
+      case 'event': if (!el.dataset.id) break; ui.drawer = 'event'; ui.eventId = el.dataset.id; $('#drawer').hidden = false; renderEvent(); break;
       case 'weather': ui.drawer = 'weather'; $('#drawer').hidden = false; renderWeather(); break;
       case 'alerts': ui.drawer = 'alerts'; $('#drawer').hidden = false; renderDrawer(); break;
       case 'close-drawer': $('#drawer').hidden = true; break;

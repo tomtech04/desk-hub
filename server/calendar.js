@@ -22,13 +22,26 @@ function parseDate(value, params) {
 }
 
 const unescape = (s) => s.replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1').trim();
+// Descriptions keep their line breaks and lose any HTML Google put in them.
+const unescapeText = (s) => s.replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1')
+  .replace(/<br\s*\/?>|<\/p>|<\/li>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  .replace(/\n{3,}/g, '\n\n').trim();
+const person = (params, value) => {
+  const email = value.replace(/^mailto:/i, '').toLowerCase();
+  const name = (params.CN || '').replace(/^"|"$/g, '');
+  return { name: name && name.toLowerCase() !== email ? name : email, email };
+};
+// Addresses that are "me", to pick my own reply out of the guest list.
+const MY_EMAILS = new Set([process.env.CALENDAR_EMAILS, ...Object.entries(process.env).filter(([k]) => /^MAIL_\d+_USER$/.test(k)).map(([, v]) => v), process.env.MS_USER]
+  .filter(Boolean).flatMap((v) => v.split(',')).map((v) => v.trim().toLowerCase()));
+const REPLY = { ACCEPTED: 'yes', DECLINED: 'no', TENTATIVE: 'maybe', 'NEEDS-ACTION': 'none' };
 
 function parseEvents(ics) {
   const lines = ics.replace(/\r?\n[ \t]/g, '').split(/\r?\n/);
   const events = [];
   let ev = null;
   for (const line of lines) {
-    if (line === 'BEGIN:VEVENT') { ev = { exdates: [] }; continue; }
+    if (line === 'BEGIN:VEVENT') { ev = { exdates: [], attendees: [] }; continue; }
     if (line === 'END:VEVENT') { if (ev?.start) events.push(ev); ev = null; continue; }
     if (!ev) continue;
     const idx = line.indexOf(':');
@@ -43,6 +56,12 @@ function parseEvents(ics) {
     else if (name === 'RRULE') ev.rrule = Object.fromEntries(value.split(';').map((p) => p.split('=')));
     else if (name === 'EXDATE') for (const v of value.split(',')) { const d = parseDate(v, params); if (d) ev.exdates.push(d.ms); }
     else if (name === 'STATUS') ev.cancelled = value === 'CANCELLED';
+    else if (name === 'UID') ev.uid = value;
+    else if (name === 'DESCRIPTION') ev.description = unescapeText(value).slice(0, 1500);
+    else if (name === 'URL') ev.url = value;
+    else if (name === 'X-GOOGLE-CONFERENCE' || name === 'CONFERENCE') ev.meeting = value;
+    else if (name === 'ORGANIZER') ev.organizer = person(params, value);
+    else if (name === 'ATTENDEE') ev.attendees.push({ ...person(params, value), reply: REPLY[params.PARTSTAT] || 'none' });
   }
   return events;
 }
@@ -91,7 +110,15 @@ export async function loadCalendar() {
         if (ev.cancelled) continue;
         const dur = ev.end ? ev.end.ms - ev.start.ms : 0;
         for (const start of occurrences(ev, from, to)) {
-          all.push({ calendar: feed.name, title: ev.title || '(untitled)', location: ev.location || '', start, end: start + dur, allDay: ev.start.allDay });
+          const mine = ev.attendees.find((a) => MY_EMAILS.has(a.email));
+          all.push({
+            id: `${ev.uid || ev.title}:${start}`, calendar: feed.name, title: ev.title || '(untitled)', location: ev.location || '', start, end: start + dur, allDay: ev.start.allDay,
+            description: ev.description || '', link: ev.meeting || ev.url || '', repeats: Boolean(ev.rrule),
+            organizer: ev.organizer?.name || '', organizedByMe: Boolean(ev.organizer && MY_EMAILS.has(ev.organizer.email)),
+            // Guests by name only; my own reply separately ('' when I'm not on the guest list).
+            guests: ev.attendees.filter((a) => a !== mine).slice(0, 12).map((a) => ({ name: a.name, reply: a.reply })), guestCount: ev.attendees.length,
+            myReply: mine?.reply || '',
+          });
         }
       }
     } catch (err) {

@@ -1170,3 +1170,23 @@ html { transition: --sky-base 1.1s ease, --sky-b1 1.1s ease, --sky-b2 1.1s ease,
 /* A long task name must not widen the focus page: keep its one column to the screen. */
 .f3 { grid-template-columns: minmax(0, 1fr); }
 .f3 > * { min-width: 0; }
+/* ---------- calendar event sheet ---------- */
+.sheet.event .page-h { align-items: flex-start; gap: 16px; }
+.sheet.event .page-h h1 { font-size: 30px; line-height: 1.15; min-width: 0; overflow-wrap: anywhere; }
+.ev-facts { display: flex; flex-direction: column; gap: 14px; }
+.ev-fact { display: flex; gap: 14px; align-items: flex-start; }
+.ev-fact > svg.i { flex: none; width: 26px; height: 26px; margin-top: 2px; color: var(--text-2); }
+.ev-fact b { display: block; font-size: 20px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.ev-fact span { display: block; font-size: 16px; color: var(--text-2); margin-top: 2px; overflow-wrap: anywhere; }
+.ev-reply { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-radius: 18px; background: rgba(255,255,255,.1); }
+.ev-reply span { font-size: 16px; color: var(--text-2); }
+.ev-reply b { font-size: 18px; font-weight: 700; }
+.ev-reply.yes b { color: var(--good); } .ev-reply.no b { color: var(--bad); } .ev-reply.maybe b, .ev-reply.none b { color: var(--accent); }
+.ev-desc { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 17px; line-height: 1.45; color: var(--text); max-height: 300px; overflow-y: auto; padding: 14px 18px; border-radius: 18px; background: rgba(255,255,255,.07); }
+.ev-guests { display: flex; flex-direction: column; overflow-y: auto; max-height: 240px; }
+.ev-guests div { display: flex; align-items: center; gap: 12px; min-height: 44px; border-top: 1px solid rgba(255,255,255,.1); }
+.ev-guests div:first-child { border-top: 0; }
+.ev-guests i { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.ev-guests .yes i { background: var(--good); } .ev-guests .no i { background: var(--bad); } .ev-guests .maybe i { background: var(--accent); }
+.ev-guests b { flex: 1; min-width: 0; font-size: 17px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev-guests span { font-size: 15px; color: var(--text-2); }
