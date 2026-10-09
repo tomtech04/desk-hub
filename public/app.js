@@ -1,5 +1,6 @@
 import { openKeyboard } from './keyboard.js';
 import { mountClocks } from './stars.js';
+import { createWorkstation } from './workstation.js';
 
 // ---------------------------------------------------------------------------
 // Basics
@@ -216,7 +217,7 @@ async function timerFinish(skipped = false) {
   T.running = false;
   if (wasFocus) {
     const minutes = Math.round((tTotal() - (skipped ? tLeft() : 0)) / 60e3);
-    if (minutes >= 1) api('POST', '/api/focus', { minutes, label: T.label }).then(load).catch(() => {});
+    if (minutes >= 1) api('POST', '/api/focus', { minutes, label: T.label, where: KIOSK ? 'desk' : 'here' }).then(load).catch(() => {});
     T.cycle = (T.cycle + 1) % 4;
     timerReset(T.cycle === 0 ? 'long' : 'short');
   } else {
@@ -241,7 +242,7 @@ let lockCount = 0, lockCountTimer = null;
 const lockOn = () => D?.settings.focusLock !== false;
 
 function startFocus() {
-  if (!lockOn()) return timerStart();
+  if (!lockOn() || wsMode()) return timerStart(); // the lock is for the desk screen; a laptop just runs the timer
   T.lock = true; T.done = null; saveT();
   // A fresh session gets a short "settle in" count; resuming a paused one doesn't.
   if (!T.running && T.remaining == null) {
@@ -332,9 +333,11 @@ setInterval(() => {
   document.querySelectorAll('[data-timer]').forEach((el) => (el.textContent = fmtLeft(left)));
   const on = T.running || T.remaining != null;
   document.querySelectorAll('.ring-fg').forEach((el) => el.setAttribute('stroke-dashoffset', el.dataset.c * (1 - Math.max(0.002, el.dataset.left ? (on ? left / tTotal() : 1) : on ? frac : 0))));
-  if (on) document.querySelectorAll('.vf-dial [data-tick]').forEach((el) => el.classList.toggle('lit', el.dataset.tick / 60 < frac));
+  if (on) document.querySelectorAll('[data-dial] [data-tick]').forEach((el) => el.classList.toggle('lit', el.dataset.tick / 60 < frac));
   if (D?.mode && D.mode !== 'day') renderSleep();
   renderBanner();
+  if (wsMode()) WS.tick();
+  reportDesk();
 }, 1000);
 
 // ---------------------------------------------------------------------------
@@ -624,7 +627,7 @@ const VIEWS = {
       <section class="vf-stage">
         <div class="vf-dialrow">
           <button class="round-btn" data-act="t-nudge" data-d="-1" aria-label="Less time" ${active ? 'disabled' : ''}>−</button>
-          <div class="vf-dial">
+          <div class="vf-dial" data-dial>
             ${ring(400, 16, active ? 1 - tLeft() / tTotal() : mins / max, grad, !active, true)}
             <div class="vf-center">
               <span class="kicker">${esc(kicker)}</span>
@@ -755,7 +758,7 @@ const VIEWS = {
         <div class="ch plain"><span class="title">${esc(a.name)}</span>${a.needsSignIn ? '' : `<span class="tagc">${a.unread} unread</span>`}</div>
         ${a.needsSignIn ? `<div class="mail-off"><span>${esc(a.name)} mail isn't connected yet.</span><button class="btn primary small" data-act="go" data-view="settings">Connect</button></div>`
           : a.error ? `<div class="empty pad warn">${esc(a.error)}</div>` : ''}
-        ${a.messages.map((m) => `<button class="mail-row ${m.priority === 'low' ? 'low' : ''}" data-act="mail-open" data-id="${esc(m.id)}">
+        ${a.messages.filter((m) => !m.hidden).map((m) => `<button class="mail-row ${m.priority === 'low' ? 'low' : ''}" data-act="mail-open" data-id="${esc(m.id)}">
           <div class="mail-top"><b>${esc(m.from)}</b>${m.priority === 'urgent' ? '<em>Urgent</em>' : ''}<span>${ago(m.date)}</span></div>
           <p>${esc(m.summary)}</p>
           ${m.action ? `<div class="mail-act">${icon('arrow')}${esc(m.action)}</div>` : ''}
@@ -1014,7 +1017,7 @@ function renderMorning() {
   const events = (D.calendar?.data?.events || []).filter((e) => e.start < dayStart(1) && (e.allDay || e.end >= Date.now())).slice(0, 3);
   const p = D.payit?.data;
   const yesterday = p?.week?.length > 1 ? p.week[p.week.length - 2].cents : null;
-  const missed = (D.mail?.data?.accounts || []).flatMap((a) => a.messages).filter((m) => m.priority === 'urgent' || m.action).length;
+  const missed = (D.mail?.data?.accounts || []).flatMap((a) => a.messages).filter((m) => !m.hidden && (m.priority === 'urgent' || m.action)).length;
   const line = D.digest?.headline || (missed ? `${missed} email${missed > 1 ? 's' : ''} still need${missed > 1 ? '' : 's'} you.` : '');
   const html = `<div class="mb-sun"></div>
     <div class="mb-top">
@@ -1044,7 +1047,7 @@ const winding = () => KIOSK && D?.phase === 'winddown' && ui.windOverride !== ne
 const NAV = [['home', 'Home'], ['focus', 'Focus'], ['tasks', 'To do'], ['payit', 'PayIt'], ['mail', 'Mail'], ['journal', 'Journal'], ['schedule', 'Schedule'], ['settings', 'Settings']];
 
 function renderRail() {
-  const urgentMail = (D?.mail?.data?.accounts || []).flatMap((a) => a.messages).filter((m) => m.priority === 'urgent').length;
+  const urgentMail = (D?.mail?.data?.accounts || []).flatMap((a) => a.messages).filter((m) => m.priority === 'urgent' && !m.hidden).length;
   const openToday = (D?.todos || []).filter((t) => !t.done && !t.suggested && t.due && t.due < dayStart(1)).length;
   const badge = { mail: urgentMail, tasks: openToday + (D ? suggestedTodos().length : 0) };
   const nav = winding() ? NAV.filter(([k]) => WIND_VIEWS.includes(k)) : NAV;
@@ -1064,8 +1067,22 @@ function renderStatus() {
     <button class="st-btn" data-act="mode" data-mode="sleep" aria-label="Sleep">${icon('moon')}</button>`;
 }
 
+// A laptop-sized window gets the workstation; the desk screen and phones get the touch screens.
+const wsMode = () => !KIOSK && innerWidth >= 1024;
+
 function render() {
   if (!D) return;
+  const ws = wsMode();
+  document.documentElement.classList.toggle('wsmode', ws);
+  $('#ws').hidden = !ws;
+  if (ws) {
+    document.documentElement.classList.remove('winddown');
+    document.documentElement.style.setProperty('--ts', 1);
+    if (T.lock) { T.lock = false; T.done = null; saveT(); }
+    $('#focuslock').hidden = true; $('#drawer').hidden = true;
+    WS.render();
+    return;
+  }
   document.documentElement.classList.toggle('winddown', winding());
   document.documentElement.dataset.view = view;
   // Text size is tuned for reading the desk screen from a chair; a phone in the hand stays at 100%.
@@ -1078,6 +1095,7 @@ function render() {
   $('#view').innerHTML = winding() && view === 'home' ? windHome() : VIEWS[view]();
   mountClocks();
   if (ui.jFocus) { const q = $('[data-jsearch]'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
+  reportDesk();
   renderMorning();
   renderLock();
   if (!$('#drawer').hidden) renderDrawer();
@@ -1282,10 +1300,44 @@ function listenForEvents() {
   events = new EventSource('/api/events');
   events.onmessage = (e) => {
     let ev; try { ev = JSON.parse(e.data); } catch { return; }
+    if (ev.type.startsWith('desk.')) return deskEvent(ev);
     if (ev.type !== 'journal.entry') return;
     noteEvent(ev);
+    WS.onEvent(ev);
     if (ev.stage === 'done') load(); // new tasks and ticked ones show at once
   };
+}
+
+// The desk screen tells the hub what it's showing and how its timer stands, so a laptop can mirror it.
+let deskReported = '';
+function reportDesk(force = false) {
+  if (!KIOSK || !D) return;
+  const body = { view, timer: T.running || T.remaining != null ? { phase: T.phase, running: T.running, endsAt: T.endsAt, remaining: T.remaining, total: tTotal(), label: T.label } : null };
+  const sig = JSON.stringify(body);
+  if (!force && sig === deskReported) return;
+  deskReported = sig;
+  api('POST', '/api/desk/report', body).catch(() => { deskReported = ''; });
+}
+setInterval(() => reportDesk(true), 30e3);
+
+function deskEvent(ev) {
+  if (!KIOSK) {
+    // Another screen: keep the mirror of the desk current.
+    if (ev.type === 'desk.state' && D) { D.desk = ev.desk; if (wsMode()) render(); }
+    return;
+  }
+  lastTouch = Date.now(); // a view sent from the laptop shouldn't drift straight back to Home
+  if (ev.type === 'desk.view' && VIEWS[ev.view]) go(ev.view);
+  else if (ev.type === 'desk.focus') {
+    if (T.running || T.remaining != null) timerReset('focus');
+    Object.assign(T, { phase: 'focus', label: ev.label || '' });
+    dialSet(ev.minutes);
+    go('focus'); startFocus();
+  } else if (ev.type === 'desk.timer') {
+    if (ev.action === 'pause' && T.running) timerPause();
+    else if (ev.action === 'resume' && !T.running && T.remaining != null) timerStart();
+    else if (ev.action === 'end' && (T.running || T.remaining != null)) timerFinish(true);
+  }
 }
 
 // Wind-down banner: 30 minutes before sleep mode kicks in.
@@ -1571,7 +1623,7 @@ document.addEventListener('click', async (e) => {
         break;
       }
       case 'mode':
-        D.mode = el.dataset.mode; syncMode(); renderBanner();
+        D.mode = el.dataset.mode; syncMode(); renderBanner(); if (wsMode()) render();
         await api('POST', '/api/mode', { mode: el.dataset.mode });
         if (!KIOSK) toast({ level: 'info', title: el.dataset.mode === 'day' ? 'Desk display is awake' : 'Desk display is asleep' });
         if (el.dataset.mode === 'day') load();
@@ -1581,7 +1633,7 @@ document.addEventListener('click', async (e) => {
       case 'alerts': openSheet('alerts'); break;
       case 'close-drawer': $('#drawer').hidden = true; break;
       case 'dismiss':
-        D.alerts = D.alerts.filter((a) => a.id !== el.dataset.id); renderDrawer(); renderRail();
+        D.alerts = D.alerts.filter((a) => a.id !== el.dataset.id); if (wsMode()) render(); else { renderDrawer(); renderRail(); }
         await api('POST', `/api/alerts/${encodeURIComponent(el.dataset.id)}/dismiss`);
         break;
       case 'set-toggle': patchSettings({ [el.dataset.k]: !D.settings[el.dataset.k] }); break;
@@ -1717,11 +1769,21 @@ setInterval(() => {
 // The address can carry a starting point: #view=payit, #read=<email id>,
 // #open=weather, and #sky=<warm>,<day> (each 0..1) to pin the backdrop while
 // trying looks out. Combine with &.
+const WS = createWorkstation({
+  get D() { return D; }, T, PHASES, SRC_ICON,
+  api, load, render, toast, icon, esc, money, hm, ago, wx, dayStart, clock12, dueLabel, tagColor, emailDoc, barChart, ring, mountClocks, patchSettings, ringOff,
+  realTodos, suggestedTodos, todoSort, fmtLeft, tLeft, tTotal, phaseMinutes, dialMax, dialPresets, dialSet, saveT, timerStart, timerReset,
+});
+document.addEventListener('keydown', (e) => { if (D && wsMode() && $('#login').hidden && $('#keyboard').hidden) WS.key(e); });
+let wasWs = wsMode();
+window.addEventListener('resize', () => { if (wsMode() !== wasWs) { wasWs = wsMode(); render(); } });
+
 const hashArgs = new URLSearchParams(location.hash.slice(1));
 if (hashArgs.has('sky')) { const [warm, day] = hashArgs.get('sky').split(',').map(Number); window.__sky = { warm: warm || 0, day: day || 0 }; }
 load().then(() => {
   if (!D) return;
   if (VIEWS[hashArgs.get('view')]) go(hashArgs.get('view'));
+  if (hashArgs.get('ws')) WS.go(hashArgs.get('ws'));
   if (['weather', 'alerts', 'pick'].includes(hashArgs.get('open'))) openSheet(hashArgs.get('open'));
   if (hashArgs.get('tab') === 'past') { ui.jTab = 'past'; render(); }
   if (hashArgs.has('read')) { go('mail'); document.querySelector(`.mail-row[data-id="${CSS.escape(hashArgs.get('read'))}"]`)?.click(); }

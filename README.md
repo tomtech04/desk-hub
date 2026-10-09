@@ -42,11 +42,33 @@ After that, `deploy.sh` pushes updates. Logs: `journalctl -u desk-hub -f`.
 
 ## Use it from your phone or laptop
 
-Open `http://deskhub.local:8080` on any device on the same Wi-Fi. Off the desk screen the hub switches to remote mode: a single-column phone layout, your device's own keyboard, and the moon button becomes a remote control for the desk display instead of dimming your phone. On a phone, "Add to Home Screen" makes it open like an app.
+Open the hub's address on any device: `http://deskhub.local:8080` on the same Wi-Fi, or your public URL from anywhere. What you get depends on the window:
+
+- **Phone or a narrow window:** the desk's own screens in one column, with your device's keyboard.
+- **Laptop (1024px and wider): the workstation.** A keyboard-first layout for working rather than glancing: a Today workspace (agenda, tasks grouped by due date with quick-add, a "Needs you" stream, and today's note), an Inbox with the email as it was sent beside Claude's summary, a task editor (steps, notes, tag, due), the Journal with every past day and search, a week calendar, PayIt, and the focus timer.
+
+### The workstation
+
+| Key | Does |
+|---|---|
+| `⌘K` or `/` | Command palette: run a command, add a task, search the journal or inbox |
+| `R` | Record a voice note on this computer (it's handled exactly like one from the ring) |
+| `N` | New task. `#school` `#payit` `#personal` set the tag; `!today` `!tomorrow` `!fri` set the due date |
+| `1`–`8` | Switch view |
+| `J` `K` | Move through the inbox or task list |
+| `D` `E` `T` | Inbox: draft a reply with Claude, mark done, make it a task |
+| `X` | Tasks: complete the selected task |
+
+- **It steers the desk.** The card at the bottom of the sidebar shows whether the desk screen is awake and what it's showing, and sends it to Home, Focus, Schedule or Journal. Focus can run on this computer or on the desk (the desk goes into its focus lock; the workstation mirrors the countdown and can pause or end it).
+- **Replies are drafted, never sent.** "Draft reply with Claude" writes a reply you can edit, then "Open in Mail" hands it to your mail app to send. "Done" removes an email from the hub's inbox only; your mailbox is not changed.
+- **Recording** uses the browser's own speech-to-text (Chrome or Edge, over https). Where that isn't available, `R` opens a box to type the note instead.
+- **Calendar and PayIt are read-only**, like the rest of the hub: events are changed in Google Calendar, and payments and payouts in the PayIt admin panel.
+
+**Install it as an app.** Either click the install icon in Chrome's address bar on the hub's page, or run `bash scripts/install-mac-app.sh https://<your hub address>/`, which puts a "Desk Hub" app in `~/Applications` that opens the workstation in its own window.
 
 Set `HUB_PASSWORD` in `.env` to require a sign-in from every device except the desk screen itself (remembered for 30 days; five wrong tries locks that address out for 15 minutes). That's required before exposing the hub through a tunnel or public URL: without a password, anything arriving through a proxy is refused.
 
-The focus timer runs in each browser, so a timer started on your phone isn't the one on the desk.
+The focus timer runs in each browser, so a timer started on your phone isn't the one on the desk; to run the desk's timer from elsewhere, use "On the desk" in the workstation.
 
 ## Connecting your stuff (`.env`)
 

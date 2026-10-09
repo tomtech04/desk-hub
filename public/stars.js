@@ -12,6 +12,8 @@ const FONT = "600 {px}px Geist, Inter, system-ui, sans-serif";
 export const CLOCKS = {
   // Home hero: white on the blue card.
   day: { w: 380, h: 150, step: 8, font: 150, r: 2.8, align: 'left', grid: 'rgba(255,255,255,.13)', core: () => '255,255,255', glow: '200,230,255' },
+  // The workstation's small hero.
+  mini: { w: 250, h: 84, step: 6, font: 86, r: 2, align: 'left', grid: 'rgba(255,255,255,.13)', core: () => '255,255,255', glow: '200,230,255' },
   // Wind-down: warm, peach to coral across the width.
   wind: { w: 624, h: 220, step: 10, font: 200, r: 3.5, align: 'center', grid: 'rgba(217,145,74,.15)',
     core: (f) => `255,${Math.round(214 - 70 * f)},${Math.round(160 - 50 * f)}`, glow: '232,120,60' },

@@ -8,7 +8,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { ROOT, TZ, readJson, writeJson, refresher, startOfDay, hmToMin, nowMinutes, tzOffset, zonedToUtc } from './util.js';
 import { payitConfigured, loadPayit } from './payit.js';
-import { mailConfigured, loadMail, buildDigest, aiEnabled, readMessage, taskFromEmail, tasksFromNewMail } from './mail.js';
+import { mailConfigured, loadMail, buildDigest, aiEnabled, readMessage, taskFromEmail, tasksFromNewMail, draftReply } from './mail.js';
 import { calendarConfigured, loadCalendar } from './calendar.js';
 import { setBrightness, hasBacklight, systemStats, loadWeather } from './system.js';
 import { readVoiceRequest, interpretVoice, buildRecap } from './voice.js';
@@ -34,7 +34,8 @@ const DEFAULT_STATE = {
   suggestedFrom: {}, // emailId -> at, so an email is only ever suggested once
   focusLog: [], // { at, minutes, label }
   notifications: [], // pushed via POST /api/notify
-  days: {}, // per-day record for the journal archive: 'YYYY-MM-DD' -> { summary }
+  days: {}, // per-day record for the journal archive: 'YYYY-MM-DD' -> { summary, note }
+  mailHidden: {}, // emails marked done on the workstation: id -> when (hidden from the hub only; the mailbox is untouched)
   canvas: {}, // Canvas assignments already turned into tasks: uid -> due day (so a deleted one isn't re-added)
   journal: [], // voice notes: { id, at, text, note, kind: 'reflection'|'note'|'', evening, tasks: [text], trigger }
   morningSeen: null, // local day the morning brief was last dismissed
@@ -316,6 +317,9 @@ function syncAssignments(list) {
 const dayToMs = (ymd) => { const [y, mo, d] = ymd.split('-').map(Number); return zonedToUtc(TZ, y, mo, d); };
 
 /** Tasks you say out loud are added straight away: you asked for them yourself. */
+// What the desk screen is showing and its focus timer, as it last reported (kept in memory only).
+let desk = { view: 'home', timer: null, at: 0 };
+
 // Live events for open screens (Server-Sent Events): a voice note arriving, then what was done with it.
 const streams = new Set();
 function emit(event) {
@@ -330,7 +334,7 @@ async function handleVoice({ text, recordedAt, trigger, source = 'ring' }) {
   // Said while winding down (or late): it shows on the wind-down screen's "Before you sleep".
   const hour = new Date(recordedAt).getHours();
   const evening = inWindDown() || hour >= 21 || hour < 4;
-  const entry = { id, at: recordedAt, text, note: '', kind: '', tasks: [], trigger: source === 'typed' ? 'typed' : trigger, evening, pending: true };
+  const entry = { id, at: recordedAt, text, note: '', kind: '', tasks: [], trigger: source === 'ring' ? trigger : source, evening, pending: true };
   state.journal.push(entry);
   state.journal = state.journal.slice(-400);
   save();
@@ -451,7 +455,7 @@ function buildAlerts(snap) {
 
   for (const acct of snap.mail?.data?.accounts || []) {
     if (acct.error && !acct.needsSignIn) add(`mailerr:${acct.id}`, 'warn', 'mail', `${acct.name} mail isn't connecting`, acct.error);
-    for (const m of acct.messages) if (m.priority === 'urgent') add(`mail:${m.id}`, 'info', 'mail', `${acct.name}: ${m.from}`, m.summary);
+    for (const m of acct.messages) if (m.priority === 'urgent' && !state.mailHidden?.[m.id]) add(`mail:${m.id}`, 'info', 'mail', `${acct.name}: ${m.from}`, m.summary);
   }
 
   const now = Date.now();
@@ -477,6 +481,9 @@ function buildAlerts(snap) {
 
 function dashboard() {
   const snap = Object.fromEntries(Object.entries(sources).map(([k, s]) => [k, s ? s.get() : { configured: false }]));
+  // Mail marked done on the workstation is flagged, not removed, so it can be found again.
+  const hiddenIds = state.mailHidden || {};
+  if (snap.mail?.data?.accounts) snap.mail = { ...snap.mail, data: { ...snap.mail.data, accounts: snap.mail.data.accounts.map((a) => ({ ...a, messages: a.messages.map((m) => (hiddenIds[m.id] ? { ...m, hidden: true } : m)) })) } };
   const today = startOfDay();
   const focusToday = state.focusLog.filter((f) => f.at >= today);
   return {
@@ -501,7 +508,7 @@ function dashboard() {
         return { date: new Date(start).toISOString(), minutes: state.focusLog.filter((f) => f.at >= start && f.at < end).reduce((s, f) => s + f.minutes, 0) };
       }),
       recent: state.focusLog.slice(-8).reverse(),
-      today: focusToday.map((f) => ({ at: f.at, minutes: f.minutes, label: f.label || null })),
+      today: focusToday.map((f) => ({ at: f.at, minutes: f.minutes, label: f.label || null, where: f.where || null })),
     },
     ...snap,
     system: systemStats(),
@@ -510,6 +517,8 @@ function dashboard() {
     journal: state.journal.filter((j) => j.at >= startOfDay(Date.now(), -1)).slice(-40).reverse(),
     recap: state.recap?.day === localDay() ? state.recap : state.recap?.error ? { error: state.recap.error } : null,
     recapRunning,
+    dayNote: state.days?.[localDay()]?.note || '',
+    desk: { ...desk, online: Date.now() - desk.at < 75e3 },
     voiceReady: Boolean(VOICE_TOKEN),
     claudeReady: Boolean(MCP_TOKEN),
     aiEnabled: DEMO || aiEnabled(),
@@ -607,7 +616,7 @@ async function voice(req, res) {
   // Answer right away so the phone isn't kept waiting on Claude.
   send(res, 200, { ok: true, queued: `v${note.recordedAt}` });
   // The ring's phone app signs in with the voice token; anything else is typed on a hub screen.
-  handleVoice({ ...note, source: tokenOk ? 'ring' : 'typed' }).catch((err) => console.error('[voice]', err.message));
+  handleVoice({ ...note, source: tokenOk ? 'ring' : req.headers['x-hub-source'] === 'computer' ? 'computer' : 'typed' }).catch((err) => console.error('[voice]', err.message));
 }
 
 function logout(req, res) {
@@ -624,7 +633,7 @@ const mcp = createMcp({
   snapshot: () => ({ calendar: sources.calendar?.get().data?.events || [], digestHeadline: state.digest?.day === localDay() ? state.digest.headline : null }),
 });
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' };
 const PUBLIC = path.join(ROOT, 'public');
 
 function send(res, status, body) {
@@ -651,6 +660,7 @@ const routes = {
     const t = state.todos.find((x) => x.id === params.id);
     if (!t) return [404, { error: 'not found' }];
     for (const k of ['text', 'tag', 'due', 'star', 'done']) if (k in body) t[k] = body[k];
+    if ('notes' in body) t.notes = String(body.notes || '').slice(0, 4000);
     if (Array.isArray(body.subtasks)) {
       t.subtasks = body.subtasks.slice(0, 20).map((x) => ({ id: String(x.id || crypto.randomUUID().slice(0, 8)), text: String(x.text || '').trim().slice(0, 160), done: Boolean(x.done) })).filter((x) => x.text);
     }
@@ -664,7 +674,7 @@ const routes = {
 
   'POST /api/focus': ({ body }) => {
     const minutes = Math.max(1, Math.min(240, Math.round(Number(body.minutes) || 0)));
-    state.focusLog.push({ at: Date.now(), minutes, label: String(body.label || '').slice(0, 60) || null });
+    state.focusLog.push({ at: Date.now(), minutes, label: String(body.label || '').slice(0, 60) || null, where: body.where === 'desk' ? 'desk' : body.where === 'here' ? 'here' : null });
     state.focusLog = state.focusLog.slice(-2000); save(); return { ok: true };
   },
 
@@ -706,6 +716,48 @@ const routes = {
   },
 
   'POST /api/morning/seen': () => { state.morningSeen = localDay(); save(); return { ok: true }; },
+
+  // Workstation: Claude drafts a reply to an email. Nothing is sent; the draft goes back to be edited.
+  'POST /api/mail/draft': async ({ body }) => {
+    const id = String(body.id || '');
+    if (DEMO) { await new Promise((r) => setTimeout(r, 1400)); return { draft: demo.draft(id) }; }
+    if (!aiEnabled()) return [400, { error: 'Needs ANTHROPIC_API_KEY in .env' }];
+    try { return { draft: await draftReply(id, { today: localDay() }) }; }
+    catch (err) { return [502, { error: err.message }]; }
+  },
+  // Workstation: mark an email done so it leaves the hub's inbox (the mailbox itself is not changed).
+  'POST /api/mail/hide': ({ body }) => {
+    const id = String(body.id || '');
+    if (!id) return [400, { error: 'id required' }];
+    state.mailHidden ||= {};
+    if (body.hidden === false) delete state.mailHidden[id]; else state.mailHidden[id] = Date.now();
+    const cutoff = Date.now() - 60 * 86400e3;
+    for (const [k, at] of Object.entries(state.mailHidden)) if (at < cutoff) delete state.mailHidden[k];
+    save(); return { ok: true };
+  },
+
+  // The desk screen reports what it shows and its timer; other screens can steer it.
+  'POST /api/desk/report': ({ body, req }) => {
+    if (!client(req).kiosk) return [403, { error: 'desk screen only' }];
+    const t = body.timer && typeof body.timer === 'object' ? body.timer : null;
+    desk = { view: String(body.view || 'home').slice(0, 20), at: Date.now(),
+      timer: t ? { phase: String(t.phase || 'focus'), running: Boolean(t.running), endsAt: Number(t.endsAt) || 0, remaining: t.remaining == null ? null : Number(t.remaining), total: Number(t.total) || 0, label: String(t.label || '').slice(0, 200) } : null };
+    emit({ type: 'desk.state', desk: { ...desk, online: true } });
+    return { ok: true };
+  },
+  'POST /api/desk/view': ({ body }) => {
+    const view = String(body.view || '');
+    if (!['home', 'focus', 'tasks', 'payit', 'mail', 'journal', 'schedule', 'settings'].includes(view)) return [400, { error: 'unknown view' }];
+    emit({ type: 'desk.view', view }); return { ok: true };
+  },
+  'POST /api/desk/focus': ({ body }) => {
+    const minutes = Math.max(1, Math.min(180, Math.round(Number(body.minutes) || 25)));
+    emit({ type: 'desk.focus', minutes, label: String(body.label || '').slice(0, 200) }); return { ok: true };
+  },
+  'POST /api/desk/timer': ({ body }) => {
+    if (!['pause', 'resume', 'end'].includes(body.action)) return [400, { error: 'unknown action' }];
+    emit({ type: 'desk.timer', action: body.action }); return { ok: true };
+  },
 
   'POST /api/mode': ({ body }) => {
     if (!['day', 'sleep'].includes(body.mode)) return [400, { error: 'bad mode' }];
@@ -751,14 +803,17 @@ const routes = {
     const days = new Map();
     const day = (ms) => {
       const key = localDay(ms);
-      if (!days.has(key)) days.set(key, { date: key, at: startOfDay(ms), summary: state.days?.[key]?.summary || '', focusMinutes: 0, tasksDone: 0, entries: [] });
+      if (!days.has(key)) days.set(key, { date: key, at: startOfDay(ms), summary: state.days?.[key]?.summary || '', note: state.days?.[key]?.note || '', focusMinutes: 0, tasksDone: 0, entries: [] });
       return days.get(key);
     };
     for (const j of state.journal) {
       if (j.pending) continue;
       const done = (j.completed || []).map((t) => `Done: ${t}`), added = (j.tasks || []).map((t) => `Task: ${t}`);
-      day(j.at).entries.push({ at: j.at, kind: j.kind || 'note', text: j.note || j.text, action: [...done, ...added].join(' · ') });
+      day(j.at).entries.push({ at: j.at, kind: j.kind || 'note', text: j.note || j.text, said: j.note && j.note !== j.text ? j.text : '', done: j.completed || [], tasks: j.tasks || [], action: [...done, ...added].join(' · ') });
     }
+    // A day with only a written note still counts as a recorded day.
+    for (const [key, rec] of Object.entries(state.days || {})) if (rec.note) day(dayToMs(key) + 12 * 3600e3);
+    day(Date.now());
     for (const f of state.focusLog) if (days.has(localDay(f.at))) day(f.at).focusMinutes += f.minutes;
     for (const t of state.todos) if (t.done && t.doneAt && days.has(localDay(t.doneAt))) day(t.doneAt).tasksDone++;
     const today = localDay(), yesterday = localDay(Date.now() - 86400e3);
@@ -770,10 +825,17 @@ const routes = {
     if (q) {
       list = list.map((d) => {
         const entries = d.entries.filter((e) => hit(e.text) || hit(e.action));
-        return { ...d, entries, matches: entries.length + (hit(d.summary) ? 1 : 0) };
+        return { ...d, entries, matches: entries.length + (hit(d.summary) ? 1 : 0) + (hit(d.note) ? 1 : 0) };
       }).filter((d) => d.matches);
     } else list = list.map((d) => ({ ...d, matches: 0 }));
     return { days: list.slice(0, 60) };
+  },
+  // The day's free-form note, written on the workstation. Saved as typed; nothing is sent to Claude.
+  'POST /api/journal/note': ({ body }) => {
+    state.days ||= {};
+    const key = localDay();
+    state.days[key] = { ...(state.days[key] || {}), note: String(body.text || '').slice(0, 20000), noteAt: Date.now() };
+    save(); return { ok: true, at: state.days[key].noteAt };
   },
   // A typed note for today. Kept as written: nothing is sent to Claude or turned into tasks.
   'POST /api/journal/daynote': ({ body }) => {

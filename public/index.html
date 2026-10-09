@@ -12,6 +12,10 @@
   <link rel="preload" href="fonts/Geist.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="graphite.css">
+  <link rel="stylesheet" href="workstation.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -22,6 +26,7 @@
   <header id="status"></header>
   <nav class="rail" id="rail"></nav>
   <main id="view"></main>
+  <div id="ws" class="ws" hidden></div>
   <div id="banner"></div>
   <div id="toasts"></div>
   <div id="ringnote" class="ringnote" data-act="ring-open" hidden></div>

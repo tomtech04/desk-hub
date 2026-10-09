@@ -139,6 +139,15 @@ export function message(id) {
   };
 }
 
+export function draft(id) {
+  const m = mail().accounts.flatMap((a) => a.messages).find((x) => x.id === id);
+  if (!m) throw new Error('That email is no longer in the list. Refresh and try again.');
+  const first = m.from.split(' ')[0];
+  return id === 'p1' ? `Hi,\n\nThanks for the heads-up. I'll add the updated tax ID in the dashboard today so payouts aren't paused on Friday.\n\nThanks,`
+    : id === 'p3' ? `Hi Mom,\n\nYes, I'll be home for dinner on Sunday. What time should I be there?\n\nLove,`
+    : `Hi ${first},\n\nThanks for letting me know. ${m.action ? `I'll take care of it: ${m.action.toLowerCase()}.` : 'Noted.'}\n\nThanks,`;
+}
+
 export function taskFromEmail(id) {
   const m = mail().accounts.flatMap((a) => a.messages).find((x) => x.id === id);
   if (!m) throw new Error('That email is no longer in the list. Refresh and try again.');
