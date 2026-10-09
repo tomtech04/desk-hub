@@ -34,6 +34,7 @@ const DEFAULT_STATE = {
   suggestedFrom: {}, // emailId -> at, so an email is only ever suggested once
   focusLog: [], // { at, minutes, label }
   notifications: [], // pushed via POST /api/notify
+  days: {}, // per-day record for the journal archive: 'YYYY-MM-DD' -> { summary }
   canvas: {}, // Canvas assignments already turned into tasks: uid -> due day (so a deleted one isn't re-added)
   journal: [], // voice notes: { id, at, text, note, kind: 'reflection'|'note'|'', evening, tasks: [text], trigger }
   morningSeen: null, // local day the morning brief was last dismissed
@@ -372,6 +373,9 @@ async function runRecap() {
     };
     const r = DEMO ? demo.recap() : await buildRecap(input);
     state.recap = { day: localDay(), at: Date.now(), ...r };
+    // The headline doubles as that day's summary in Journal → Past days.
+    state.days ||= {};
+    if (r.headline) state.days[localDay()] = { summary: r.headline };
   } catch (err) {
     state.recap = { ...(state.recap || {}), error: err.message, errorAt: Date.now() };
     console.error('[recap]', err.message);
@@ -722,6 +726,44 @@ const routes = {
     return { started: true };
   },
 
+  // Journal → Past days: every recorded day, newest first; ?q= keeps only what matches.
+  'GET /api/journal/days': ({ query }) => {
+    const q = (query.get('q') || '').trim().toLowerCase();
+    const days = new Map();
+    const day = (ms) => {
+      const key = localDay(ms);
+      if (!days.has(key)) days.set(key, { date: key, at: startOfDay(ms), summary: state.days?.[key]?.summary || '', focusMinutes: 0, tasksDone: 0, entries: [] });
+      return days.get(key);
+    };
+    for (const j of state.journal) {
+      if (j.pending) continue;
+      const done = (j.completed || []).map((t) => `Done: ${t}`), added = (j.tasks || []).map((t) => `Task: ${t}`);
+      day(j.at).entries.push({ at: j.at, kind: j.kind || 'note', text: j.note || j.text, action: [...done, ...added].join(' · ') });
+    }
+    for (const f of state.focusLog) if (days.has(localDay(f.at))) day(f.at).focusMinutes += f.minutes;
+    for (const t of state.todos) if (t.done && t.doneAt && days.has(localDay(t.doneAt))) day(t.doneAt).tasksDone++;
+    const today = localDay(), yesterday = localDay(Date.now() - 86400e3);
+    let list = [...days.values()].sort((a, b) => b.at - a.at).map((d) => ({
+      ...d, entries: d.entries.sort((a, b) => a.at - b.at),
+      label: d.date === today ? 'Today' : d.date === yesterday ? 'Yesterday' : new Date(d.at + 12 * 3600e3).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: TZ }),
+    }));
+    const hit = (text) => Boolean(text) && text.toLowerCase().includes(q);
+    if (q) {
+      list = list.map((d) => {
+        const entries = d.entries.filter((e) => hit(e.text) || hit(e.action));
+        return { ...d, entries, matches: entries.length + (hit(d.summary) ? 1 : 0) };
+      }).filter((d) => d.matches);
+    } else list = list.map((d) => ({ ...d, matches: 0 }));
+    return { days: list.slice(0, 60) };
+  },
+  // A typed note for today. Kept as written: nothing is sent to Claude or turned into tasks.
+  'POST /api/journal/daynote': ({ body }) => {
+    const text = String(body.text || '').trim().slice(0, 1000);
+    if (!text) return [400, { error: 'empty note' }];
+    state.journal.push({ id: `n${Date.now()}`, at: Date.now(), text, note: text, kind: 'daynote', tasks: [], trigger: 'typed' });
+    state.journal = state.journal.slice(-400); save();
+    return { ok: true };
+  },
   'POST /api/recap': () => {
     if (!DEMO && !aiEnabled()) return [400, { error: 'Needs ANTHROPIC_API_KEY in .env' }];
     runRecap();
@@ -757,7 +799,7 @@ http.createServer(async (req, res) => {
       const found = match(req.method, url.pathname);
       if (!found) return send(res, 404, { error: 'not found' });
       const body = ['POST', 'PATCH'].includes(req.method) ? await readBody(req) : {};
-      const out = await found.handler({ params: found.params, body, req });
+      const out = await found.handler({ params: found.params, body, req, query: url.searchParams });
       return Array.isArray(out) ? send(res, out[0], out[1]) : send(res, 200, out);
     }
     const file = path.join(PUBLIC, path.normalize(url.pathname === '/' ? '/index.html' : url.pathname));

@@ -22,6 +22,7 @@ const ICONS = {
   focus: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
   pin: '<path d="M12 21s7-6.1 7-11a7 7 0 0 0-14 0c0 4.9 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   tasks: '<rect x="3" y="3" width="18" height="18" rx="5"/><path d="m8 12 3 3 5-6"/>',
   payit: '<path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m3 7 9 6 9-6"/>',
@@ -141,7 +142,7 @@ async function api(method, url, body) {
 
 let D = null; // last dashboard snapshot
 let view = 'home';
-const ui = { taskFilter: 'open', chartSel: {}, schedDay: 0, drawer: 'alerts', reading: null };
+const ui = { taskFilter: 'open', chartSel: {}, schedDay: 0, drawer: 'alerts', reading: null, taskOpen: null, jTab: 'today', jQuery: '', jDays: null, jOpen: null };
 
 async function load() {
   try {
@@ -262,46 +263,46 @@ function renderLock() {
   const el = $('#focuslock');
   if (!T.lock) { el.hidden = true; el.dataset.html = ''; return; }
   const isFocus = T.phase === 'focus';
-  const color = isFocus ? 'var(--accent)' : 'var(--info)';
-  const hold = (label) => `<button class="fl-exit" data-hold="lock-exit"><i></i><span>${label}</span></button>`;
+  const hold = (label) => `<button class="fl-hold" data-hold="lock-exit"><i></i><span>${label}</span></button>`;
+  const dots = (n) => `<div class="cycle">${[0, 1, 2, 3].map((i) => `<i class="${i < n ? 'done' : i === n ? 'now' : ''}"></i>`).join('')}</div>`;
   let html;
   if (lockCount > 0) {
-    html = `<div class="fl-count"><div class="fl-kicker">Settle in</div><div class="fl-num" data-n="${lockCount}">${lockCount}</div>
-      <div class="fl-label">${esc(T.label || `${phaseMinutes('focus')} minutes of focus`)}</div></div>${hold('Hold to cancel')}`;
+    html = `<div class="fl-kicker">Settle in</div>
+      <div class="fl-num" data-n="${lockCount}">${lockCount}</div>
+      <div class="fl-label">${esc(T.label || `${phaseMinutes('focus')} minutes of focus`)}</div>${hold('Hold to cancel')}`;
   } else if (T.done) {
     const d = T.done;
-    html = `<div class="fl-done ${d.wasFocus ? 'focus' : 'break'}">
-        <div class="fl-burst">${icon('check')}</div>
-        <h1>${d.wasFocus ? (d.skipped ? 'Session ended' : 'Session complete') : 'Break over'}</h1>
-        <p>${d.wasFocus ? `${d.minutes} minute${d.minutes === 1 ? '' : 's'} of focus${T.label ? ` on ${esc(T.label)}` : ''} · ${D.focus.todayMinutes} min today` : 'Ready for the next one?'}</p>
-        <div class="cycle">${[0, 1, 2, 3].map((i) => `<i class="${i < (T.cycle || (d.wasFocus ? 4 : 0)) ? 'on' : ''}"></i>`).join('')}</div>
-        <div class="fl-actions">
-          ${d.wasFocus ? `<button class="fpill solid wide" data-act="lock-break">${T.phase === 'long' ? 'Long break' : 'Break'} · ${phaseMinutes(T.phase)} min</button>`
-                       : `<button class="fpill solid wide" data-act="lock-next">Focus · ${phaseMinutes('focus')} min</button>`}
-          <button class="fpill" data-act="lock-leave">Done</button>
-        </div></div>`;
+    html = `<div class="fl-check">${icon('check')}</div>
+      <div class="fl-nice">${d.wasFocus ? (d.skipped ? 'Session ended' : 'Nice work') : 'Break over'}</div>
+      <div class="fl-label">${d.wasFocus ? `${d.minutes} minute${d.minutes === 1 ? '' : 's'} of focus · ${D.focus.todayMinutes} today` : 'Ready for the next one?'}</div>
+      ${dots(T.cycle || (d.wasFocus ? 4 : 0))}
+      <div class="pills end">
+        ${d.wasFocus ? `<button class="pill-btn solid" data-act="lock-break">Start ${phaseMinutes(T.phase)} min ${T.phase === 'long' ? 'long ' : ''}break</button>`
+                     : `<button class="pill-btn solid" data-act="lock-next">Focus · ${phaseMinutes('focus')} min</button>`}
+        <button class="pill-btn" data-act="lock-leave">Done for now</button>
+      </div>`;
   } else {
     const active = T.running || T.remaining != null;
     // The task being worked on, in full, with its steps to tick off along the way.
     const task = isFocus && T.label ? D.todos.find((t) => !t.done && t.text === T.label) : null;
-    const subs = task?.subtasks || [];
-    const left = subs.filter((x) => !x.done).length;
-    const panel = task ? `<div class="fl-task ${task.finishing ? 'finishing' : ''}">
-        <div class="fl-task-h"><b>${esc(task.text)}</b><span>${[task.tag, task.due ? `Due ${new Date(task.due).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}` : '', subs.length ? (left ? `${subs.length - left} of ${subs.length} steps done` : 'All steps done') : ''].filter(Boolean).map(esc).join(' · ')}</span></div>
-        ${subs.length ? `<div class="fl-steps">${subs.map((x) => `<button class="sub ${x.done ? 'done' : ''}" data-act="sub-toggle" data-id="${task.id}" data-sid="${x.id}"><i class="check small ${x.done ? 'done' : ''}">${x.done ? icon('check') : ''}</i><span>${esc(x.text)}</span></button>`).join('')}</div>` : ''}
-        <button class="fl-addstep" data-act="sub-add" data-id="${task.id}">${icon('plus')} Add a step</button>
-      </div>` : '';
-    html = `<div class="fl-top">${isFocus ? `Focus · session ${T.cycle + 1} of 4` : PHASES[T.phase]}</div>
-      <div class="fl-ring ${T.running ? 'running' : 'paused'} ${isFocus ? 'focus' : 'break'} ${task ? 'compact' : ''}">
-        ${ring(520, 3, active ? 1 - tLeft() / tTotal() : 0, '#f5f5f7')}
-        <div class="fl-center"><div class="fl-time" data-timer>${fmtLeft(tLeft())}</div>
-          <div class="fl-label">${T.running ? esc(task ? 'Stay with it' : T.label || (isFocus ? 'Stay with it' : 'Rest')) : 'Paused'}</div></div>
+    const subs = task?.subtasks || [], due = task && dueLabel(task);
+    const panel = task ? `<section class="fl-task ${task.finishing ? 'finishing' : ''}">
+        <b>${esc(task.text)}</b>
+        <div class="fl-meta">${task.tag ? `<span><i style="background:${tagColor(task.tag)}"></i>${esc(task.tag)}</span>` : ''}${due ? `<span class="due">Due ${due[0].toLowerCase()}</span>` : ''}</div>
+        <div class="fl-steps">${subs.map((x) => `<button class="${x.done ? 'done' : ''}" data-act="sub-toggle" data-id="${task.id}" data-sid="${x.id}"><i class="check ${x.done ? 'done' : ''}">${x.done ? icon('check') : ''}</i><span>${esc(x.text)}</span></button>`).join('')}</div>
+        <button class="fl-add" data-act="sub-add" data-id="${task.id}">${icon('plus')} Add a step</button>
+      </section>` : '';
+    html = `<div class="fl-kicker">${isFocus ? `Focus · session ${T.cycle + 1} of 4` : PHASES[T.phase]}</div>
+      <div class="fl-ring ${task && subs.length > 4 ? 'compact' : ''}">
+        ${ring(380, 14, active ? tLeft() / tTotal() : 1, isFocus ? 'url(#g-focus)' : 'url(#g-cal)').replace('class="ring-fg"', 'class="ring-fg" data-left="1"')}
+        <div class="fl-center"><span class="fl-time" data-timer>${fmtLeft(tLeft())}</span>
+          <span class="fl-sub ${T.running ? '' : 'paused'}">${T.running ? `Ends ${hm(T.endsAt)}` : 'Paused'}</span></div>
       </div>${panel}
-      <div class="fl-controls">
-        ${T.running ? `<button class="fpill" data-act="t-pause">Pause</button>` : `<button class="fpill solid" data-act="lock-resume">Resume</button>`}
-        <button class="fpill" data-act="t-adj" data-min="5">+5 min</button>
-        <button class="fpill" data-act="t-skip">${isFocus ? 'End' : 'Skip'}</button>
-      </div>${hold('Hold to leave')}`;
+      <div class="pills">
+        ${T.running ? `<button class="pill-btn strong" data-act="t-pause">Pause</button>` : `<button class="pill-btn solid" data-act="lock-resume">Resume</button>`}
+        <button class="pill-btn" data-act="t-adj" data-min="5">+5 min</button>
+        <button class="pill-btn" data-act="t-skip">${isFocus ? 'End' : 'Skip'}</button>
+      </div>${hold('Hold to leave early')}`;
   }
   // The time text and ring are updated by the per-second tick; only redraw when the shape changes.
   const key = html.replace(/data-timer>[^<]*</, 'data-timer><').replace(/stroke-dashoffset="[^"]*"/, '');
@@ -315,66 +316,24 @@ document.addEventListener('pointerdown', (e) => {
   const b = e.target.closest?.('[data-hold]');
   if (!b) return;
   b.classList.add('holding');
-  holdTimer = setTimeout(() => { b.classList.remove('holding'); if (b.dataset.hold === 'lock-exit') exitLock(); }, 1200);
+  holdTimer = setTimeout(() => { b.classList.remove('holding'); if (b.dataset.hold === 'lock-exit') exitLock(); }, 1000);
 });
 for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) {
   document.addEventListener(ev, () => { clearTimeout(holdTimer); document.querySelectorAll('.holding').forEach((b) => b.classList.remove('holding')); }, true);
 }
 
-function ring(size, stroke, frac, color) {
-  const r = (size - stroke) / 2, c = 2 * Math.PI * r;
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="transform:rotate(-90deg)">
-    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--surface-3)" stroke-width="${stroke}"/>
-    <circle class="ring-fg" cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"
-      stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - frac)}" data-c="${c}"/></svg>`;
-}
 
 // Per-second tick: only touches the timer text/ring, never re-renders the page.
 setInterval(() => {
   if (T.running && tLeft() <= 0) timerFinish();
   const left = tLeft(), frac = 1 - left / tTotal();
   document.querySelectorAll('[data-timer]').forEach((el) => (el.textContent = fmtLeft(left)));
-  document.querySelectorAll('.ring-fg, [data-follow]').forEach((el) => el.setAttribute('stroke-dashoffset', el.dataset.c * (1 - (T.running || T.remaining != null ? frac : 0))));
-  if (view === 'home') { const el = $('#clock-time'); if (el) el.innerHTML = clockHtml(); }
+  const on = T.running || T.remaining != null;
+  document.querySelectorAll('.ring-fg').forEach((el) => el.setAttribute('stroke-dashoffset', el.dataset.c * (1 - Math.max(0.002, el.dataset.left ? (on ? left / tTotal() : 1) : on ? frac : 0))));
+  if (on) document.querySelectorAll('.vf-dial [data-tick]').forEach((el) => el.classList.toggle('lit', el.dataset.tick / 60 < frac));
   if (D?.mode && D.mode !== 'day') renderSleep();
   renderBanner();
 }, 1000);
-
-// ---------------------------------------------------------------------------
-// Charts: single-series bars, tap a bar to read it (no hover on a touchscreen)
-// ---------------------------------------------------------------------------
-
-const charts = {};
-
-/** Returns a placeholder; drawCharts() fills it in at the slot's real pixel width. */
-function bars(id, values, labels, fmt, { height = 150, cls = '', capLabel = (i) => labels[i] } = {}) {
-  charts[id] = { values, labels, fmt, height, cls, capLabel };
-  return `<div class="chart-slot" data-chart="${id}" style="height:${height + 22}px"></div>`;
-}
-
-function drawCharts() {
-  document.querySelectorAll('[data-chart]').forEach((slot) => {
-    const { values, labels, fmt, height, cls, capLabel } = charts[slot.dataset.chart];
-    const w = slot.clientWidth, top = 8, bottom = 22, n = values.length;
-    const max = Math.max(1, ...values);
-    const slotW = w / n, gap = Math.min(10, slotW * 0.2), bw = Math.max(4, slotW - gap);
-    const sel = ui.chartSel[slot.dataset.chart] ?? values.findLastIndex((v) => v > 0);
-    const labelEvery = Math.max(1, Math.ceil(28 / slotW), n > 12 ? 6 : 1);
-    let g = '';
-    values.forEach((v, i) => {
-      const x = i * slotW + gap / 2, h = v > 0 ? Math.max(4, ((height - top - bottom) * v) / max) : 0, y = height - bottom - h;
-      const r = Math.min(4, bw / 2);
-      // Rounded top, square base anchored on the baseline.
-      if (h) g += `<path class="bar ${i === sel || sel < 0 ? '' : 'dim'}" d="M${x},${height - bottom} V${y + r} q0,-${r} ${r},-${r} h${bw - 2 * r} q${r},0 ${r},${r} V${height - bottom} z"/>`;
-      if (i % labelEvery === 0 || i === sel) g += `<text x="${x + bw / 2}" y="${height - 6}" text-anchor="middle" class="${i === sel ? 'sel' : ''}">${esc(labels[i])}</text>`;
-      g += `<rect class="hit" data-act="chart" data-id="${slot.dataset.chart}" data-i="${i}" x="${i * slotW}" y="0" width="${slotW}" height="${height}"/>`;
-    });
-    const cap = sel >= 0 ? `${esc(capLabel(sel))} · <b>${esc(fmt(values[sel]))}</b>` : '<span class="muted">No data yet</span>';
-    slot.innerHTML = `<div class="chart-cap">${cap}</div>
-      <svg class="chart ${cls}" width="${w}" height="${height}" viewBox="0 0 ${w} ${height}">
-        <line class="base" x1="0" x2="${w}" y1="${height - bottom + 0.5}" y2="${height - bottom + 0.5}"/>${g}</svg>`;
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Views
@@ -384,52 +343,6 @@ function notConfigured(what, hint) {
   return `<div class="empty">${esc(what)} isn't set up yet.<br><span style="font-size:14px">${esc(hint)}</span></div>`;
 }
 
-// The widget beside the clock: conditions now, and the next 12 hours as a
-// chart. Rain chance when rain is on the way, otherwise the temperature curve.
-// `tap: false` draws it as a plain panel (the morning brief is one big button already).
-function weatherWidget(w, { tap = true } = {}) {
-  if (!w) return '<div class="wxw"><div class="wxw-cap">Weather loading…</div></div>';
-  const [label, ic] = wx(w.code);
-  const hours = (w.hours || []).slice(0, 12);
-  const hr = (s) => { const h = new Date(s).getHours(); return `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`; };
-  const W = 300, H = 84;
-  const ticks = hours.length ? `<div class="wxw-x"><span>Now</span><span>${hr(hours[Math.floor(hours.length / 2)].time)}</span><span>${hr(hours.at(-1).time)}</span></div>` : '';
-  let cap = '', chart = '';
-  const wet = hours.filter((h) => h.rain >= 30);
-  if (wet.length) {
-    // Bars of rain chance per hour; the likeliest hour is named in the caption.
-    const peak = hours.reduce((a, h) => (h.rain > a.rain ? h : a), hours[0]);
-    const slot = W / hours.length, bw = slot - 5;
-    cap = `Rain · ${peak.rain}% around ${hr(peak.time)}`;
-    chart = `<svg class="wxw-chart rain" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${hours.map((h, i) => {
-      const bh = Math.max(3, (h.rain / 100) * (H - 6));
-      return `<rect x="${(i * slot + 2.5).toFixed(1)}" y="${(H - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="3" class="${h.rain >= 50 ? 'hi' : h.rain >= 30 ? 'mid' : ''}"/>`; }).join('')}</svg>`;
-  } else if (hours.length > 1) {
-    // Temperature as a line with the high and low of the stretch marked.
-    const temps = hours.map((h) => h.temp), lo = Math.min(...temps), hi = Math.max(...temps), span = Math.max(1, hi - lo);
-    const x = (i) => (i / (hours.length - 1)) * W, y = (t) => 30 + (1 - (t - lo) / span) * (H - 36);
-    const pts = hours.map((h, i) => `${x(i).toFixed(1)},${y(h.temp).toFixed(1)}`);
-    const iHi = temps.indexOf(hi), iLo = temps.lastIndexOf(lo);
-    const mark = (i, t, cls) => `<span class="wxw-mark ${cls}" style="left:${Math.min(91, Math.max(9, (x(i) / W) * 100)).toFixed(1)}%;top:${((y(t) / H) * 100).toFixed(1)}%">${t}°</span>`;
-    cap = `Temperature · ${lo}° to ${hi}° ahead`;
-    chart = `<div class="wxw-plot"><svg class="wxw-chart temp" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-        <defs><linearGradient id="wxfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
-        <polygon points="0,${H} ${pts.join(' ')} ${W},${H}" fill="url(#wxfill)"/>
-        <polyline points="${pts.join(' ')}" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
-      </svg>${hi !== lo ? mark(iHi, hi, 'hi') + mark(iLo, lo, 'lo') : ''}</div>`;
-  }
-  return `<${tap ? 'button class="wxw" data-act="weather"' : 'div class="wxw"'}>
-    <div class="wxw-top">${icon(ic)}<b>${w.temp}°</b><span>${esc(label)}<br>H ${w.hi}° · L ${w.lo}°</span></div>
-    <div class="wxw-cap">${esc(cap)}</div>${chart.startsWith('<div') ? chart : `<div class="wxw-plot">${chart}</div>`}${ticks}
-  </${tap ? 'button' : 'div'}>`;
-}
-
-function clockHtml() {
-  const d = new Date();
-  const h = d.getHours() % 12 || 12;
-  return `${h}:${pad(d.getMinutes())}<small>${d.getHours() < 12 ? 'AM' : 'PM'}</small>`;
-}
-
 const realTodos = () => D.todos.filter((t) => !t.suggested);
 const suggestedTodos = () => D.todos.filter((t) => t.suggested);
 
@@ -437,209 +350,251 @@ function todoSort(a, b) {
   return (a.done - b.done) || (b.star - a.star) || ((a.due ?? Infinity) - (b.due ?? Infinity)) || (a.createdAt - b.createdAt);
 }
 
-function dueHtml(t) {
-  if (!t.due) return '';
-  if (t.due < dayStart()) return '<span class="when overdue">Overdue</span>';
-  if (t.due < dayStart(1)) return '<span class="when due-today">Today</span>';
-  if (t.due < dayStart(2)) return '<span class="when">Tomorrow</span>';
-  return `<span class="when">${new Date(t.due).toLocaleDateString('en-US', { weekday: 'short' })}</span>`;
-}
 
-function todoRow(t, full = false) {
-  const subs = t.subtasks || [];
-  const left = subs.filter((x) => !x.done).length;
-  const progress = subs.length ? `<span class="steps ${left ? '' : 'all'}">${subs.length - left}/${subs.length}</span>` : '';
-  const row = `<div class="item ${t.done ? 'done' : ''} ${t.finishing && !full ? 'finishing' : ''}">
-    <button class="check ${t.done || t.finishing ? 'done' : ''}" data-act="todo-toggle" data-id="${t.id}">${t.done || t.finishing ? icon('check') : ''}</button>
-    <div class="t"><b class="wrap">${esc(t.text)}</b>${full && t.source?.why ? `<span>${esc(t.source.why)}</span>` : ''}</div>
-    ${progress}
-    ${t.tag ? `<span class="tag">${esc(t.tag)}</span>` : ''}
-    ${dueHtml(t)}
-    ${full ? `<button class="icon-btn ${t.star ? 'on' : ''}" data-act="todo-star" data-id="${t.id}">${icon('star')}</button>
-              <button class="icon-btn" data-act="todo-del" data-id="${t.id}">${icon('trash')}</button>` : ''}
-  </div>`;
-  if (!full) return row;
-  // The full list shows the steps under each task, plus any change that came in by email.
-  return `<div class="task ${t.done ? 'done' : ''} ${t.finishing ? 'finishing' : ''}">${row}
-    ${(t.updates || []).map((u) => `<div class="task-update">${icon('mail')}<span>${esc(u.note)}${u.from ? ` <i>· ${esc(u.from.replace(/\s*<.*>/, ''))}</i>` : ''}</span><button class="icon-btn" data-act="update-clear" data-id="${t.id}" aria-label="Dismiss">${icon('x')}</button></div>`).join('')}
-    ${subs.length || !t.done ? `<div class="subs">
-      ${subs.map((x) => `<div class="sub ${x.done ? 'done' : ''}"><button class="check small ${x.done ? 'done' : ''}" data-act="sub-toggle" data-id="${t.id}" data-sid="${x.id}">${x.done ? icon('check') : ''}</button><span>${esc(x.text)}</span>
-        <button class="icon-btn small" data-act="sub-del" data-id="${t.id}" data-sid="${x.id}" aria-label="Remove step">${icon('x')}</button></div>`).join('')}
-      ${t.done ? '' : `<button class="add-step" data-act="sub-add" data-id="${t.id}">${icon('plus')} Add a step</button>`}
-    </div>` : ''}
-  </div>`;
-}
 
-function eventRow(e) {
-  const soon = !e.allDay && e.start - Date.now() < 60 * 60e3 && e.start > Date.now();
-  const now = !e.allDay && e.start <= Date.now() && e.end > Date.now();
-  const when = e.allDay ? 'All day' : now ? 'Now' : e.start < dayStart(1) ? hm(e.start) : `${new Date(e.start).toLocaleDateString('en-US', { weekday: 'short' })} ${hm(e.start)}`;
-  return `<div class="item tap" data-act="event" data-id="${esc(e.id || '')}"><span class="cal-bar"></span>
-    <div class="t"><b>${esc(e.title)}</b><span>${esc([e.calendar, e.location].filter(Boolean).join(' · '))}</span></div>
-    <span class="when ${soon || now ? 'soon' : ''}">${esc(when)}</span></div>`;
-}
 
-// ---------------------------------------------------------------------------
-// The focus dial: a ring you drag to set the session length, like winding a
-// kitchen timer. One turn is 90 minutes for focus, 30 for a break.
-// ---------------------------------------------------------------------------
+// The focus dial: one turn is 90 minutes for focus, 30 for a break.
 
 const dialMax = (phase) => (phase === 'focus' ? 90 : 30);
 const dialPresets = (phase) => (phase === 'focus' ? [15, 25, 45, 60, 90] : [3, 5, 10, 15, 20]);
-const DIAL = { c: 300, r: 250 };
-const polar = (r, frac) => { const a = frac * 2 * Math.PI - Math.PI / 2; return [DIAL.c + r * Math.cos(a), DIAL.c + r * Math.sin(a)]; };
-
-/** minutes = null draws the running state (an arc that fills with elapsed time, no handle). */
-function dialSvg(minutes, max, elapsedFrac) {
-  const circ = 2 * Math.PI * DIAL.r;
-  const frac = minutes == null ? elapsedFrac : minutes / max;
-  // Twelve quiet marks, like a watch face; nothing else on the ring.
-  let marks = '';
-  for (let i = 0; i < 12; i++) {
-    const [x1, y1] = polar(DIAL.r + 16, i / 12), [x2, y2] = polar(DIAL.r + (i % 3 === 0 ? 28 : 23), i / 12);
-    marks += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
-  }
-  const [kx, ky] = polar(DIAL.r, frac);
-  return `<svg viewBox="0 0 600 600" class="dial-svg">
-    <g class="dial-marks">${marks}</g>
-    <circle cx="300" cy="300" r="${DIAL.r}" class="dial-track"/>
-    <g transform="rotate(-90 300 300)">
-      <circle cx="300" cy="300" r="${DIAL.r}" class="dial-arc ${minutes == null ? 'ring-fg' : ''}" stroke-dasharray="${circ}" stroke-dashoffset="${circ * (1 - frac)}" data-c="${circ}"/>
-    </g>
-    ${minutes == null ? '' : `<g class="dial-knob" transform="translate(${kx.toFixed(1)} ${ky.toFixed(1)})"><circle r="30" class="k-hit"/><circle r="11" class="k-body"/></g>`}
-  </svg>`;
-}
-
-/** Set the dial to `m` minutes without re-rendering the page (called many times a second while dragging). */
-function dialShow(m) {
-  const d = $('[data-dial]');
-  if (!d) return;
-  const max = dialMax(T.phase), frac = m / max, circ = 2 * Math.PI * DIAL.r;
-  d.querySelectorAll('.dial-arc').forEach((el) => el.setAttribute('stroke-dashoffset', circ * (1 - frac)));
-  const [x, y] = polar(DIAL.r, frac);
-  d.querySelector('.dial-knob')?.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
-  const num = d.querySelector('[data-dial-num]'); if (num) num.textContent = m;
-  const ends = d.querySelector('[data-dial-ends]'); if (ends) ends.textContent = `Ends ${hm(Date.now() + m * 60e3)}`;
-  document.querySelectorAll('.f3-presets button').forEach((b) => b.classList.toggle('on', Number(b.dataset.min) === m));
-}
-
 function dialSet(m) {
   T.custom = { ...(T.custom || {}), [T.phase]: m };
   T.remaining = null; T.total = null;
   saveT();
 }
 
-// Dragging the ring. Works with a finger, a mouse, or the Pi's touch-as-mouse.
-let dialDrag = null;
-document.addEventListener('pointerdown', (e) => {
-  const d = e.target.closest?.('[data-dial].idle');
-  if (!d || e.target.closest('button')) return;
-  const box = d.getBoundingClientRect();
-  const dx = e.clientX - (box.left + box.width / 2), dy = e.clientY - (box.top + box.height / 2);
-  const dist = Math.hypot(dx, dy) / (box.width / 2);
-  if (dist < 0.62 || dist > 1.08) return; // only the ring itself, not the face
-  dialDrag = { box, value: phaseMinutes(T.phase) };
-  d.classList.add('dragging');
-  d.setPointerCapture?.(e.pointerId);
-  dialMove(e);
-  e.preventDefault();
-});
-function dialMove(e) {
-  if (!dialDrag) return;
-  const { box } = dialDrag, max = dialMax(T.phase), snap = max === 90 ? 5 : 1, min = max === 90 ? 5 : 1;
-  let frac = Math.atan2(e.clientX - (box.left + box.width / 2), -(e.clientY - (box.top + box.height / 2))) / (2 * Math.PI);
-  if (frac < 0) frac += 1;
-  let m = Math.round((frac * max) / snap) * snap;
-  // Don't jump across the top: crossing 12 o'clock stops at the nearest end.
-  if (Math.abs(m - dialDrag.value) > max / 2) m = dialDrag.value > max / 2 ? max : min;
-  m = Math.min(max, Math.max(min, m));
-  if (m !== dialDrag.value) { dialDrag.value = m; dialShow(m); }
+// "22:00" -> "10:00 PM", for showing a stored time setting.
+const clock12 = (hhmm) => { const [h, m] = String(hhmm).split(':').map(Number); return `${h % 12 || 12}:${pad(m)} ${h < 12 ? 'AM' : 'PM'}`; };
+
+/** A task's due date as [label, class]: Overdue, Today, Tomorrow or a weekday. */
+function dueLabel(t) {
+  if (!t.due) return null;
+  if (t.due < dayStart()) return ['Overdue', 'overdue'];
+  if (t.due < dayStart(1)) return ['Today', 'today'];
+  if (t.due < dayStart(2)) return ['Tomorrow', ''];
+  if (t.due < dayStart(7)) return [new Date(t.due).toLocaleDateString('en-US', { weekday: 'short' }), ''];
+  return [new Date(t.due).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), ''];
 }
-document.addEventListener('pointermove', dialMove);
-for (const ev of ['pointerup', 'pointercancel']) {
-  document.addEventListener(ev, () => {
-    if (!dialDrag) return;
-    dialSet(dialDrag.value);
-    dialDrag = null;
-    $('[data-dial]')?.classList.remove('dragging');
-  });
+const TAG_COLORS = ['#8AB4FF', '#5EE6B0', '#C59CFF', '#FFB547', '#FF9DB0'];
+const tagColor = (tag) => TAG_COLORS[Math.max(0, (D?.settings.tags || []).indexOf(tag)) % TAG_COLORS.length];
+
+/** A compact task row (Home, wind-down): check, one line of text, the due date underneath. */
+function taskLine(t) {
+  const subs = t.subtasks || [], done = subs.filter((x) => x.done).length, due = dueLabel(t);
+  const on = t.done || t.finishing;
+  return `<div class="tk ${t.finishing ? 'finishing' : ''}">
+    <button class="check ${on ? 'done' : ''}" data-act="todo-toggle" data-id="${t.id}" aria-label="Done">${on ? icon('check') : ''}</button>
+    <div class="tk-t"><b>${esc(t.text)}</b>${due || subs.length ? `<span>${due ? `<i class="${due[1]}">${due[0]}</i>` : ''}${subs.length ? `<i>${done}/${subs.length} steps</i>` : ''}</span>` : ''}</div>
+  </div>`;
+}
+
+/** A calendar event as one line: when, what, where. Tap for the details sheet. */
+function eventLine(e) {
+  const live = !e.allDay && e.start <= Date.now() && e.end > Date.now();
+  const when = e.allDay ? 'All day' : live ? 'Now' : e.start < dayStart(1) ? hm(e.start) : `${new Date(e.start).toLocaleDateString('en-US', { weekday: 'short' })} ${hm(e.start)}`;
+  return `<div class="ev tap" data-act="event" data-id="${esc(e.id || '')}">
+    <span class="ev-when ${live ? 'now' : ''}">${esc(when)}</span><span class="ev-title">${esc(e.title)}</span><span class="ev-where">${esc((e.location || e.calendar || '').split(',')[0])}</span></div>`;
+}
+
+/**
+ * A progress ring. `color` may be a CSS colour or a gradient reference such as url(#g-focus)
+ * (the gradients are defined once in index.html). `still` rings don't follow the running timer.
+ */
+function ring(size, stroke, frac, color, still = false, ticks = false) {
+  const m = size / 2, r = m - stroke / 2 - (ticks ? 14 : 0), c = 2 * Math.PI * r;
+  let marks = '';
+  if (ticks) for (let i = 0; i < 60; i++) {
+    const a = (i / 60) * 2 * Math.PI, r1 = m - 3, r2 = m - (i % 5 ? 8 : 12);
+    marks += `<line x1="${(m + r1 * Math.sin(a)).toFixed(1)}" y1="${(m - r1 * Math.cos(a)).toFixed(1)}" x2="${(m + r2 * Math.sin(a)).toFixed(1)}" y2="${(m - r2 * Math.cos(a)).toFixed(1)}" class="${i / 60 < frac ? 'lit' : ''} ${i % 5 ? '' : 'major'}" data-tick="${i}"/>`;
+  }
+  return `<svg class="ring-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${m}" cy="${m}" r="${r}" fill="none" stroke="var(--track)" stroke-width="${stroke}"/>
+    <circle class="${still ? 'ring-still' : 'ring-fg'}" cx="${m}" cy="${m}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"
+      stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - Math.max(0.002, Math.min(1, frac)))}" data-c="${c}" transform="rotate(-90 ${m} ${m})"/>${marks}</svg>`;
+}
+
+/** A full task row for the To do list: tap the text to open its steps. */
+function taskRow(t) {
+  const subs = t.subtasks || [], done = subs.filter((x) => x.done).length, due = dueLabel(t);
+  const on = t.done || t.finishing, open = ui.taskOpen === t.id && !t.finishing;
+  const upd = t.updates || [];
+  return `<div class="task ${t.done ? 'done' : ''} ${t.finishing ? 'finishing' : ''}">
+    <div class="task-main">
+      <button class="check big ${on ? 'done' : ''}" data-act="todo-toggle" data-id="${t.id}" aria-label="Done">${on ? icon('check') : ''}</button>
+      <button class="task-body" data-act="task-open" data-id="${t.id}">
+        <b>${esc(t.text)}</b>
+        <span>${t.tag ? `<i><u style="background:${tagColor(t.tag)}"></u>${esc(t.tag)}</i>` : ''}${due && !t.done ? `<i class="${due[1]}">${due[0]}</i>` : ''}${subs.length ? `<i>${done}/${subs.length} steps</i>` : ''}${upd.length ? '<i class="violet">Updated</i>' : ''}</span>
+      </button>
+      <button class="star ${t.star ? 'on' : ''}" data-act="todo-star" data-id="${t.id}" aria-label="Star">${icon('star')}</button>
+    </div>
+    ${open ? `<div class="task-detail">
+      ${upd.map((u) => `<div class="upd"><span>${esc(u.note)}${u.from ? ` · ${esc(u.from.replace(/\s*<.*>/, ''))}` : ''}</span><button data-act="update-clear" data-id="${t.id}">Got it</button></div>`).join('')}
+      ${t.source?.why ? `<div class="task-why">${esc(t.source.why)}</div>` : ''}
+      ${subs.map((x) => `<div class="step ${x.done ? 'done' : ''}"><button class="step-main" data-act="sub-toggle" data-id="${t.id}" data-sid="${x.id}"><i class="check small ${x.done ? 'done' : ''}">${x.done ? icon('check') : ''}</i><span>${esc(x.text)}</span></button>
+        <button class="step-x" data-act="sub-del" data-id="${t.id}" data-sid="${x.id}" aria-label="Remove step">${icon('x')}</button></div>`).join('')}
+      <div class="task-foot">${t.done ? '<span></span>' : `<button data-act="sub-add" data-id="${t.id}">${icon('plus')} Add a step</button>`}<button class="del" data-act="todo-del" data-id="${t.id}">Delete</button></div>
+    </div>` : ''}
+  </div>`;
+}
+
+/**
+ * A small bar chart: tap a bar to read it (there is no hover on a touchscreen).
+ * `label(i)` names the bar in the caption above the bars.
+ */
+function barChart(id, values, label, gap = 5) {
+  const max = Math.max(1, ...values);
+  const sel = ui.chartSel[id] ?? Math.max(0, values.findLastIndex((v) => v > 0));
+  return `<div class="bar-cap">${values.length ? `${esc(label(sel))} · ${money(values[sel] || 0)}` : 'No data yet'}</div>
+    <div class="bars" style="gap:${gap}px">${values.map((v, i) => `<button data-act="chart" data-id="${id}" data-i="${i}" aria-label="${esc(label(i))}"><i class="${i === sel ? 'on' : ''}" style="height:${Math.max(2, (v / max) * 100).toFixed(1)}%"></i></button>`).join('')}</div>`;
+}
+
+function digestCard() {
+  const d = D.digest;
+  let body;
+  if (D.digestRunning) body = '<div class="ai-wait"><span>Claude is reading the last 24 hours of mail…</span><div class="loadbar"><i></i></div></div>';
+  else if (d?.headline) {
+    body = `<div class="ai-head big">${esc(d.headline)}</div>
+      ${d.highlights.length ? `<div class="ai-points">${d.highlights.map((h) => `<div><i></i>${esc(h)}</div>`).join('')}</div>` : ''}
+      <div class="ai-foot">${hm(d.at)} · ${d.emailCount} emails${d.taskCount ? ` · ${d.taskCount} task${d.taskCount > 1 ? 's' : ''} suggested` : ''}${d.errors?.length ? ` · ${esc(d.errors.join('; '))}` : ''}</div>`;
+  } else if (!D.aiEnabled) body = '<div class="empty">Add ANTHROPIC_API_KEY to the Pi\'s .env to get a daily summary from Claude.</div>';
+  else if (d?.error) body = `<div class="empty warn">${esc(d.error)}</div>`;
+  else body = `<div class="empty">Today's digest arrives at ${esc(clock12(D.settings.digestAt))}.</div>`;
+  const canRun = D.aiEnabled && !D.digestRunning;
+  return `<section class="card ai ai-card">
+    <div class="ch">${icon('mail')}<span class="title">Today's digest</span>${canRun ? `<button class="mini-btn text" data-act="digest-run">${icon('reset')}${d?.headline ? 'Redo' : d?.error ? 'Try again' : 'Make it now'}</button>` : ''}</div>
+    ${body}</section>`;
+}
+
+// Journal → Past days: every recorded day, newest first, searchable. Loaded on demand.
+async function loadJournalDays() {
+  const q = ui.jQuery || '';
+  try { ui.jDays = { q, ...(await api('GET', `/api/journal/days?q=${encodeURIComponent(q)}`)) }; }
+  catch (err) { ui.jDays = { q, days: [], error: err.message }; }
+  if (view === 'journal' && ui.jTab === 'past') render();
+}
+
+/** Text with the search term marked. */
+function marked(text, q) {
+  if (!q) return esc(text);
+  const lower = text.toLowerCase(), needle = q.toLowerCase();
+  let out = '', i = 0;
+  for (let at = lower.indexOf(needle); at !== -1; at = lower.indexOf(needle, i)) {
+    out += `${esc(text.slice(i, at))}<mark>${esc(text.slice(at, at + needle.length))}</mark>`;
+    i = at + needle.length;
+  }
+  return out + esc(text.slice(i));
+}
+
+function journalPast() {
+  const q = ui.jQuery || '';
+  const data = ui.jDays;
+  if (!data || data.q !== q) loadJournalDays();
+  const days = data?.q === q ? data.days : null;
+  const KIND = { reflection: ['Reflection', 'violet'], note: ['Voice note', 'pink'], daynote: ['Day note', 'blue'] };
+  const chips = D.settings.tags;
+  const matches = days ? days.reduce((n, d) => n + d.matches, 0) : 0;
+  return `<div class="jp">
+    <div class="jp-search">
+      ${KIOSK ? `<button class="jp-field" data-act="j-search">${icon('search')}<span class="${q ? '' : 'ph-text'}">${esc(q || 'Search every day you\'ve recorded')}</span></button>`
+              : `<label class="jp-field">${icon('search')}<input type="search" value="${esc(q)}" placeholder="Search every day you've recorded" data-jsearch></label>`}
+      ${q ? `<button class="sq-btn big" data-act="j-clear" aria-label="Clear search">${icon('x')}</button>` : ''}
+    </div>
+    <div class="chips wrap">${chips.map((c) => `<button class="chip small ${q.toLowerCase() === c.toLowerCase() ? 'on' : ''}" data-act="j-chip" data-q="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    <div class="jp-line">${!days ? 'Loading…' : data.error ? esc(data.error) : q ? `${matches} match${matches === 1 ? '' : 'es'} across ${days.length} day${days.length === 1 ? '' : 's'}` : `${days.length} day${days.length === 1 ? '' : 's'} recorded · newest first`}</div>
+    <div class="scroll">
+      ${(days || []).map((d) => { const open = q ? true : ui.jOpen === d.date; return `<section class="card jp-day ${open ? 'open' : ''}">
+        <button class="jp-head" data-act="j-day" data-date="${esc(d.date)}">
+          <div class="jp-top"><b>${esc(d.label)}</b><span>${esc([`${d.entries.length} entr${d.entries.length === 1 ? 'y' : 'ies'}`, d.focusMinutes ? `${d.focusMinutes} min` : '', d.tasksDone ? `${d.tasksDone} done` : ''].filter(Boolean).join(' · '))}</span>${icon('chev')}</div>
+          ${d.summary ? `<p>${marked(d.summary, q)}</p>` : ''}
+        </button>
+        ${open ? `<div class="jp-entries">${d.entries.map((e) => `<div class="jp-entry">
+            <div><span>${hm(e.at)}</span><em class="${(KIND[e.kind] || KIND.note)[1]}">${(KIND[e.kind] || KIND.note)[0]}</em></div>
+            <div><p>${marked(e.text, q)}</p>${e.action ? `<div class="jp-act">${icon('arrow')}${marked(e.action, q)}</div>` : ''}</div>
+          </div>`).join('') || '<div class="empty pad">No notes that day.</div>'}</div>` : ''}
+      </section>`; }).join('')}
+      ${days && !days.length ? `<div class="empty center pad">${q ? `Nothing matches “${esc(q)}”.` : 'Nothing recorded yet.'}</div>` : ''}
+    </div>
+  </div>`;
 }
 
 const VIEWS = {
   home() {
     const w = D.weather?.data;
     const [wxLabel, wxIcon] = w ? wx(w.code) : ['', 'sun'];
-    const rainH = w?.nextRain ? new Date(w.nextRain.time).getHours() : 0;
-    const rain = w?.nextRain ? ` · rain ~${rainH % 12 || 12}${rainH < 12 ? 'am' : 'pm'}` : '';
-    const events = (D.calendar?.data?.events || []).filter((e) => e.allDay ? e.start >= dayStart() : e.end >= Date.now() || e.start >= Date.now()).slice(0, 4);
-    const todos = realTodos().filter((t) => !t.done).sort(todoSort).slice(0, 5);
+    const now = Date.now();
+    const allEvents = D.calendar?.data?.events || [];
+    const events = allEvents.filter((e) => (e.allDay ? e.start >= dayStart() : e.end >= now || e.start >= now)).slice(0, 3);
+    const eventsToday = allEvents.filter((e) => e.start >= dayStart() && e.start < dayStart(1)).length;
+    const todos = realTodos().filter((t) => !t.done).sort(todoSort).slice(0, 4);
     const toReview = suggestedTodos().length;
-    const doneToday = D.todos.filter((t) => t.done && t.doneAt >= dayStart()).length;
     const p = D.payit?.data;
     const delta = p && p.yesterdaySameTimeCents ? Math.round(((p.today.grossCents - p.yesterdaySameTimeCents) / p.yesterdaySameTimeCents) * 100) : null;
     const sysBad = (p?.systems || []).filter((s) => s.status !== 'up');
     const accounts = D.mail?.data?.accounts || [];
     const digest = D.digest?.headline ? D.digest : null;
     const hasTimer = T.running || T.remaining != null;
+    const dollars = (c) => `$${Math.round(c / 100).toLocaleString('en-US')}`;
+    const today = new Date();
 
-    return `<div class="home">
-      <section class="hero a-clock tap" data-act="weather">
+    return `<div class="page vh">
+      <section class="hero tap" data-act="weather">
         <i class="hero-ring"></i><i class="hero-ring two"></i>
         <div class="hero-top">
           <div class="hero-clock">
-            <div class="dotclock" data-dotclock="day" role="img" aria-label="${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}"></div>
-            <div class="hero-date"><span class="ampm">${new Date().getHours() < 12 ? 'AM' : 'PM'}</span>${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+            <div class="dotclock" data-dotclock="day" role="img" aria-label="${today.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}"></div>
+            <div class="hero-date"><span class="ampm">${today.getHours() < 12 ? 'AM' : 'PM'}</span><span>${today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span></div>
           </div>
           ${w ? `<div class="hero-wx">
             <div class="hero-temp">${icon(wxIcon)}<b>${w.temp}°</b></div>
             <div class="hero-cond">${esc(wxLabel)}</div>
-            <div class="hero-hl mono">H ${w.hi}° · L ${w.lo}°${w.rainChance >= 20 ? ` · ${w.rainChance}% rain` : ''}</div>
+            <div class="hero-hl">H ${w.hi}° · L ${w.lo}° · ${w.rainChance ?? 0}% rain</div>
           </div>` : ''}
         </div>
-        ${w?.hours?.length ? `<div class="hero-hours">${w.hours.slice(1, 7).map((h) => { const hr = new Date(h.time).getHours(); return `<div><span class="mono">${hr % 12 || 12}${hr < 12 ? 'a' : 'p'}</span><b>${h.temp}°</b>${h.rain >= 30 ? `<i>${h.rain}%</i>` : ''}</div>`; }).join('')}</div>` : ''}
+        ${w?.hours?.length ? `<div class="hero-hours">${w.hours.slice(1, 7).map((h) => { const hr = new Date(h.time).getHours(); return `<div><span>${hr % 12 || 12}${hr < 12 ? 'a' : 'p'}</span><b>${h.temp}°</b></div>`; }).join('')}</div>` : ''}
       </section>
 
-      <section class="card a-focus tap" data-act="go" data-view="focus">
-        <div class="card-h">${icon('focus')}<span class="grow">Focus</span><span class="link">${D.focus.todayMinutes} min today</span></div>
-        <div class="mini-focus">
-          <div class="ring">${ring(120, 10, hasTimer ? 1 - tLeft() / tTotal() : 0, T.phase === 'focus' ? 'var(--accent)' : 'var(--info)')}<span data-timer>${fmtLeft(tLeft())}</span></div>
-          <div class="btns">
-            ${T.running
-              ? `<button class="btn" data-act="t-pause">${icon('pause')} Pause</button>`
-              : `<button class="btn primary" data-act="t-start">${icon('play')} ${hasTimer ? 'Resume' : `Start ${PHASES[T.phase].toLowerCase()}`}</button>`}
-            <button class="btn ghost small" data-act="go" data-view="focus">${esc(T.label || 'Open timer')}</button>
-          </div>
+      <section class="card h-focus tap" data-act="go" data-view="focus">
+        <div class="ch">${icon('focus')}<span class="title">Focus</span><span class="meta">${D.focus.todayMinutes} min today</span></div>
+        <div class="hf">
+          <div class="hf-ring">${ring(90, 9, hasTimer ? 1 - tLeft() / tTotal() : phaseMinutes(T.phase) / dialMax(T.phase), T.phase === 'focus' ? 'url(#g-focus)' : 'url(#g-cal)', !hasTimer)}</div>
+          <div><div class="hf-time" data-timer>${fmtLeft(tLeft())}</div>
+            <div class="hf-ends">${T.running ? `Ends ${hm(T.endsAt)}` : hasTimer ? 'Paused' : `Ends ${hm(now + tLeft())}`}</div></div>
         </div>
+        ${T.running
+          ? `<button class="btn secondary wide" data-act="t-pause">${icon('pause')} Pause</button>`
+          : `<button class="btn focus wide" data-act="t-start">${icon('play')} ${hasTimer ? 'Resume' : T.phase === 'focus' ? 'Start focus' : `Start ${PHASES[T.phase].toLowerCase()}`}</button>`}
       </section>
 
-      <section class="card a-payit tap" data-act="go" data-view="payit">
-        <div class="card-h">${icon('payit')}<span class="grow">PayIt today</span>
-          ${sysBad.length ? `<span class="status ${sysBad.some((s) => s.status === 'down') ? 'down' : 'degraded'}">${icon('warnI')} ${sysBad.length} issue${sysBad.length > 1 ? 's' : ''}</span>`
-            : p ? `<span class="status up">${icon('check')} All up</span>` : ''}</div>
-        ${p ? `<div class="big-num money">${money(p.today.grossCents)}</div>
-          ${delta !== null ? `<div class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}% vs. this time yesterday</div>` : '<div class="delta muted">—</div>'}
-          <div class="kv ${p.profit ? 'four' : ''}"><div><b>${p.today.count}</b><span>sales</span></div><div><b>${money(p.today.avgTicketCents, true)}</b><span>avg ticket</span></div><div><b>${p.today.declined}</b><span>declined</span></div>${p.profit ? `<div class="profit"><b>${money(p.profit.todayCents, true)}</b><span>platform profit</span></div>` : ''}</div>`
+      <section class="card h-payit tap" data-act="go" data-view="payit">
+        <div class="ch">${icon('payit')}<span class="title">PayIt today</span>
+          ${p ? `<span class="meta dotted ${sysBad.length ? (sysBad.some((s) => s.status === 'down') ? 'bad' : 'warn') : 'good'}"><i></i>${sysBad.length ? `${sysBad.length} issue${sysBad.length > 1 ? 's' : ''}` : 'all up'}</span>` : ''}</div>
+        ${p ? `<div class="hp-top"><span class="hp-num">${money(p.today.grossCents)}</span>${delta !== null ? `<span class="delta-pill ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}%</span>` : ''}</div>
+          <div class="hp-vs">${p.yesterdaySameTimeCents ? `vs. ${money(p.yesterdaySameTimeCents)} yesterday by now` : 'No sales yesterday by now'}</div>
+          <div class="hp-stats">
+            <div><b>${p.today.count}</b><span>sales</span></div>
+            <div><b>${dollars(p.today.avgTicketCents)}</b><span>avg</span></div>
+            <div class="${p.today.declined ? 'warn' : ''}"><b>${p.today.declined}</b><span>declined</span></div>
+            <div class="good"><b>${p.profit ? dollars(p.profit.todayCents) : '–'}</b><span>profit</span></div>
+          </div>`
           : D.payit?.configured === false ? notConfigured('PayIt', 'Add SUPABASE_URL + key to .env') : `<div class="empty">${esc(D.payit?.error || 'Loading…')}</div>`}
       </section>
 
-      <section class="card a-next tap" data-act="go" data-view="schedule">
-        <div class="card-h">${icon('schedule')}<span class="grow">Up next</span></div>
-        <div class="list">${events.length ? events.map(eventRow).join('') : D.calendar?.configured === false ? notConfigured('Calendar', 'Add CALENDAR_FEEDS (Canvas / Google ICS links) to .env') : '<div class="empty">Nothing in the next few days.</div>'}</div>
+      <section class="card h-next tap" data-act="go" data-view="schedule">
+        <div class="ch">${icon('schedule')}<span class="title">Up next</span><span class="meta">${eventsToday ? `${eventsToday} today` : ''}</span></div>
+        ${events.length ? events.map(eventLine).join('') : D.calendar?.configured === false ? notConfigured('Calendar', 'Add CALENDAR_FEEDS (Canvas / Google ICS links) to .env') : '<div class="empty">Nothing in the next few days.</div>'}
       </section>
 
-      <section class="card a-tasks tap" data-act="go" data-view="tasks">
-        <div class="card-h">${icon('tasks')}<span class="grow">To do</span>${toReview ? `<button class="chip review-chip" data-act="go" data-view="tasks">${toReview} to review</button>` : `<span class="link">${doneToday ? `${doneToday} done today` : ''}</span>`}</div>
-        <div class="list">${todos.length ? todos.map((t) => todoRow(t)).join('') : '<div class="empty">All clear. Nice.</div>'}</div>
-        <button class="btn small ghost" style="margin-top:auto" data-act="todo-add">${icon('plus')} Add task</button>
+      <section class="card h-tasks tap" data-act="go" data-view="tasks">
+        <div class="ch">${icon('tasks')}<span class="title">To do</span>${toReview ? `<span class="meta violet">${toReview} to review</span>` : '<span class="meta"></span>'}<button class="mini-btn" data-act="todo-add" aria-label="Add task">${icon('plus')}</button></div>
+        ${todos.length ? todos.map(taskLine).join('') : '<div class="empty center">Nothing left open. Nice.</div>'}
       </section>
 
-      <section class="card a-mail tap" data-act="go" data-view="mail">
-        <div class="card-h">${icon('mail')}<span class="grow">Mail digest</span>${digest ? `<span class="link">${hm(digest.at)}</span>` : ''}</div>
-        ${accounts.length ? `
-          <div class="home-digest">${digest
-            ? `<b>${esc(digest.headline)}</b>${digest.highlights.length ? `<ul>${digest.highlights.map((h) => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}`
-            : `<div class="empty">${D.digestRunning ? 'Claude is writing today\'s digest…' : D.aiEnabled ? `Today's digest arrives at ${esc(D.settings.digestAt)}.` : 'Add ANTHROPIC_API_KEY for a daily digest.'}</div>`}</div>
-          <div class="row mail-counts">${accounts.map((a) => `<span class="mail-acct"><b>${esc(a.name)}</b>&nbsp;<span class="pill">${a.unread}</span></span>`).join('')}</div>`
+      <section class="card ai h-mail tap" data-act="go" data-view="mail">
+        <div class="ch">${icon('mail')}<span class="title">Mail digest</span><span class="meta">${digest ? hm(digest.at) : ''}</span></div>
+        ${accounts.length ? `${digest
+            ? `<div class="hm-head">${esc(digest.headline)}</div><div class="hm-points">${digest.highlights.slice(0, 3).map((h) => `<div><i></i>${esc(h)}</div>`).join('')}</div>`
+            : `<div class="empty grow">${D.digestRunning ? 'Claude is reading the last 24 hours of mail…' : D.aiEnabled ? `Today's digest arrives at ${esc(clock12(D.settings.digestAt))}.` : 'Add ANTHROPIC_API_KEY for a daily digest.'}</div>`}
+          <div class="hm-foot">${accounts.map((a) => `<span>${esc(a.name)}<b>${a.unread}</b></span>`).join('')}</div>`
           : D.mail?.configured === false ? notConfigured('Mail', 'Add MAIL_1_USER / MAIL_1_PASS to .env') : `<div class="empty">${esc(D.mail?.error || 'Loading…')}</div>`}
       </section>
     </div>`;
@@ -648,47 +603,55 @@ const VIEWS = {
   focus() {
     const active = T.running || T.remaining != null;
     const isFocus = T.phase === 'focus';
-    const mins = phaseMinutes(T.phase);
-    const open = realTodos().filter((t) => !t.done).sort(todoSort).slice(0, 3);
+    const mins = phaseMinutes(T.phase), max = dialMax(T.phase);
+    const task = T.label ? D.todos.find((t) => !t.done && t.text === T.label) : null;
+    const subs = task?.subtasks || [];
+    const meta = task ? (subs.length ? `${subs.filter((x) => x.done).length} of ${subs.length} steps` : dueLabel(task)?.[0] || task.tag || '') : '';
     const sessions = D.focus.today || [];
-    const dayFrom = dayStart() + 6 * 3600e3, daySpan = 18 * 3600e3;
-    const pos = (ms) => Math.min(100, Math.max(0, ((ms - dayFrom) / daySpan) * 100));
+    const from = dayStart() + 7 * 3600e3, span = 16 * 3600e3;
+    const pos = (ms) => Math.min(100, Math.max(0, ((ms - from) / span) * 100));
+    const kicker = isFocus ? `Session ${T.cycle + 1} of 4` : PHASES[T.phase];
+    const grad = isFocus ? 'url(#g-focus)' : 'url(#g-cal)';
 
-    return `<div class="f3">
-      <header class="f3-head">
-        <nav class="f3-tabs">${Object.entries(PHASES).map(([k, v]) => `<button class="${T.phase === k ? 'on' : ''}" data-act="t-phase" data-phase="${k}">${v}</button>`).join('')}</nav>
-        <div class="f3-cycle" aria-label="Session ${T.cycle + 1} of 4">${[0, 1, 2, 3].map((i) => `<i class="${i < T.cycle ? 'done' : i === T.cycle && isFocus ? 'now' : ''}"></i>`).join('')}</div>
-      </header>
-
-      <div class="f3-stage">
-        <div class="dial ${active ? 'active' : 'idle'}" data-dial data-noscroll>
-          ${dialSvg(active ? null : mins, dialMax(T.phase), active ? 1 - tLeft() / tTotal() : 0)}
-          <div class="dial-center">
-            ${active
-              ? `<div class="dial-time" data-timer>${fmtLeft(tLeft())}</div>
-                 <div class="dial-sub">${T.running ? `Ends ${hm(T.endsAt)}` : 'Paused'}</div>`
-              : `<div class="dial-num"><span data-dial-num>${mins}</span></div>
-                 <div class="dial-sub"><span class="unit">minutes</span><span data-dial-ends>Ends ${hm(Date.now() + mins * 60e3)}</span></div>`}
-          </div>
-        </div>
-        ${active
-          ? `<div class="f3-actions">${T.running ? `<button class="fpill" data-act="t-pause">Pause</button>` : `<button class="fpill solid" data-act="t-start">Resume</button>`}<button class="fpill" data-act="t-reset">Reset</button></div>`
-          : `<div class="f3-presets">${dialPresets(T.phase).map((m) => `<button class="${m === mins ? 'on' : ''}" data-act="t-set" data-min="${m}">${m}</button>`).join('')}</div>
-             <div class="f3-actions"><button class="fpill solid wide" data-act="t-start">${isFocus ? 'Begin' : 'Start break'}</button></div>`}
+    return `<div class="vf ${isFocus ? '' : 'break'}">
+      <div class="vf-head">
+        <div class="seg">${Object.entries(PHASES).map(([k, v]) => `<button class="${T.phase === k ? 'on' : ''}" data-act="t-phase" data-phase="${k}">${v}</button>`).join('')}</div>
+        <div class="cycle" aria-label="Session ${T.cycle + 1} of 4">${[0, 1, 2, 3].map((i) => `<i class="${i < T.cycle ? 'done' : i === T.cycle ? 'now' : ''}"></i>`).join('')}</div>
       </div>
 
-      <section class="f3-list">
-        <h3>Working on</h3>
-        <button class="f3-row ${!T.label ? 'on' : ''}" data-act="t-label" data-label=""><span>Nothing in particular</span><i></i></button>
-        ${open.map((t) => { const subs = t.subtasks || [], left = subs.filter((x) => !x.done).length;
-          return `<button class="f3-row ${T.label === t.text ? 'on' : ''}" data-act="t-label" data-label="${esc(t.text)}"><span>${esc(t.text)}</span>
-            <em>${esc(subs.length ? `${subs.length - left} of ${subs.length}` : t.due && t.due < dayStart(1) ? 'Today' : t.tag || '')}</em><i></i></button>`; }).join('')}
+      <section class="vf-stage">
+        <div class="vf-dialrow">
+          <button class="round-btn" data-act="t-nudge" data-d="-1" aria-label="Less time" ${active ? 'disabled' : ''}>−</button>
+          <div class="vf-dial">
+            ${ring(400, 16, active ? 1 - tLeft() / tTotal() : mins / max, grad, !active, true)}
+            <div class="vf-center">
+              <span class="kicker">${esc(kicker)}</span>
+              <span class="vf-time" ${active ? 'data-timer' : ''}>${fmtLeft(active ? tLeft() : mins * 60e3)}</span>
+              <span class="vf-ends ${active && !T.running ? 'paused' : ''}">${T.running ? `Ends ${hm(T.endsAt)}` : active ? 'Paused' : `Ends ${hm(Date.now() + mins * 60e3)}`}</span>
+            </div>
+          </div>
+          <button class="round-btn" data-act="t-nudge" data-d="1" aria-label="More time" ${active ? 'disabled' : ''}>+</button>
+        </div>
+        ${active
+          ? `<div class="pills">
+              ${T.running ? `<button class="pill-btn" data-act="t-pause">Pause</button>` : `<button class="pill-btn solid" data-act="t-start">Resume</button>`}
+              <button class="pill-btn" data-act="t-adj" data-min="5">+5 min</button>
+              <button class="pill-btn" data-act="t-reset">Reset</button>
+            </div>`
+          : `<div class="presets">${dialPresets(T.phase).map((m) => `<button class="${m === mins ? 'on' : ''}" data-act="t-set" data-min="${m}">${m}</button>`).join('')}</div>
+            <button class="btn focus begin" data-act="t-start">${icon('play')} ${isFocus ? 'Begin' : 'Start break'}</button>`}
       </section>
 
-      <footer class="f3-day">
-        <div class="f3-line"><span><b>${D.focus.todayMinutes}</b> min today</span><span><b>${D.focus.todaySessions}</b> session${D.focus.todaySessions === 1 ? '' : 's'}</span><span><b>${D.focus.week.reduce((a, d) => a + d.minutes, 0)}</b> min this week</span></div>
-        <div class="f3-strip">${sessions.map((f) => `<i style="left:${pos(f.at - f.minutes * 60e3)}%;width:${Math.max(0.8, (f.minutes * 60e3 / daySpan) * 100)}%"></i>`).join('')}<b style="left:${pos(Date.now())}%"></b></div>
-      </footer>
+      <button class="card vf-work tap" data-act="pick-task">
+        <div class="grow"><div class="kicker">Working on</div><b>${esc(T.label || 'Nothing in particular')}</b>${meta ? `<span>${esc(meta)}</span>` : ''}</div>
+        ${icon('chev')}
+      </button>
+
+      <section class="card vf-stats">
+        <div class="vf-line"><span><b>${D.focus.todayMinutes}</b>min today</span><span><b>${D.focus.todaySessions}</b>session${D.focus.todaySessions === 1 ? '' : 's'}</span><span><b>${D.focus.week.reduce((a, d) => a + d.minutes, 0)}</b>min this week</span></div>
+        <div class="vf-strip">${sessions.map((f) => `<i style="left:${pos(f.at - f.minutes * 60e3).toFixed(2)}%;width:${Math.max(1.2, (f.minutes * 60e3 / span) * 100).toFixed(2)}%"></i>`).join('')}<b style="left:${pos(Date.now()).toFixed(2)}%"></b></div>
+        <div class="vf-axis"><span>7 AM</span><span>11 AM</span><span>3 PM</span><span>7 PM</span><span>11 PM</span></div>
+      </section>
     </div>`;
   },
 
@@ -702,27 +665,28 @@ const VIEWS = {
     else if (f === 'done') list = list.filter((t) => t.done);
     else list = list.filter((t) => !t.done && t.tag === f);
     const filters = [['open', 'All open'], ['today', 'Due today'], ...tags.map((t) => [t, t]), ['done', 'Done']];
-    return `<div class="page-h"><h1>To do</h1>
-        ${f === 'done' && list.length ? `<button class="btn small ghost" data-act="todo-clear">Clear done</button>` : ''}
+    const empty = f === 'open' ? 'All clear. Nice.' : f === 'today' ? 'Nothing due today.' : f === 'done' ? 'Nothing finished yet.' : `No open ${f} tasks.`;
+    return `<div class="page vt">
+      <div class="ph"><h1>To do</h1>
+        ${f === 'done' && list.length ? `<button class="btn secondary" data-act="todo-clear">Clear done</button>` : ''}
         <button class="btn primary" data-act="todo-add">${icon('plus')} Add</button></div>
-      <div class="tasks-page">
-      ${review.length ? `<section class="card review">
-        <div class="card-h">${icon('mail')}<span class="grow">Suggested from email</span><span class="link">Keep the ones that are real</span></div>
-        <div class="list">${review.map((t) => `<div class="item">
-          <div class="t"><b class="wrap">${esc(t.text)}</b><span>${esc(t.source?.why || [t.source?.from, t.source?.subject].filter(Boolean).join(' · '))}${t.subtasks?.length ? ` · ${t.subtasks.length} steps` : ''}</span></div>
-          ${t.tag ? `<span class="tag">${esc(t.tag)}</span>` : ''}${dueHtml(t)}
-          <button class="btn small primary" data-act="sugg-keep" data-id="${t.id}">${icon('check')} Keep</button>
-          <button class="icon-btn" data-act="sugg-dismiss" data-id="${t.id}" aria-label="Dismiss">${icon('x')}</button>
-        </div>`).join('')}</div>
+      ${review.length ? `<section class="card ai sugg">
+        <div class="ch">${icon('mail')}<span class="title">Suggested from email</span><span class="meta">Keep the ones that are real</span></div>
+        ${review.map((t) => { const due = dueLabel(t); return `<div class="sugg-row">
+          <div class="grow"><b>${esc(t.text)}</b><span>${esc(t.source?.why || [t.source?.from, t.source?.subject].filter(Boolean).join(' · '))}${t.subtasks?.length ? ` · ${t.subtasks.length} steps` : ''}</span></div>
+          ${due ? `<em>${due[0]}</em>` : ''}
+          <button class="btn primary small" data-act="sugg-keep" data-id="${t.id}">Keep</button>
+          <button class="sq-btn" data-act="sugg-dismiss" data-id="${t.id}" aria-label="Dismiss">${icon('x')}</button>
+        </div>`; }).join('')}
       </section>` : ''}
       <div class="chips">${filters.map(([k, v]) => `<button class="chip ${f === k ? 'on' : ''}" data-act="task-filter" data-f="${esc(k)}">${esc(v)}</button>`).join('')}</div>
-      <section class="card tasks"><div class="list">${list.length ? list.map((t) => todoRow(t, true)).join('') : '<div class="empty">Nothing here.</div>'}</div></section>
-      </div>`;
+      <section class="card list-card">${list.length ? list.map(taskRow).join('') : `<div class="empty center pad">${esc(empty)}</div>`}</section>
+    </div>`;
   },
 
   payit() {
     const s = D.payit;
-    if (!s?.data) return `<div class="page-h"><h1>PayIt</h1></div><section class="card">${s?.configured === false ? notConfigured('PayIt', 'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env on the Pi.') : `<div class="empty">${esc(s?.error || 'Loading…')}</div>`}</section>`;
+    if (!s?.data) return `<div class="page"><div class="ph"><h1>PayIt</h1></div><section class="card">${s?.configured === false ? notConfigured('PayIt', 'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env on the Pi.') : `<div class="empty">${esc(s?.error || 'Loading…')}</div>`}</section></div>`;
     const p = s.data, t = p.today;
     const delta = p.yesterdaySameTimeCents ? Math.round(((t.grossCents - p.yesterdaySameTimeCents) / p.yesterdaySameTimeCents) * 100) : null;
     const nowH = new Date().getHours();
@@ -730,92 +694,124 @@ const VIEWS = {
     const hourLabel = (h) => `${h % 12 || 12}${h < 12 ? 'a' : 'p'}`;
     const weekTotal = p.week.reduce((a, d) => a + d.cents, 0);
     const providers = Object.entries(t.byProvider).sort((a, b) => b[1] - a[1]);
+    const provMax = Math.max(1, ...providers.map(([, v]) => v));
     const provName = { stripe: 'Card (Stripe)', cash: 'Cash', ath_movil: 'ATH Móvil' };
-    return `<div class="page-h"><h1>PayIt</h1><span class="muted">Updated ${s.updatedAt ? hm(s.updatedAt) : '—'}</span></div>
-      <div class="payit">
-        <section class="card">
-          <div class="card-h">Gross volume today</div>
-          <div class="row" style="align-items:baseline;gap:14px"><div class="big-num money" style="font-size:60px">${money(t.grossCents)}</div>
-            ${delta !== null ? `<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}% vs. ${money(p.yesterdaySameTimeCents)} yesterday by now</span>` : ''}</div>
-          ${p.profit ? `<div class="kept">Platform kept <b>${money(p.profit.todayCents, true)}</b> today${p.profit.cardVolumeCents ? ` · ${((p.profit.todayCents / p.profit.cardVolumeCents) * 100).toFixed(2)}% of card volume` : ''} · <b>${money(p.profit.weekCents, true)}</b> this week</div>`
-            : p.profitError ? `<div class="kept" style="color:var(--warn)">Platform profit unavailable: ${esc(p.profitError)}</div>`
-            : '<div class="kept muted">Platform profit needs a restricted Stripe key (see .env.example)</div>'}
-          <div class="tiles" style="margin-top:14px">
-            <div class="tile"><b>${t.count}</b><span>sales</span></div>
-            <div class="tile"><b>${money(t.avgTicketCents, true)}</b><span>avg ticket</span></div>
-            <div class="tile"><b>${t.activeMerchants}</b><span>active merchants</span></div>
-            <div class="tile"><b style="color:${t.declined >= 3 ? 'var(--warn)' : 'inherit'}">${t.declined}</b><span>declined · ${t.refunded} refunded</span></div>
+    const bad = p.systems.filter((x) => x.status !== 'up'), down = bad.filter((x) => x.status === 'down').length;
+    const weekDay = (i) => (i === p.week.length - 1 ? 'Today' : new Date(p.week[i].date).toLocaleDateString('en-US', { weekday: 'long' }));
+    // Four evenly spread labels under the hourly bars.
+    const hourTicks = [...new Set([0, Math.round((hours.length - 1) / 3), Math.round(((hours.length - 1) * 2) / 3), hours.length - 1])];
+    return `<div class="page vp">
+      <div class="ph"><h1>PayIt</h1><span class="ph-meta">Updated ${s.updatedAt ? hm(s.updatedAt) : '—'}</span></div>
+      <div class="scroll">
+        <section class="pay-hero">
+          <div class="kicker">Gross volume today</div>
+          <div class="pay-top"><span class="pay-num">${money(t.grossCents)}</span>${delta !== null ? `<span class="delta-pill big ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}%</span>` : ''}</div>
+          <div class="pay-line">${p.yesterdaySameTimeCents ? `vs. ${money(p.yesterdaySameTimeCents)} yesterday by now` : 'No sales yesterday by now'}${
+            p.profit ? ` · platform kept <b>${money(p.profit.todayCents, true)}</b> today, <b>${money(p.profit.weekCents, true)}</b> this week`
+            : p.profitError ? ` · <span class="warn">platform profit unavailable: ${esc(p.profitError)}</span>` : ''}</div>
+          <div class="pay-tiles">
+            <div><b>${t.count}</b><span>sales</span></div>
+            <div><b>${money(t.avgTicketCents, true)}</b><span>avg ticket</span></div>
+            <div><b>${t.activeMerchants}</b><span>merchants</span></div>
+            <div class="${t.declined ? 'warn' : ''}"><b>${t.declined}</b><span>declined · ${t.refunded} ref.</span></div>
           </div>
         </section>
-        <section class="card">
-          <div class="card-h">Systems</div>
-          <div class="list">${p.systems.length ? p.systems.map((x) => `<div class="item"><div class="t"><b style="text-transform:capitalize">${esc(x.system.replace(/_/g, ' '))}</b>${x.detail ? `<span>${esc(x.detail)}</span>` : `<span>checked ${ago(x.checked_at)} ago</span>`}</div>
-            <span class="status ${esc(x.status)}">${icon(x.status === 'up' ? 'check' : x.status === 'down' ? 'downI' : 'warnI')} ${esc(x.status)}</span></div>`).join('')
-            : '<div class="empty">No checks in the last 3 hours — is the hourly-system-check cron running?</div>'}</div>
-          <div class="row" style="margin-top:auto;gap:18px;padding-top:8px">
-            <span class="muted">New businesses today <b style="color:var(--text)">${t.newBusinesses}</b></span></div>
+        <section class="card rows-card">
+          <div class="ch plain"><span class="title">Systems</span><span class="meta dotted ${down ? 'bad' : bad.length ? 'warn' : 'good'}"><i></i>${down ? `${down} down` : bad.length ? `${bad.length} degraded` : 'all up'}</span></div>
+          ${p.systems.length ? p.systems.map((x) => `<div class="sys"><div class="grow"><b>${esc(x.system.replace(/_/g, ' '))}</b><span>${x.detail ? esc(x.detail) : ago(x.checked_at) === 'now' ? 'checked just now' : `checked ${ago(x.checked_at)} ago`}</span></div>
+            <em class="${esc(x.status)}"><i></i>${esc(x.status)}</em></div>`).join('')
+            : '<div class="empty pad">No checks in the last 3 hours. Is the hourly-system-check cron running?</div>'}
+          ${t.newBusinesses ? `<div class="sys"><div class="grow"><b class="asis">New businesses today</b></div><em class="plain">${t.newBusinesses}</em></div>` : ''}
         </section>
-        <section class="card">
-          <div class="card-h">By hour</div>
-          ${bars('hourly', hours, hours.map((_, h) => hourLabel(h)), (v) => money(v), { height: 190, capLabel: (h) => `${hourLabel(h)}–${hourLabel((h + 1) % 24)}` })}
+        <div class="two">
+          <section class="card chart-card">
+            <div class="ch plain"><span class="title">By hour</span></div>
+            ${barChart('hourly', hours, (h) => `${hourLabel(h)}–${hourLabel((h + 1) % 24)}`, 5)}
+            <div class="bar-axis">${hourTicks.map((h) => `<span>${hourLabel(h)}</span>`).join('')}</div>
+          </section>
+          <section class="card chart-card">
+            <div class="ch plain"><span class="title">Last 7 days</span><span class="meta">${money(weekTotal)}</span></div>
+            ${barChart('week', p.week.map((d) => d.cents), weekDay, 7)}
+            <div class="bar-axis even">${p.week.map((d) => `<span>${new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' })}</span>`).join('')}</div>
+          </section>
+        </div>
+        <section class="card methods">
+          <div class="ch plain"><span class="title">By payment method</span></div>
+          ${providers.length ? providers.map(([k, v]) => `<div class="method"><span>${esc(provName[k] || k)}</span><i><u style="width:${((v / provMax) * 100).toFixed(1)}%"></u></i><b>${money(v)}</b></div>`).join('') : '<div class="empty">No sales yet today.</div>'}
         </section>
-        <section class="card">
-          <div class="card-h"><span class="grow">Last 7 days</span><span class="link">${money(weekTotal)} total</span></div>
-          ${bars('week', p.week.map((d) => d.cents), p.week.map((d) => new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' })), (v) => money(v), { height: 150, capLabel: (i) => `${new Date(p.week[i].date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}${p.week[i].profitCents != null ? ` · kept ${money(p.week[i].profitCents, true)}` : ''}` })}
-          <div class="row" style="gap:18px;margin-top:10px;flex-wrap:wrap">${providers.map(([k, v]) => `<span class="muted">${esc(provName[k] || k)} <b style="color:var(--text)">${money(v)}</b></span>`).join('') || '<span class="muted">No sales yet today</span>'}</div>
-        </section>
-      </div>`;
+      </div>
+    </div>`;
   },
 
   mail() {
     const s = D.mail;
-    if (!s?.data) return `<div class="page-h"><h1>Mail</h1></div><section class="card">${s?.configured === false ? notConfigured('Mail', 'Add one MAIL_n_* block per account to .env (see README).') : `<div class="empty">${esc(s?.error || 'Loading…')}</div>`}</section>`;
-    return `<div class="page-h"><h1>Mail</h1><span class="muted">${s.data.aiEnabled ? 'Summaries by Claude · ' : ''}updated ${s.updatedAt ? hm(s.updatedAt) : '—'}</span>
-        <button class="btn small ghost" data-act="refresh">Refresh</button></div>
-      <div class="mail-page">${digestCard()}
-      <div class="mailview">${s.data.accounts.map((a) => `<section class="card">
-        <div class="card-h"><span class="grow">${esc(a.name)}</span><span class="pill">${a.unread} unread</span></div>
-        ${a.needsSignIn ? `<div class="empty">Not signed in yet.<br><button class="btn small primary" style="margin-top:10px" data-act="go" data-view="settings">Connect in Settings</button></div>` : a.error ? `<div class="empty" style="color:var(--warn)">${esc(a.error)}</div>` : ''}
-        <div class="list">${a.messages.map((m) => `<div class="msg tap ${m.priority === 'low' ? 'low' : ''}" data-act="mail-open" data-id="${esc(m.id)}">
-          <div class="top">${m.priority === 'urgent' ? '<span class="prio"><span class="dot" style="background:var(--bad)"></span>Urgent</span>' : ''}<b>${esc(m.from)}</b><span class="muted">${ago(m.date)}</span></div>
+    if (!s?.data) return `<div class="page"><div class="ph"><h1>Mail</h1></div><section class="card">${s?.configured === false ? notConfigured('Mail', 'Add one MAIL_n_* block per account to .env (see README).') : `<div class="empty">${esc(s?.error || 'Loading…')}</div>`}</section></div>`;
+    return `<div class="page vm">
+      <div class="ph"><h1>Mail</h1><span class="ph-meta">${s.data.aiEnabled ? 'Summaries by Claude · ' : 'Updated '}${s.updatedAt ? hm(s.updatedAt) : '—'}</span></div>
+      ${digestCard()}
+      <div class="scroll">${s.data.accounts.map((a) => `<section class="card rows-card">
+        <div class="ch plain"><span class="title">${esc(a.name)}</span>${a.needsSignIn ? '' : `<span class="tagc">${a.unread} unread</span>`}</div>
+        ${a.needsSignIn ? `<div class="mail-off"><span>${esc(a.name)} mail isn't connected yet.</span><button class="btn primary small" data-act="go" data-view="settings">Connect</button></div>`
+          : a.error ? `<div class="empty pad warn">${esc(a.error)}</div>` : ''}
+        ${a.messages.map((m) => `<button class="mail-row ${m.priority === 'low' ? 'low' : ''}" data-act="mail-open" data-id="${esc(m.id)}">
+          <div class="mail-top"><b>${esc(m.from)}</b>${m.priority === 'urgent' ? '<em>Urgent</em>' : ''}<span>${ago(m.date)}</span></div>
           <p>${esc(m.summary)}</p>
-          ${m.action ? `<div class="act">${icon('arrow')} ${esc(m.action)}</div>` : ''}
-        </div>`).join('') || (a.needsSignIn ? '' : '<div class="empty">No unread mail from the last few days.</div>')}</div>
-      </section>`).join('')}</div></div>`;
+          ${m.action ? `<div class="mail-act">${icon('arrow')}${esc(m.action)}</div>` : ''}
+        </button>`).join('') || (a.needsSignIn || a.error ? '' : '<div class="empty pad">No unread mail from the last few days.</div>')}
+      </section>`).join('')}</div>
+    </div>`;
   },
 
   journal() {
+    const past = ui.jTab === 'past';
+    const head = `<div class="ph"><h1>Journal</h1><button class="btn primary" data-act="note-add">${icon('plus')} Note</button></div>
+      <div class="seg full"><button class="${past ? '' : 'on'}" data-act="j-tab" data-tab="today">Today</button><button class="${past ? 'on' : ''}" data-act="j-tab" data-tab="past">Past days</button></div>`;
+    if (past) return `<div class="page vj">${head}${journalPast()}</div>`;
+
     const r = D.recap;
     const today = D.journal.filter((j) => j.at >= dayStart());
-    const earlier = D.journal.filter((j) => j.at < dayStart());
+    const dayNotes = today.filter((j) => j.kind === 'daynote').reverse();
+    const voice = today.filter((j) => j.kind !== 'daynote');
     let recap;
-    if (D.recapRunning) recap = '<div class="empty">Claude is writing up your day…</div>';
+    if (D.recapRunning) recap = '<div class="ai-wait journal"><span>Claude is writing up your day…</span><div class="loadbar"><i></i></div></div>';
     else if (r?.headline) {
-      recap = `<div class="head">${esc(r.headline)}</div>
-        ${r.bullets.length ? `<ul>${r.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
-        ${r.tomorrow.length ? `<div class="tomorrow"><b>Tomorrow</b><ul>${r.tomorrow.map((b) => `<li>${esc(b)}</li>`).join('')}</ul></div>` : ''}
-        <div class="foot"><span class="grow">${hm(r.at)}</span><button class="btn small ghost" data-act="recap-run">Redo</button></div>`;
+      recap = `<div class="ai-head">${esc(r.headline)}</div>
+        ${r.bullets.length ? `<div class="ai-points journal">${r.bullets.map((b) => `<div><i></i>${esc(b)}</div>`).join('')}</div>` : ''}
+        ${r.tomorrow?.length ? `<div class="ai-box"><div class="kicker">Tomorrow</div>${r.tomorrow.map((b) => `<div>${esc(b)}</div>`).join('')}</div>` : ''}`;
     } else if (!D.aiEnabled) recap = '<div class="empty">Add ANTHROPIC_API_KEY to the Pi\'s .env to get a recap of your day.</div>';
-    else if (r?.error) recap = `<div class="empty" style="color:var(--warn)">${esc(r.error)}</div><div class="foot"><span class="grow"></span><button class="btn small ghost" data-act="recap-run">Try again</button></div>`;
-    else recap = `<div class="foot" style="margin:0"><span class="grow">Your recap arrives at ${esc(D.settings.recapAt)}, from your notes, tasks and focus time.</span><button class="btn small ghost" data-act="recap-run">Make it now</button></div>`;
-    const row = (j) => `<div class="msg">
-      <div class="top"><b>${esc(j.note || j.text)}</b><span class="muted">${j.kind === 'reflection' ? 'Reflection · ' : ''}${hm(j.at)}</span></div>
-      ${j.note && j.note !== j.text ? `<p class="said">“${esc(j.text)}”</p>` : ''}
-      ${j.pending ? '<div class="act">Working out what you meant…</div>' : `${(j.completed || []).map((t) => `<div class="act done">${icon('check')} Done: ${esc(t)}</div>`).join('')}${j.tasks.map((t) => `<div class="act">${icon('plus')} ${esc(t)}</div>`).join('')}`}
-    </div>`;
-    return `<div class="page-h"><h1>Journal</h1><button class="btn primary" data-act="note-add">${icon('plus')} Note</button></div>
-      <div class="mail-page">
-        <section class="card digest"><div class="card-h">${icon('journal')}<span class="grow">Today's recap</span></div>${recap}</section>
-        <section class="card" style="flex:1;min-height:0"><div class="card-h"><span class="grow">Voice notes</span><span class="link">${D.voiceReady ? 'Ring token set' : 'Ring not set up yet'}</span></div>
-          <div class="list journal-list">${today.length || earlier.length ? `${today.map(row).join('')}${earlier.length ? `<h3 class="daysep">Yesterday</h3>${earlier.map(row).join('')}` : ''}`
-            : '<div class="empty">Nothing yet. Speak into the ring, or tap Note to type one. Say what you need to do and it lands in To do.</div>'}</div>
+    else if (r?.error) recap = `<div class="empty warn">${esc(r.error)}</div>`;
+    else recap = `<div class="empty">Your recap arrives at ${esc(clock12(D.settings.recapAt))}, from your notes, tasks and focus time.</div>`;
+    const canRun = D.aiEnabled && !D.recapRunning;
+
+    return `<div class="page vj">${head}
+      <div class="scroll">
+        <section class="card ai journal ai-card">
+          <div class="ch">${icon('journal')}<span class="title">Today's recap</span>${r?.headline ? `<span class="meta">${hm(r.at)}</span>` : ''}
+            ${canRun ? `<button class="mini-btn text" data-act="recap-run">${icon('reset')}${r?.headline ? 'Redo' : r?.error ? 'Try again' : 'Make it now'}</button>` : ''}</div>
+          ${recap}
         </section>
-      </div>`;
+        <section class="card rows-card">
+          <div class="ch plain"><span class="title">Notes for today</span><button class="mini-btn text" data-act="daynote-add">${icon('plus')}Add</button></div>
+          ${dayNotes.length ? dayNotes.map((n) => `<div class="daynote"><span>${hm(n.at)}</span><p>${esc(n.text)}</p></div>`).join('')
+            : '<div class="empty pad">Jot anything you want to find later. It stays with today under Past days.</div>'}
+        </section>
+        <section class="card rows-card">
+          <div class="ch plain"><span class="title">Voice notes</span><span class="meta dotted ${D.voiceReady ? 'good' : 'off'}"><i></i>${D.voiceReady ? 'Ring connected' : 'Ring not set up'}</span></div>
+          ${voice.length ? voice.map((j) => `<div class="vnote">
+              <div class="vnote-top"><b>${esc(j.note || j.text)}</b><span>${j.kind === 'reflection' ? 'Reflection' : j.trigger === 'typed' ? 'Typed' : 'Note'} · ${hm(j.at)}</span></div>
+              ${j.note && j.note !== j.text ? `<div class="vnote-said">“${esc(j.text)}”</div>` : ''}
+              ${j.pending ? '<div class="vnote-wait">Working out what you meant…</div>'
+                : `${(j.completed || []).map((t) => `<div class="vnote-done">${icon('check')}Done: ${esc(t)}</div>`).join('')}${(j.tasks || []).map((t) => `<div class="vnote-task">${icon('plus')}${esc(t)}</div>`).join('')}`}
+            </div>`).join('')
+            : '<div class="empty pad">Nothing yet today. Speak into the ring, or tap Note to type one. Say what you need to do and it lands in To do.</div>'}
+        </section>
+      </div>
+    </div>`;
   },
 
   schedule() {
     const cal = D.calendar;
-    if (cal?.configured === false) return `<div class="page-h"><h1>Schedule</h1></div><section class="card">${notConfigured('Calendar', 'Add CALENDAR_FEEDS to .env (your Google Calendar secret iCal address).')}</section>`;
+    if (cal?.configured === false) return `<div class="page"><div class="ph"><h1>Schedule</h1></div><section class="card">${notConfigured('Calendar', 'Add CALENDAR_FEEDS to .env (your Google Calendar secret iCal address).')}</section></div>`;
     const all = cal?.data?.events || [];
     const sel = Math.min(6, Math.max(0, ui.schedDay));
     const from = dayStart(sel), to = dayStart(sel + 1);
@@ -833,104 +829,112 @@ const VIEWS = {
     if (timed.length) bits.push(`${timed.length} event${timed.length > 1 ? 's' : ''}${firstToday ? `, first at ${hm(firstToday.start)}` : ''}`);
     else bits.push('No timed events');
     if (tasks.length) bits.push(`${tasks.length} task${tasks.length > 1 ? 's' : ''} due`);
-    const busyMin = timed.reduce((m, e) => m + Math.max(0, Math.min(e.end, to) - Math.max(e.start, from)) / 60e3, 0);
-    if (busyMin >= 60) bits.push(`${(busyMin / 60).toFixed(busyMin % 60 ? 1 : 0)} h booked`);
     const w = sel === 0 ? D.weather?.data : null;
+    if (w) bits.push(`${w.temp}° now, high ${w.hi}°`);
 
     // Timeline: hours down the side, events placed by time, overlaps side by side.
     const hourOf = (ms) => (ms - from) / 3600e3;
     const startH = Math.max(0, Math.min(8, Math.floor(Math.min(...timed.map((e) => hourOf(e.start)), 8))));
-    const endH = Math.min(24, Math.max(18, Math.ceil(Math.max(...timed.map((e) => hourOf(e.end)), 18))));
+    const endH = 24;
     const span = endH - startH;
     const pct = (h) => ((Math.min(endH, Math.max(startH, h)) - startH) / span) * 100;
     const cols = [];
     const placed = timed.map((e) => {
       let c = cols.findIndex((end) => end <= e.start);
       if (c === -1) { c = cols.length; cols.push(0); }
-      cols[c] = Math.max(e.end, e.start + 30 * 60e3);
+      cols[c] = Math.max(e.end, e.start + 45 * 60e3);
       return { e, c };
     });
-    const hours = Array.from({ length: span + 1 }, (_, i) => startH + i);
+    const hours = []; for (let h = startH; h <= endH; h += 2) hours.push(h);
     const hourLabel = (h) => `${h % 12 || 12} ${h < 12 || h === 24 ? 'AM' : 'PM'}`;
+    const short = (ms) => hm(ms).replace(/ (AM|PM)$/, '');
     const nowH = hourOf(Date.now());
     const timeline = `<div class="tl">
-      ${hours.map((h) => `<div class="tl-hour" style="top:${pct(h)}%"><span>${hourLabel(h)}</span></div>`).join('')}
-      ${sel === 0 && nowH >= startH && nowH <= endH ? `<div class="tl-now" style="top:${pct(nowH)}%"></div>` : ''}
+      ${hours.map((h) => `<div class="tl-hour" style="top:${pct(h).toFixed(2)}%"><span>${hourLabel(h)}</span></div>`).join('')}
       <div class="tl-events">${placed.map(({ e, c }) => {
         const top = pct(hourOf(e.start)), h = Math.max(pct(hourOf(e.end)) - top, 0);
-        const past = e.end < Date.now();
-        return `<div class="tl-ev tap ${past ? 'past' : ''}" data-act="event" data-id="${esc(e.id || '')}" style="top:min(${top}%, calc(100% - 46px));height:${h}%;left:${(c / cols.length) * 100}%;width:${100 / cols.length}%">
-          <b>${esc(e.title)}</b><span>${hm(e.start)}${e.end > e.start ? `–${hm(e.end)}` : ''}${e.location ? ` · ${esc(e.location)}` : ''}</span></div>`;
+        const where = (e.location || e.calendar || '').split(',')[0];
+        return `<button class="tl-ev ${e.end < Date.now() ? 'past' : ''}" data-act="event" data-id="${esc(e.id || '')}" style="top:min(${top.toFixed(2)}%, calc(100% - 48px));height:${h.toFixed(2)}%;left:${((c / cols.length) * 100).toFixed(2)}%;width:calc(${(100 / cols.length).toFixed(2)}% - 4px)">
+          <b>${esc(e.title)}</b><span>${e.end > e.start ? `${short(e.start)}–${hm(e.end)}` : hm(e.start)}${where ? ` · ${esc(where)}` : ''}</span></button>`;
       }).join('')}</div>
+      ${sel === 0 && nowH >= startH && nowH <= endH ? `<div class="tl-now" style="top:${pct(nowH).toFixed(2)}%"><i></i></div>` : ''}
       ${timed.length ? '' : '<div class="tl-empty">Nothing on the calendar</div>'}
     </div>`;
 
     const strip = Array.from({ length: 7 }, (_, o) => {
       const d = new Date(dayStart(o)), n = onDay(o).length;
-      return `<button class="day ${o === sel ? 'on' : ''}" data-act="sched-day" data-o="${o}">
-        <span>${o === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' })}</span><b>${d.getDate()}</b>
-        <i>${'<u></u>'.repeat(Math.min(n, 4))}</i></button>`;
+      return `<button class="${o === sel ? 'on' : ''}" data-act="sched-day" data-o="${o}">
+        <span>${o === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' })}</span><b>${d.getDate()}</b><i>${n ? `${n} ev` : '–'}</i></button>`;
     }).join('');
 
-    return `<div class="page-h"><h1>Schedule</h1>${cal?.error ? `<span class="muted" style="color:var(--warn)">${esc(cal.error)}</span>` : ''}</div>
-      <div class="sched-page">
-        <section class="card daysum">
-          <div class="daysum-date">${sel === 0 ? 'Today' : sel === 1 ? 'Tomorrow' : date.toLocaleDateString('en-US', { weekday: 'long' })}<span>${date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</span></div>
-          <div class="daysum-line">${esc(bits.join(' · '))}${w ? ` · ${w.temp}° now, high ${w.hi}°${w.rainChance >= 40 ? `, ${w.rainChance}% rain` : ''}` : ''}</div>
-          ${allDay.length ? `<div class="chips" style="margin-top:10px">${allDay.map((e) => `<span class="chip allday">${esc(e.title)}</span>`).join('')}</div>` : ''}
-          ${tasks.length ? `<div class="list" style="margin-top:8px">${tasks.slice(0, 3).map((t) => todoRow(t)).join('')}</div>${tasks.length > 3 ? `<div class="muted" style="margin-top:6px">+${tasks.length - 3} more in To do</div>` : ''}` : ''}
-        </section>
-        <section class="card tl-card">${timeline}</section>
-        <div class="weekstrip">${strip}</div>
-      </div>`;
+    return `<div class="page vs">
+      <div class="ph"><h1>Schedule</h1>${cal?.error ? `<span class="ph-meta warn">${esc(cal.error)}</span>` : ''}</div>
+      <section class="card daysum">
+        <div class="daysum-top"><b>${sel === 0 ? 'Today' : sel === 1 ? 'Tomorrow' : date.toLocaleDateString('en-US', { weekday: 'long' })}</b><span>${date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</span></div>
+        <div class="daysum-line">${esc(bits.join(' · '))}</div>
+        ${allDay.length ? `<div class="chips wrap" style="margin-top:10px">${allDay.map((e) => `<button class="chip small allday" data-act="event" data-id="${esc(e.id || '')}">${esc(e.title)}</button>`).join('')}</div>` : ''}
+        ${tasks.slice(0, 3).map((t) => { const due = dueLabel(t); return `<div class="due-row"><i class="${due[1]}"></i><span>${esc(t.text)}</span><em class="${due[1]}">${due[0]}</em></div>`; }).join('')}
+        ${tasks.length > 3 ? `<div class="due-more">+${tasks.length - 3} more in To do</div>` : ''}
+      </section>
+      <section class="card tl-card">${timeline}</section>
+      <div class="week">${strip}</div>
+    </div>`;
   },
 
   settings() {
     const st = D.settings;
-    const step = (key, val, unit = '') => `<div class="stepper"><button data-act="set-step" data-k="${key}" data-d="-1">−</button><b>${esc(val)}${unit}</b><button data-act="set-step" data-k="${key}" data-d="1">+</button></div>`;
     const sys = D.system;
-    const row = (label, hint, control) => `<div class="set-row"><label>${label}${hint ? `<span>${hint}</span>` : ''}</label><div class="set-ctl">${control}</div></div>`;
+    const row = (label, hint, control) => `<div class="set-row"><div class="grow"><b>${label}</b>${hint ? `<span>${hint}</span>` : ''}</div>${control}</div>`;
+    const step = (key, shown) => `<div class="stepper"><button data-act="set-step" data-k="${key}" data-d="-1" aria-label="Less">−</button><b>${esc(shown)}</b><button data-act="set-step" data-k="${key}" data-d="1" aria-label="More">+</button></div>`;
+    const time = (key) => step(key, clock12(st[key]));
+    const mins = (key) => step(key, `${st[key]} min`);
     const toggle = (k) => `<button class="toggle ${st[k] ? 'on' : ''}" data-act="set-toggle" data-k="${k}" aria-pressed="${Boolean(st[k])}"></button>`;
-    const range = (k, min, max) => `<input type="range" min="${min}" max="${max}" value="${st[k]}" data-act="set-range" data-k="${k}">`;
-    const group = (title, rows) => `<section class="card"><div class="card-h">${title}</div>${rows.join('')}</section>`;
-    return `<div class="page-h"><h1>Settings</h1>
-        <button class="btn" data-act="mode" data-mode="sleep">${icon('moon')} Sleep now</button>
-</div>
-      <div class="settings">
+    const range = (k, min, max, stepBy = 1) => `<input type="range" min="${min}" max="${max}" step="${stepBy}" value="${st[k]}" style="--pct:${(((st[k] - min) / (max - min)) * 100).toFixed(1)}%" data-act="set-range" data-k="${k}">`;
+    const btn = (act, label, cls = '') => `<button class="set-btn ${cls}" data-act="${act}">${label}</button>`;
+    const group = (title, rows) => `<section class="card set-card"><div class="kicker">${title}</div>${rows.filter(Boolean).join('')}</section>`;
+    const sc = D.school;
+    const school = !sc?.configured ? ''
+      : sc.pending ? `<div class="code-box"><div>On your phone or laptop, open <b>${esc(sc.pending.uri.replace(/^https?:\/\//, ''))}</b> and enter</div><div class="code">${esc(sc.pending.code)}</div><div>then sign in with your school account. This screen updates by itself.</div></div>`
+      : sc.connected ? row('School mail', 'Connected with Microsoft (read-only)', btn('school-disconnect', 'Disconnect'))
+      : row('School mail', sc.error ? `<i class="warn">${esc(sc.error)}</i>` : 'Sign in with Microsoft using a short code', btn('school-connect', 'Connect', 'solid'));
+    return `<div class="page vset">
+      <div class="ph"><h1>Settings</h1><button class="btn secondary" data-act="mode" data-mode="sleep">${icon('moon')} Sleep now</button></div>
+      <div class="scroll">
         ${group('Display', [
-          row('Text size', `Bigger text for reading from your chair · ${st.textSize || 115}%`, `<input type="range" min="100" max="140" step="5" value="${st.textSize || 115}" data-act="set-range" data-k="textSize">`),
-          row('Brightness', D.hasBacklight ? 'Desk screen backlight' : 'No backlight here; this controls the desk screen', range('dayBrightness', 10, 100)),
-          row('Sleep brightness', 'How dim the bedside clock gets', range('sleepBrightness', 0, 30)),
+          row('Text size', `Bigger text for reading from your chair · ${st.textSize || 115}%`, range('textSize', 100, 140, 5)),
+          row('Brightness', D.hasBacklight ? `Desk screen backlight · ${st.dayBrightness}%` : `No backlight here; this sets the desk screen · ${st.dayBrightness}%`, range('dayBrightness', 10, 100)),
+          row('Sleep brightness', `How dim the bedside clock gets · ${st.sleepBrightness}%`, range('sleepBrightness', 0, 30)),
           row('Sounds', '', toggle('chime')),
         ])}
         ${group('Evening and morning', [
           row('Wind down', 'Desk screen dims and puts mail and PayIt away', toggle('windDown')),
-          row('Wind down starts', '', step('windDownAt', st.windDownAt)),
-          row('Automatic sleep mode', '', toggle('autoSleep')),
-          row('Sleep at', '', step('sleepAt', st.sleepAt)),
-          row('Wake at', '', step('wakeAt', st.wakeAt)),
+          row('Wind down starts', '', time('windDownAt')),
+          row('Automatic sleep', 'Goes to the sleep screen on its own', toggle('autoSleep')),
+          row('Sleep at', '', time('sleepAt')),
+          row('Wake at', '', time('wakeAt')),
           row('Morning brief', 'Sunrise screen with your day, until you tap it', toggle('morningBrief')),
         ])}
         ${group('Mail and Claude', [
-          row('Email digest at', "Claude's summary of the last 24 hours", step('digestAt', st.digestAt)),
-          row('Day recap at', 'From your notes, tasks and focus time', step('recapAt', st.recapAt)),
+          row('Email digest at', "Claude's summary of the last 24 hours", time('digestAt')),
+          row('Day recap at', 'From your notes, tasks and focus time', time('recapAt')),
           row('Tasks from email', 'Checked hourly; you approve new ones', toggle('emailTasks')),
-          schoolRow(row),
+          school,
         ])}
         ${group('Focus timer', [
-          row('Focus length', '', step('focusMinutes', st.focusMinutes, 'm')),
-          row('Short break', '', step('shortBreak', st.shortBreak, 'm')),
-          row('Long break', '', step('longBreak', st.longBreak, 'm')),
+          row('Focus length', '', mins('focusMinutes')),
+          row('Short break', '', mins('shortBreak')),
+          row('Long break', '', mins('longBreak')),
           row('Focus lock', 'A focus session takes over the screen until you hold to leave', toggle('focusLock')),
         ])}
         ${group('This hub', [
           row(esc(sys.host), `${sys.tempC != null ? `${sys.tempC.toFixed(0)}°C · ` : ''}load ${sys.load.toFixed(2)} · memory ${sys.memUsedPct}% · up ${sys.uptimeH}h`, ''),
-          row('Data', 'Reload mail, PayIt, calendar and weather now', '<button class="btn small ghost" data-act="refresh">Refresh</button>'),
-          row('This screen', 'Reload the page', '<button class="btn small ghost" data-act="reload">Reload</button>'),
-          row('Restart the Pi', D.canRestart ? 'Reboots the whole device; back in about a minute' : 'Not allowed yet: run scripts/allow-restart.sh on the Pi once', `<button class="btn small ghost danger" data-act="restart-pi" ${D.canRestart ? '' : 'disabled'}>Restart</button>`),
-          D.signedIn ? row('Signed in on this device', '', '<button class="btn small ghost" data-act="logout">Sign out</button>') : '',
+          row('Data', 'Reload mail, PayIt, calendar and weather now', btn('refresh', 'Refresh')),
+          row('This screen', 'Reload the page', btn('reload', 'Reload')),
+          row('Restart the Pi', D.canRestart ? 'Reboots the whole device; back in about a minute' : 'Not allowed yet: run scripts/allow-restart.sh on the Pi once', D.canRestart ? btn('restart-pi', 'Restart', 'danger') : ''),
+          D.signedIn ? row('Signed in on this device', '', btn('logout', 'Sign out')) : '',
         ])}
-      </div>`;
+      </div>
+    </div>`;
   },
 };
 
@@ -938,79 +942,57 @@ const VIEWS = {
 // Render
 // ---------------------------------------------------------------------------
 
-// Microsoft 365 (school) mail: sign in with a code on another device.
-function schoolRow(row) {
-  const sc = D.school;
-  if (!sc?.configured) return '';
-  if (sc.pending) return `<div class="code-box"><div>On your phone or laptop, open <b>${esc(sc.pending.uri.replace(/^https?:\/\//, ''))}</b> and enter</div>
-    <div class="code">${esc(sc.pending.code)}</div><div class="muted">then sign in with your school account. This screen updates by itself.</div></div>`;
-  if (sc.connected) return row('School mail', 'Signed in with Microsoft (read-only)', '<button class="btn small ghost" data-act="school-disconnect">Disconnect</button>');
-  return row('School mail', sc.error ? `<span style="color:var(--warn)">${esc(sc.error)}</span>` : 'Sign in with Microsoft using a short code', '<button class="btn small primary" data-act="school-connect">Connect</button>');
-}
-
-function digestCard() {
-  const d = D.digest;
-  let body;
-  if (D.digestRunning) body = '<div class="empty">Claude is reading the last 24 hours of mail…</div>';
-  else if (d?.headline) {
-    body = `<div class="head">${esc(d.headline)}</div>
-      ${d.highlights.length ? `<ul>${d.highlights.map((h) => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}
-      <div class="foot"><span class="grow">${hm(d.at)} · ${d.emailCount} emails${d.taskCount ? ` · ${d.taskCount} task${d.taskCount > 1 ? 's' : ''} suggested` : ''}${d.errors?.length ? ` · ${esc(d.errors.join('; '))}` : ''}</span>
-        <button class="btn small ghost" data-act="digest-run">Redo</button></div>`;
-  } else if (!D.aiEnabled) body = '<div class="empty">Add ANTHROPIC_API_KEY to the Pi\'s .env to get a daily summary from Claude.</div>';
-  else if (d?.error) body = `<div class="empty" style="color:var(--warn)">${esc(d.error)}</div><div class="foot"><span class="grow"></span><button class="btn small ghost" data-act="digest-run">Try again</button></div>`;
-  else body = `<div class="foot" style="margin:0"><span class="grow">Today's digest arrives at ${esc(D.settings.digestAt)}.</span><button class="btn small ghost" data-act="digest-run">Make it now</button></div>`;
-  return `<section class="card digest"><div class="card-h">${icon('mail')}<span class="grow">Today's digest</span></div>${body}</section>`;
-}
 
 function windHome() {
-  const tomorrowEvents = (D.calendar?.data?.events || []).filter((e) => e.start >= dayStart(1) && e.start < dayStart(2)).slice(0, 3);
+  const all = D.calendar?.data?.events || [];
+  const tomorrowEvents = all.filter((e) => e.start >= dayStart(1) && e.start < dayStart(2)).slice(0, 3);
   const open = realTodos().filter((t) => !t.done).sort(todoSort);
-  const tomorrowTasks = open.filter((t) => t.due && t.due >= dayStart(1) && t.due < dayStart(2));
-  const left = open.filter((t) => !t.due || t.due < dayStart(1)).slice(0, 4);
+  const tonightTasks = open.filter((t) => t.due && t.due < dayStart(1)).slice(0, 3);
+  const tomorrowTasks = open.filter((t) => t.due && t.due >= dayStart(1) && t.due < dayStart(2)).slice(0, Math.max(0, 3 - tomorrowEvents.length));
   const r = D.recap?.headline ? D.recap : null;
-  const doneToday = D.todos.filter((t) => t.done && t.doneAt >= dayStart()).length;
   const w = D.weather?.data;
   const tw = w?.tomorrow;
   // How far through wind-down we are, from its start to sleep time.
-  const toMin = (hm) => { const [h, m] = hm.split(':').map(Number); return h * 60 + m; };
+  const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
   const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
   const span = (toMin(D.settings.sleepAt) - toMin(D.settings.windDownAt) + 1440) % 1440 || 1;
   const into = (nowMin - toMin(D.settings.windDownAt) + 1440) % 1440;
   const windDone = Math.min(1, into / span), minsLeft = Math.max(0, span - into);
-  const lightsOut = new Date(2000, 0, 1, ...D.settings.sleepAt.split(':').map(Number)).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   // What was said tonight, newest first (D.journal already is).
-  const tonight = (D.journal || []).filter((j) => j.evening && j.at > Date.now() - 12 * 3600e3).slice(0, 6);
-  return `<div class="wind">
-    <section class="card clock wind-hero">
-      <div class="wind-top mono"><span>Wind down</span><span>Lights out ${esc(lightsOut)}</span></div>
-      <div class="dotclock" data-dotclock="wind" role="img" aria-label="${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}"></div>
-      <div class="wind-bar"><i style="width:${(windDone * 100).toFixed(1)}%"></i></div>
-      <div class="wind-left mono">${minsLeft > 0 ? `${minsLeft >= 60 ? `${Math.floor(minsLeft / 60)} h ` : ''}${minsLeft % 60} min left` : 'Time for bed'}</div>
-      <div class="date">${doneToday ? `${doneToday} thing${doneToday > 1 ? 's' : ''} done today` : 'The day is done'}${D.focus.todayMinutes ? ` · ${D.focus.todayMinutes} min of focus` : ''}</div>
+  const tonight = (D.journal || []).filter((j) => j.evening && j.kind !== 'daynote' && j.at > Date.now() - 12 * 3600e3).slice(0, 4);
+  const today = new Date();
+  return `<div class="page vw">
+    <section class="wind-hero">
+      <div class="wind-top"><span>Wind down</span><span>Lights out ${esc(clock12(D.settings.sleepAt))}</span></div>
+      <div class="dotclock" data-dotclock="wind" role="img" aria-label="${today.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}"></div>
+      <div class="wind-date">${today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}${w ? ` · ${w.temp}° and ${esc(wx(w.code)[0].toLowerCase())} tonight` : ''}</div>
+      <div class="wind-prog"><div><i style="width:${(windDone * 100).toFixed(1)}%"></i></div><span>${minsLeft > 0 ? `${minsLeft >= 60 ? `${Math.floor(minsLeft / 60)} h ` : ''}${minsLeft % 60} min left` : 'Time for bed'}</span></div>
     </section>
-    <section class="card">
-      <div class="card-h">${icon('schedule')}<span class="grow">Tomorrow</span>${tw ? `<span class="wind-wx">${icon(wx(tw.code)[1])}${tw.hi}° / ${tw.lo}°${w.tomorrowRain >= 30 ? ` · ${w.tomorrowRain}% rain` : ''}</span>` : ''}</div>
-      <div class="list">${tomorrowEvents.map(eventRow).join('')}${tomorrowTasks.map((t) => todoRow(t)).join('')
-        || (tomorrowEvents.length ? '' : '<div class="empty">Nothing scheduled for tomorrow yet.</div>')}</div>
+    <section class="card wc tap" data-act="go" data-view="tasks">
+      <div class="wc-h">Before you sleep</div>
+      ${tonightTasks.length ? tonightTasks.map((t) => { const due = dueLabel(t), on = t.done || t.finishing; return `<div class="wc-task ${t.finishing ? 'finishing' : ''}">
+          <button class="check ${on ? 'done' : ''}" data-act="todo-toggle" data-id="${t.id}" aria-label="Done">${on ? icon('check') : ''}</button><span>${esc(t.text)}</span><em>${due[0]}</em></div>`; }).join('')
+        : '<div class="wc-empty">All clear. Nice.</div>'}
     </section>
-    <section class="card tap" data-act="go" data-view="journal">
-      <div class="card-h">${icon('journal')}<span class="grow">Before you sleep</span></div>
-      ${tonight.length ? `<div class="night-list">${tonight.map((j) => j.pending
-            ? `<div class="night pending"><i>Listening</i><p>Claude is reading what you said…</p></div>`
-            : `<div class="night ${j.kind === 'reflection' ? 'refl' : ''}"><i>${j.kind === 'reflection' ? 'Reflection' : j.note ? 'For tomorrow' : 'Sorted'} · ${hm(j.at)}</i><p>${esc(j.note || [j.tasks?.length && `Added ${j.tasks.length} task${j.tasks.length > 1 ? 's' : ''}`, j.completed?.length && `marked ${j.completed.length} done`].filter(Boolean).join(', ') || j.text)}</p></div>`).join('')}</div>`
-        : r ? `<div class="home-digest"><b>${esc(r.headline)}</b>${r.bullets.length ? `<ul>${r.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}</div>`
-          : ''}
-      <div class="night-hint">${icon('journal')}<span>${tonight.length ? 'Press the ring to add more.' : 'Press the ring and say what\'s on your mind. Claude keeps it as a reflection on today or a note for tomorrow.'}</span></div>
-      <button class="night-type" data-act="note-add">or type it</button>
+    <section class="card wc">
+      <div class="wc-h">Tomorrow${tw ? `<span>${tw.hi}° / ${tw.lo}°${w.tomorrowRain >= 30 ? ` · ${w.tomorrowRain}% rain` : ''}</span>` : ''}</div>
+      ${tomorrowEvents.map((e) => `<div class="wc-ev tap" data-act="event" data-id="${esc(e.id || '')}"><span>${e.allDay ? 'All day' : hm(e.start)}</span><b>${esc(e.title)}</b><em>${esc((e.location || e.calendar || '').split(',')[0])}</em></div>`).join('')}
+      ${tomorrowTasks.map((t) => `<div class="wc-ev"><span>Due</span><b>${esc(t.text)}</b><em>${esc(t.tag || '')}</em></div>`).join('')}
+      ${tomorrowEvents.length || tomorrowTasks.length ? '' : '<div class="wc-empty">Nothing scheduled for tomorrow yet.</div>'}
     </section>
-    <section class="card tap" data-act="go" data-view="tasks">
-      <div class="card-h">${icon('tasks')}<span class="grow">Still open</span></div>
-      <div class="list">${left.length ? left.map((t) => todoRow(t)).join('') : '<div class="empty">Nothing left open. Nice.</div>'}</div>
-      <button class="btn small ghost" style="margin-top:auto" data-act="todo-add">${icon('plus')} Add for tomorrow</button>
+    <section class="card wc grow tap" data-act="go" data-view="journal">
+      <div class="wc-h">${tonight.length ? 'Tonight' : "Today's recap"}</div>
+      ${tonight.length ? `<div class="wc-notes">${tonight.map((j) => j.pending
+            ? '<div class="pending"><i>Listening</i><p>Claude is reading what you said…</p></div>'
+            : `<div><i>${j.kind === 'reflection' ? 'Reflection' : j.note ? 'For tomorrow' : 'Sorted'} · ${hm(j.at)}</i><p>${esc(j.note || [j.tasks?.length && `Added ${j.tasks.length} task${j.tasks.length > 1 ? 's' : ''}`, j.completed?.length && `marked ${j.completed.length} done`].filter(Boolean).join(', ') || j.text)}</p></div>`).join('')}</div>`
+        : r ? `<p class="wc-recap">${esc(r.headline)}</p>`
+        : '<p class="wc-recap dim">Press the ring and say what\'s on your mind. Claude keeps it as a reflection on today or a note for tomorrow.</p>'}
     </section>
-    <div class="wind-foot"><button class="btn" data-act="mode" data-mode="sleep">${icon('moon')} Sleep now</button>
-      <button class="btn ghost" data-act="wind-override">Show everything</button></div>
+    <div class="wind-foot">
+      <button data-act="note-add">${icon('journal')} Add a note</button>
+      <button data-act="wind-override">Show everything</button>
+      <button class="to-sleep" data-act="mode" data-mode="sleep">${icon('moon')} Sleep</button>
+    </div>
   </div>`;
 }
 
@@ -1020,33 +1002,35 @@ function renderMorning() {
   const el = $('#morning');
   const show = KIOSK && D.morningDue && D.mode === 'day';
   if (!show) { el.hidden = true; el.dataset.html = ''; return; }
-  const h = new Date().getHours();
+  const now = new Date(), h = now.getHours();
   const w = D.weather?.data;
-  const open = realTodos().filter((t) => !t.done).sort(todoSort);
-  const today = open.filter((t) => t.due && t.due >= dayStart() && t.due < dayStart(1));
-  const carried = open.filter((t) => t.due && t.due < dayStart());
-  const events = (D.calendar?.data?.events || []).filter((e) => e.start < dayStart(1)).slice(0, 4);
-  const missed = (D.mail?.data?.accounts || []).flatMap((a) => a.messages)
-    .filter((m) => Date.parse(m.date) < dayStart() && (m.priority === 'urgent' || m.action))
-    .sort((a, b) => (a.priority === 'urgent' ? 0 : 1) - (b.priority === 'urgent' ? 0 : 1)).slice(0, 3);
-  const line = (t, sub) => `<li><b>${esc(t)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</li>`;
-  const block = (title, items) => items.length ? `<div class="m-block"><h3>${title}</h3><ul>${items.join('')}</ul></div>` : '';
-  const html = `<div class="sky"><div class="sun"><i></i></div><div class="hills"></div></div>
-    <div class="m-body">
+  const rainH = w?.nextRain ? new Date(w.nextRain.time).getHours() : 0;
+  const open = realTodos().filter((t) => !t.done);
+  const dueToday = open.filter((t) => t.due && t.due < dayStart(1));
+  const carried = dueToday.filter((t) => t.due < dayStart()).length;
+  const events = (D.calendar?.data?.events || []).filter((e) => e.start < dayStart(1) && (e.allDay || e.end >= Date.now())).slice(0, 3);
+  const p = D.payit?.data;
+  const yesterday = p?.week?.length > 1 ? p.week[p.week.length - 2].cents : null;
+  const missed = (D.mail?.data?.accounts || []).flatMap((a) => a.messages).filter((m) => m.priority === 'urgent' || m.action).length;
+  const line = D.digest?.headline || (missed ? `${missed} email${missed > 1 ? 's' : ''} still need${missed > 1 ? '' : 's'} you.` : '');
+  const html = `<div class="mb-sun"></div>
+    <div class="mb-top">
+      <div class="mb-kicker">${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · ${hm(now.getTime())}</div>
       <h1>${h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'}</h1>
-      <p class="m-date">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-      ${w ? weatherWidget(w, { tap: false }) : ''}
-      ${D.digest?.headline ? `<p class="m-digest">${esc(D.digest.headline)}</p>` : ''}
-      <div class="m-grid">
-        ${block('On your calendar', events.map((e) => line(e.title, e.allDay ? 'All day' : hm(e.start))))}
-        ${block('To do today', today.slice(0, 5).map((t) => line(t.text, t.tag)))}
-        ${block('Left from yesterday', carried.slice(0, 4).map((t) => line(t.text, 'Overdue')))}
-        ${block('Email you haven\'t dealt with', missed.map((m) => line(m.action || m.summary, m.from)))}
-        ${!events.length && !today.length && !carried.length && !missed.length ? '<div class="m-block"><h3>A clear day</h3><ul><li><b>Nothing scheduled, nothing overdue.</b></li></ul></div>' : ''}
+      ${w ? `<p>${w.temp}° and ${esc(wx(w.code)[0].toLowerCase())}, high ${w.hi}°. ${w.nextRain ? `Rain likely after ${rainH % 12 || 12} ${rainH < 12 ? 'AM' : 'PM'}.` : w.rainChance >= 30 ? `${w.rainChance}% chance of rain.` : 'No rain expected.'}</p>` : ''}
+    </div>
+    <div class="mb-sheet">
+      <div class="kicker">Your day</div>
+      ${events.length ? events.map((e) => `<div class="mb-ev"><span>${e.allDay ? 'All day' : hm(e.start)}</span><b>${esc(e.title)}</b><em>${esc((e.location || e.calendar || '').split(',')[0])}</em></div>`).join('')
+        : '<div class="mb-ev empty"><b>Nothing on the calendar today.</b></div>'}
+      <div class="mb-tiles">
+        <div><b class="amber">${dueToday.length}</b><span>task${dueToday.length === 1 ? '' : 's'} due today${carried ? ` · ${carried} from before` : ''}</span></div>
+        ${yesterday != null ? `<div><b class="mint">${money(yesterday)}</b><span>PayIt yesterday</span></div>` : `<div><b>${open.length}</b><span>open in To do</span></div>`}
       </div>
-      <button class="btn m-go" data-act="morning-done">Start the day</button>
+      ${line ? `<div class="mb-digest">${esc(line)}</div>` : ''}
+      <button class="mb-go" data-act="morning-done">Start the day</button>
     </div>`;
-  if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+  if (el.dataset.html !== html.replace(/· \d+:\d+ [AP]M/, '')) { el.innerHTML = html; el.dataset.html = html.replace(/· \d+:\d+ [AP]M/, ''); }
   el.hidden = false;
 }
 
@@ -1081,85 +1065,21 @@ function render() {
   if (!D) return;
   document.documentElement.classList.toggle('winddown', winding());
   document.documentElement.dataset.view = view;
-  document.documentElement.style.setProperty('--ts', (D.settings.textSize || 115) / 100);
+  // Text size is tuned for reading the desk screen from a chair; a phone in the hand stays at 100%.
+  document.documentElement.style.setProperty('--ts', !KIOSK && innerWidth <= 600 ? 1 : (D.settings.textSize || 115) / 100);
   if (winding() && !WIND_VIEWS.includes(view)) view = 'home';
   renderRail();
   renderStatus();
   $('#view').innerHTML = winding() && view === 'home' ? windHome() : VIEWS[view]();
   mountClocks();
+  if (ui.jFocus) { const q = $('[data-jsearch]'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
   renderMorning();
   renderLock();
-  drawCharts();
   if (!$('#drawer').hidden) renderDrawer();
 }
 
-// The day's weather: now, the next hours, sun times, and tomorrow.
-// One calendar event in full: when, where, what it says, who's going, and my reply.
-function renderEvent() {
-  const e = (D.calendar?.data?.events || []).find((x) => x.id === ui.eventId);
-  if (!e) { $('#drawer').hidden = true; return; }
-  const day = new Date(e.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  const mins = Math.round((e.end - e.start) / 60e3);
-  const long = mins >= 60 ? `${Math.floor(mins / 60)} hr${mins % 60 ? ` ${mins % 60} min` : ''}` : `${mins} min`;
-  const time = e.allDay ? 'All day' : e.end > e.start ? `${hm(e.start)} – ${hm(e.end)} · ${long}` : hm(e.start);
-  const until = e.start - Date.now();
-  const rel = e.allDay ? '' : until <= 0 && e.end > Date.now() ? 'Happening now' : until > 0 && until < 3600e3 ? `Starts in ${Math.max(1, Math.round(until / 60e3))} min` : '';
-  const REPLY = { yes: 'Going', no: 'Not going', maybe: 'Maybe', none: 'Not answered' };
-  const fact = (ic, main, sub) => `<div class="ev-fact">${icon(ic)}<div><b>${esc(main)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></div>`;
-  $('#drawer').innerHTML = `<div class="panel sheet event" data-stop>
-    <div class="page-h"><h1>${esc(e.title)}</h1><button class="btn small" data-act="close-drawer">Close</button></div>
-    <div class="ev-facts">
-      ${fact('schedule', day, [time, rel, e.repeats ? 'Repeats' : ''].filter(Boolean).join(' · '))}
-      ${e.location ? fact('pin', e.location) : ''}
-      ${e.link ? fact('link', /zoom|meet\.google|teams\.|webex/i.test(e.link) ? 'Video call' : 'Link', e.link.replace(/^https?:\/\//, '')) : ''}
-      ${fact('tasks', e.calendar, e.organizer ? (e.organizedByMe ? 'You organized this' : `Organized by ${e.organizer}`) : '')}
-    </div>
-    ${e.myReply ? `<div class="ev-reply ${e.myReply}"><span>Your reply</span><b>${REPLY[e.myReply]}</b></div>` : ''}
-    ${e.description ? `<div class="ev-desc">${esc(e.description)}</div>` : ''}
-    ${e.guests?.length ? `<h3 class="wx-h">Guests · ${e.guestCount}</h3><div class="ev-guests">${e.guests.map((g) => `<div class="${g.reply}"><i></i><b>${esc(g.name)}</b><span>${REPLY[g.reply]}</span></div>`).join('')}</div>` : ''}
-  </div>`;
-}
 
-function renderWeather() {
-  const w = D.weather?.data;
-  if (!w) { $('#drawer').hidden = true; return; }
-  const [label, ic] = wx(w.code);
-  const t = (s) => new Date(s).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  const hr = (s) => { const h = new Date(s).getHours(); return `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`; };
-  const temps = (w.hours || []).slice(0, 12).map((h) => h.temp), lo = Math.min(...temps), hi = Math.max(...temps);
-  const [tLabel, tIcon] = wx(w.tomorrow.code);
-  $('#drawer').innerHTML = `<div class="panel sheet weather" data-stop>
-    <div class="page-h"><h1>Weather</h1><button class="btn small" data-act="close-drawer">Close</button></div>
-    <div class="wx-now">${icon(ic)}<div class="wx-temp">${w.temp}°</div>
-      <div class="wx-desc"><b>${esc(label)}</b><span>Feels like ${w.feels}° · High ${w.hi}° · Low ${w.lo}°</span></div></div>
-    <div class="wx-facts">
-      <div><span>Rain today</span><b>${w.rainChance ?? 0}%</b></div>
-      <div><span>Wind</span><b>${w.wind ?? '–'} ${esc(w.windUnit || '')}</b></div>
-      <div><span>Humidity</span><b>${w.humidity ?? '–'}%</b></div>
-      <div><span>Sunrise</span><b>${w.sunrise ? t(w.sunrise) : '–'}</b></div>
-      <div><span>Sunset</span><b>${w.sunset ? t(w.sunset) : '–'}</b></div>
-    </div>
-    ${w.nextRain ? `<div class="wx-note">${icon('rain')} Rain likely around ${hr(w.nextRain.time)} (${w.nextRain.chance}%)</div>` : ''}
-    <h3 class="wx-h">Next hours</h3>
-    <div class="wx-hours">${(w.hours || []).slice(0, 12).map((h, i) => `<div class="wx-hour">
-        <span>${i === 0 ? 'Now' : hr(h.time)}</span>${icon(wx(h.code)[1])}
-        <i style="--p:${hi > lo ? ((h.temp - lo) / (hi - lo)).toFixed(2) : 0.5}"></i>
-        <b>${h.temp}°</b><em class="${h.rain >= 30 ? 'wet' : ''}">${h.rain >= 10 ? `${h.rain}%` : ''}</em></div>`).join('')}</div>
-    <div class="wx-tomorrow">${icon(tIcon)}<div><b>Tomorrow</b><span>${esc(tLabel)} · High ${w.tomorrow.hi}° · Low ${w.tomorrow.lo}°${w.tomorrowRain >= 20 ? ` · ${w.tomorrowRain}% rain` : ''}</span></div></div>
-  </div>`;
-}
 
-function renderDrawer() {
-  if (ui.drawer === 'mail') return renderReader();
-  if (ui.drawer === 'weather') return renderWeather();
-  if (ui.drawer === 'event') return renderEvent();
-  const alerts = D.alerts;
-  $('#drawer').innerHTML = `<div class="panel" data-stop>
-    <div class="page-h"><h1>Alerts</h1><button class="btn small ghost" data-act="close-drawer">Close</button></div>
-    ${alerts.length ? alerts.map((a) => `<div class="alert ${esc(a.level)}"><div class="t"><small>${esc(a.source)}</small><b>${esc(a.title)}</b>${a.body ? `<p>${esc(a.body)}</p>` : ''}</div>
-      <button class="icon-btn" data-act="dismiss" data-id="${esc(a.id)}">${icon('x')}</button></div>`).join('') : '<div class="empty">Nothing needs your attention.</div>'}
-  </div>`;
-}
 
 // The email's own HTML, shown in a sandboxed frame: scripts can't run, forms
 // can't submit, and it can't reach the hub. Images load as the sender intended.
@@ -1172,26 +1092,97 @@ function emailDoc(html) {
     </head><body>${html}</body></html>`;
 }
 
+
+// ---------------------------------------------------------------------------
+// Sheets: panels that slide up from the bottom over a scrim (#drawer).
+// ---------------------------------------------------------------------------
+
+const SRC_ICON = { payit: 'payit', mail: 'mail', calendar: 'schedule', tasks: 'tasks', journal: 'journal', voice: 'journal', system: 'settings', focus: 'focus' };
+const sheet = (inner, cls = '') => { $('#drawer').innerHTML = `<div class="sheet ${cls}" data-stop><i class="grab"></i>${inner}</div>`; };
+const sheetHead = (title, extra = '') => `<div class="sh-head"><b>${title}</b>${extra}<button class="sq-btn big" data-act="close-drawer" aria-label="Close">${icon('x')}</button></div>`;
+function openSheet(kind) { ui.drawer = kind; $('#drawer').hidden = false; renderDrawer(); }
+
+function renderDrawer() {
+  if (ui.drawer === 'mail') return renderReader();
+  if (ui.drawer === 'weather') return renderWeather();
+  if (ui.drawer === 'event') return renderEvent();
+  if (ui.drawer === 'pick') return renderPick();
+  const alerts = D.alerts;
+  sheet(`${sheetHead('Alerts', `<span class="sh-meta">${alerts.length ? `${alerts.length} open` : ''}</span>`)}
+    <div class="sh-scroll">${alerts.length ? alerts.map((a) => `<div class="alert-row">
+        <span class="tile ${esc(a.level)}">${icon(SRC_ICON[a.source] || 'bell')}</span>
+        <div class="grow"><b>${esc(a.title.charAt(0).toUpperCase() + a.title.slice(1))}</b>${a.body ? `<p>${esc(a.body)}</p>` : ''}</div>
+        <span class="alert-src">${esc(a.source)}${a.at ? `<br>${hm(a.at)}` : ''}</span>
+        <button class="sq-btn" data-act="dismiss" data-id="${esc(a.id)}" aria-label="Dismiss">${icon('x')}</button>
+      </div>`).join('') : '<div class="empty center pad">Nothing needs your attention.</div>'}</div>`);
+}
+
+// Focus → "Working on": pick the task this session is for.
+function renderPick() {
+  const open = realTodos().filter((t) => !t.done).sort(todoSort).slice(0, 7);
+  const opt = (label, text, meta) => `<button class="pick-row ${T.label === label ? 'on' : ''}" data-act="t-label" data-label="${esc(label)}"><i></i><span>${esc(text)}</span><em>${esc(meta)}</em></button>`;
+  sheet(`${sheetHead('What are you working on?')}
+    <div class="sh-scroll">${opt('', 'Nothing in particular', '')}${open.map((t) => { const subs = t.subtasks || [];
+      return opt(t.text, t.text, subs.length ? `${subs.filter((x) => x.done).length} of ${subs.length}` : dueLabel(t)?.[0] || t.tag || ''); }).join('')}</div>`);
+}
+
+function renderWeather() {
+  const w = D.weather?.data;
+  if (!w) { $('#drawer').hidden = true; return; }
+  const [label, ic] = wx(w.code);
+  const t = (s) => new Date(s).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const hr = (s) => { const h = new Date(s).getHours(); return `${h % 12 || 12}${h < 12 ? 'a' : 'p'}`; };
+  const [tLabel, tIcon] = wx(w.tomorrow.code);
+  const facts = [['Feels like', `${w.feels}°`], ['Wind', `${w.wind ?? '–'} ${w.windUnit || ''}`], ['Humidity', `${w.humidity ?? '–'}%`], ['Rain today', `${w.rainChance ?? 0}%`], ['Sunrise', w.sunrise ? t(w.sunrise) : '–'], ['Sunset', w.sunset ? t(w.sunset) : '–']];
+  sheet(`${sheetHead('Weather')}
+    <div class="wx-now">${icon(ic)}<b>${w.temp}°</b><div><div>${esc(label)}</div><span>High ${w.hi}° · Low ${w.lo}°</span></div></div>
+    <div class="wx-hours">${(w.hours || []).slice(0, 12).map((h, i) => `<div><span>${i === 0 ? 'Now' : hr(h.time)}</span><b>${h.temp}°</b><i><u style="height:${Math.max(0, Math.min(100, h.rain))}%"></u></i><em>${h.rain}%</em></div>`).join('')}</div>
+    <div class="wx-facts">${facts.map(([k, v]) => `<div><span>${k}</span><b>${esc(v)}</b></div>`).join('')}</div>
+    <div class="wx-tomorrow">${icon(tIcon)}<span>Tomorrow · ${esc(tLabel)}</span><em>${w.tomorrow.hi}° / ${w.tomorrow.lo}° · ${w.tomorrowRain ?? 0}%</em></div>`, 'weather');
+}
+
+// One calendar event in full: when, where, what it says, who's going, and my reply.
+function renderEvent() {
+  const e = (D.calendar?.data?.events || []).find((x) => x.id === ui.eventId);
+  if (!e) { $('#drawer').hidden = true; return; }
+  const day = new Date(e.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const mins = Math.round((e.end - e.start) / 60e3);
+  const long = mins >= 60 ? `${Math.floor(mins / 60)} hr${mins % 60 ? ` ${mins % 60} min` : ''}` : `${mins} min`;
+  const time = e.allDay ? 'All day' : e.end > e.start ? `${hm(e.start)} – ${hm(e.end)} · ${long}` : hm(e.start);
+  const until = e.start - Date.now();
+  const rel = e.allDay ? '' : until <= 0 && e.end > Date.now() ? 'Happening now' : until > 0 && until < 3600e3 ? `Starts in ${Math.max(1, Math.round(until / 60e3))} min` : '';
+  const REPLY = { yes: 'Going', no: 'Not going', maybe: 'Maybe', none: 'Not answered' };
+  const fact = (ic, main, sub) => `<div class="ev-fact"><span class="tile cal">${icon(ic)}</span><div><b>${esc(main)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></div>`;
+  sheet(`${sheetHead(esc(e.title))}
+    <div class="sh-scroll gap">
+      ${fact('schedule', day, [time, rel, e.repeats ? 'Repeats' : ''].filter(Boolean).join(' · '))}
+      ${e.location ? fact('pin', e.location) : ''}
+      ${e.link ? fact('link', /zoom|meet\.google|teams\.|webex/i.test(e.link) ? 'Video call' : 'Link', e.link.replace(/^https?:\/\//, '')) : ''}
+      ${fact('tasks', e.calendar, e.organizer ? (e.organizedByMe ? 'You organized this' : `Organized by ${e.organizer}`) : '')}
+      ${e.myReply ? `<div class="ev-reply ${e.myReply}"><span>Your reply</span><b>${REPLY[e.myReply]}</b></div>` : ''}
+      ${e.description ? `<div class="ev-desc">${esc(e.description)}</div>` : ''}
+      ${e.guests?.length ? `<div class="kicker">Guests · ${e.guestCount}</div><div class="ev-guests">${e.guests.map((g) => `<div class="${g.reply}"><i></i><b>${esc(g.name)}</b><span>${REPLY[g.reply]}</span></div>`).join('')}</div>` : ''}
+    </div>`, 'event');
+}
+
 // Reading one email in full. The text is fetched from the mailbox on demand.
 function renderReader() {
   const r = ui.reading;
   const m = r?.message;
-  $('#drawer').innerHTML = `<div class="panel reader" data-stop>
-    <div class="page-h"><h1>${esc(m?.account || 'Mail')}</h1>
-      ${m ? `<button class="btn small ghost" data-act="mail-todo" data-id="${esc(m.id)}">${icon('plus')} Make it a task</button>` : ''}
-      <button class="btn small" data-act="close-drawer">Close</button></div>
-    ${r?.error ? `<div class="empty" style="color:var(--warn)">${esc(r.error)}</div>`
-      : !m ? '<div class="loading"><div class="loadbar"><i></i></div><span>Fetching it from your mailbox…</span></div>'
-      : `<h2 class="r-subject">${esc(m.subject)}</h2>
-         <div class="r-meta"><b>${esc(m.from)}</b>${m.fromAddress ? ` <span>&lt;${esc(m.fromAddress)}&gt;</span>` : ''}<br>
-           <span>${m.date ? new Date(m.date).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}${m.to?.length ? ` · to ${esc(m.to.join(', '))}` : ''}</span></div>
-         ${r.summary ? `<div class="r-summary">${esc(r.summary)}${r.action ? `<div class="act">${icon('arrow')} ${esc(r.action)}</div>` : ''}</div>` : ''}
-         ${m.html ? `<iframe class="r-frame" title="Email" sandbox="${KIOSK ? 'allow-same-origin' : 'allow-popups allow-popups-to-escape-sandbox'}" referrerpolicy="no-referrer" srcdoc="${esc(emailDoc(m.html))}"></iframe>`
-           : `<div class="r-body">${esc(m.text)}</div>${m.truncated ? '<div class="muted" style="margin-top:10px">This email is very long; the rest is cut off here.</div>' : ''}`}
-         ${m.attachments?.length ? `<div class="r-attach">Attachments: ${m.attachments.map(esc).join(', ')}</div>` : ''}`}
-  </div>`;
+  const listed = D.mail?.data?.accounts.flatMap((a) => a.messages).find((x) => x.id === r?.id);
+  const title = m?.subject || listed?.subject || listed?.summary || 'Email';
+  const from = m?.from || listed?.from || '';
+  sheet(`<div class="sh-head top"><b>${esc(title)}</b><button class="sq-btn big" data-act="close-drawer" aria-label="Close">${icon('x')}</button></div>
+    <div class="rd-from"><b>${esc(from)}</b>${m?.date || listed?.date ? ` · ${ago(m?.date || listed.date) === 'now' ? 'just now' : `${ago(m?.date || listed.date)} ago`}` : ''}${m?.account ? ` · ${esc(m.account)}` : ''}</div>
+    ${r?.summary ? `<div class="rd-sum">${esc(r.summary)}${r.action ? `<span>${icon('arrow')}${esc(r.action)}</span>` : ''}</div>` : ''}
+    ${r?.id ? `<button class="btn primary small rd-task" data-act="mail-todo" data-id="${esc(r.id)}">${icon('plus')} Make it a task</button>` : ''}
+    ${r?.error ? `<div class="empty warn">${esc(r.error)}</div>`
+      : !m ? '<div class="rd-wait"><span>Fetching the email as it was sent…</span><div class="loadbar white"><i></i></div></div>'
+      : m.html ? `<iframe class="rd-frame" title="Email" sandbox="${KIOSK ? 'allow-same-origin' : 'allow-popups allow-popups-to-escape-sandbox'}" referrerpolicy="no-referrer" srcdoc="${esc(emailDoc(m.html))}"></iframe>`
+      : `<div class="rd-body">${esc(m.text)}${m.truncated ? '\n\n[This email is very long; the rest is cut off here.]' : ''}</div>`}
+    ${m?.attachments?.length ? `<div class="rd-attach">Attachments: ${m.attachments.map(esc).join(', ')}</div>` : ''}`, 'reader');
   // Scripts stay off in the frame; same-origin only lets the hub attach drag-scrolling to it.
-  const frame = $('#drawer .r-frame');
+  const frame = $('#drawer .rd-frame');
   if (frame && KIOSK) frame.addEventListener('load', () => { try { enableDragScroll(frame.contentDocument, () => frame.contentDocument.scrollingElement); } catch {} });
 }
 
@@ -1217,7 +1208,7 @@ function renderBanner() {
 function nextMorningLine() {
   const evs = (D.calendar?.data?.events || []).filter((e) => e.start >= dayStart(1) && e.start < dayStart(2) && !e.allDay);
   const wake = D.settings.wakeAt;
-  return evs.length ? `First up tomorrow: ${esc(evs[0].title)} at ${hm(evs[0].start)}` : `Wakes at ${esc(wake)}`;
+  return `Wakes ${esc(clock12(wake))}${evs.length ? ` · ${esc(evs[0].title)} at ${hm(evs[0].start).replace(/ (AM|PM)$/, '')}` : ''}`;
 }
 
 function renderSleep() {
@@ -1228,7 +1219,7 @@ function renderSleep() {
   const d = new Date();
   const html = `<div class="time">${d.getHours() % 12 || 12}:${pad(d.getMinutes())}</div>
     <div class="next">${nextMorningLine()}</div>
-    <div class="actions"><button class="btn" data-act="mode" data-mode="day">Wake up</button></div>`;
+    <button class="wake" data-act="mode" data-mode="day">Wake</button>`;
   if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
 }
 
@@ -1299,11 +1290,13 @@ function handleAlerts() {
 
 function toast(a) {
   const el = document.createElement('div');
-  el.className = `toast ${a.level}`;
-  el.innerHTML = `<div><b>${esc(a.title)}</b>${a.body ? `<p>${esc(a.body)}</p>` : ''}</div>`;
+  el.className = 'toast';
+  el.innerHTML = `<span class="tile ${esc(a.level || 'info')}">${icon(SRC_ICON[a.source] || 'bell')}</span>
+    <div class="grow"><b>${esc(a.title)}</b>${a.body || a.source ? `<p>${esc([a.source, a.body].filter(Boolean).join(' · '))}</p>` : ''}</div>
+    <button aria-label="Dismiss">${icon('x')}</button>`;
   el.addEventListener('pointerdown', () => el.remove());
   $('#toasts').prepend(el);
-  setTimeout(() => el.remove(), 9000);
+  setTimeout(() => el.remove(), 4500);
 }
 
 // ---------------------------------------------------------------------------
@@ -1359,17 +1352,26 @@ document.addEventListener('click', async (e) => {
       case 't-skip': timerFinish(true); break;
       case 't-adj': timerAdjust(Number(el.dataset.min)); break;
       case 't-phase': timerReset(el.dataset.phase); break;
-      case 't-set': dialSet(Number(el.dataset.min)); dialShow(Number(el.dataset.min)); break;
-      case 't-label': T.label = el.dataset.label; saveT(); render(); break;
+      case 't-set': dialSet(Number(el.dataset.min)); render(); break;
+      case 't-nudge': {
+        const stepBy = T.phase === 'focus' ? 5 : 1, max = dialMax(T.phase);
+        dialSet(Math.min(max, Math.max(stepBy, phaseMinutes(T.phase) + Number(el.dataset.d) * stepBy))); render();
+        break;
+      }
+      case 'pick-task': openSheet('pick'); break;
+      case 't-label': T.label = el.dataset.label; saveT(); $('#drawer').hidden = true; render(); break;
       case 'todo-add': addTask(); break;
       case 'todo-toggle': {
         const t = D.todos.find((x) => x.id === el.dataset.id);
-        t.done = !t.done; t.doneAt = t.done ? Date.now() : null;
-        if (t.done) chime('soft');
-        render();
-        await api('PATCH', `/api/todos/${t.id}`, { done: t.done });
+        if (t.finishing) break;
+        if (t.done) { t.done = false; t.doneAt = null; render(); await api('PATCH', `/api/todos/${t.id}`, { done: false }); break; }
+        // Ticked: the check fills at once, then the row slides away and the task is done.
+        t.finishing = true; chime('soft'); render();
+        setTimeout(() => { delete t.finishing; t.done = true; t.doneAt = Date.now(); if (ui.taskOpen === t.id) ui.taskOpen = null; render(); }, 950);
+        await api('PATCH', `/api/todos/${t.id}`, { done: true });
         break;
       }
+      case 'task-open': ui.taskOpen = ui.taskOpen === el.dataset.id ? null : el.dataset.id; render(); break;
       case 'todo-star': {
         const t = D.todos.find((x) => x.id === el.dataset.id);
         t.star = !t.star; render();
@@ -1406,6 +1408,20 @@ document.addEventListener('click', async (e) => {
           await fetch('/api/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
           await load(); setTimeout(load, 2500); setTimeout(load, 7000);
         } });
+        break;
+      case 'daynote-add':
+        openKeyboard({ title: 'Note for today', value: '', options: [], onDone: async (text) => {
+          if (!text.trim()) return;
+          await api('POST', '/api/journal/daynote', { text });
+          ui.jDays = null; await load();
+        } });
+        break;
+      case 'j-tab': ui.jTab = el.dataset.tab; if (ui.jTab === 'past') ui.jDays = null; render(); break;
+      case 'j-day': ui.jOpen = ui.jOpen === el.dataset.date ? null : el.dataset.date; render(); break;
+      case 'j-chip': ui.jQuery = ui.jQuery.toLowerCase() === el.dataset.q.toLowerCase() ? '' : el.dataset.q; render(); break;
+      case 'j-clear': ui.jQuery = ''; render(); break;
+      case 'j-search':
+        openKeyboard({ title: 'Search your journal', value: ui.jQuery, options: [], onDone: (text) => { ui.jQuery = text.trim(); render(); } });
         break;
       case 'todo-clear': await api('POST', '/api/todos/clear-done'); load(); break;
       case 'task-filter': ui.taskFilter = el.dataset.f; render(); break;
@@ -1455,9 +1471,9 @@ document.addEventListener('click', async (e) => {
         if (!KIOSK) toast({ level: 'info', title: el.dataset.mode === 'day' ? 'Desk display is awake' : 'Desk display is asleep' });
         if (el.dataset.mode === 'day') load();
         break;
-      case 'event': if (!el.dataset.id) break; ui.drawer = 'event'; ui.eventId = el.dataset.id; $('#drawer').hidden = false; renderEvent(); break;
-      case 'weather': ui.drawer = 'weather'; $('#drawer').hidden = false; renderWeather(); break;
-      case 'alerts': ui.drawer = 'alerts'; $('#drawer').hidden = false; renderDrawer(); break;
+      case 'event': if (!el.dataset.id) break; ui.eventId = el.dataset.id; openSheet('event'); break;
+      case 'weather': openSheet('weather'); break;
+      case 'alerts': openSheet('alerts'); break;
       case 'close-drawer': $('#drawer').hidden = true; break;
       case 'dismiss':
         D.alerts = D.alerts.filter((a) => a.id !== el.dataset.id); renderDrawer(); renderRail();
@@ -1518,6 +1534,14 @@ document.addEventListener('change', (e) => {
   const el = e.target.closest('[data-act="set-range"]');
   if (el) patchSettings({ [el.dataset.k]: Number(el.value) });
 });
+let jSearchTimer;
+document.addEventListener('input', (e) => {
+  const r = e.target.closest?.('[data-act="set-range"]');
+  if (r) r.style.setProperty('--pct', `${((r.value - r.min) / (r.max - r.min)) * 100}%`);
+  const q = e.target.closest?.('[data-jsearch]');
+  if (q) { clearTimeout(jSearchTimer); jSearchTimer = setTimeout(() => { ui.jQuery = q.value.trim(); ui.jFocus = true; render(); }, 350); }
+});
+document.addEventListener('pointerdown', (e) => { if (!e.target.closest?.('[data-jsearch]')) ui.jFocus = false; }, true);
 
 // ---------------------------------------------------------------------------
 // Drag to scroll (desk screen). If the Pi hands touches to the browser as mouse
@@ -1583,7 +1607,6 @@ setInterval(() => {
   if (KIOSK && view !== 'home' && Date.now() - lastTouch > 3 * 60e3 && !(view === 'focus' && T.running) && $('#keyboard').hidden) go('home');
 }, 15e3);
 
-window.addEventListener('resize', () => drawCharts());
 
 // Deep link: /#read=<email id> opens that email (handy from a notification or for testing).
 // The address can carry a starting point: #view=payit, #read=<email id>,
@@ -1594,8 +1617,9 @@ if (hashArgs.has('sky')) { const [warm, day] = hashArgs.get('sky').split(',').ma
 load().then(() => {
   if (!D) return;
   if (VIEWS[hashArgs.get('view')]) go(hashArgs.get('view'));
-  if (hashArgs.get('open') === 'weather') { ui.drawer = 'weather'; $('#drawer').hidden = false; renderWeather(); }
-  if (hashArgs.has('read')) { go('mail'); document.querySelector(`.msg[data-id="${CSS.escape(hashArgs.get('read'))}"]`)?.click(); }
+  if (['weather', 'alerts', 'pick'].includes(hashArgs.get('open'))) openSheet(hashArgs.get('open'));
+  if (hashArgs.get('tab') === 'past') { ui.jTab = 'past'; render(); }
+  if (hashArgs.has('read')) { go('mail'); document.querySelector(`.mail-row[data-id="${CSS.escape(hashArgs.get('read'))}"]`)?.click(); }
 });
 setInterval(load, 20e3);
 // Midnight rollover and long-running kiosk hygiene: full reload once a day at 4am.

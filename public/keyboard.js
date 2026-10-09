@@ -54,21 +54,19 @@ function openOnScreen({ title, value = '', options = [], onDone }) {
 
   function draw() {
     const rows = ROWS[layer];
-    el.innerHTML = `<div class="top">
-        <div class="row" style="justify-content:space-between"><h1 style="font-size:24px">${esc(title)}</h1>
-          <button class="btn small ghost" data-k="cancel">Cancel</button></div>
-        <div class="field">${text ? esc(text) : '<span class="ph">Type here…</span>'}<span class="caret"></span></div>
-        ${options.map((o) => `<div class="chips">${o.choices.map(([v, label]) => `<button class="chip ${opts[o.key] === v ? 'on' : ''}" data-opt="${o.key}" data-v="${esc(JSON.stringify(v))}">${esc(label)}</button>`).join('')}</div>`).join('')}
-      </div>
-      <div class="keys">
-        <div class="krow">${[...rows[0]].map((c) => `<button data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>
-        <div class="krow">${[...rows[1]].map((c) => `<button data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>
-        <div class="krow"><button class="wide" data-k="shift">${layer === 'sym' ? 'ABC' : layer === 'upper' ? '⇧ on' : '⇧'}</button>
-          ${[...rows[2]].map((c) => `<button data-c="${esc(c)}">${esc(c)}</button>`).join('')}
-          <button class="wide" data-k="back">⌫</button></div>
-        <div class="krow"><button class="wide" data-k="sym">${layer === 'sym' ? 'abc' : '123'}</button>
-          <button class="space" data-c=" ">space</button>
-          <button class="wide done" data-k="done">Save</button></div>
+    el.innerHTML = `<div class="kb-sheet"><i class="grab"></i>
+        <div class="kb-head"><button class="kb-cancel" data-k="cancel">Cancel</button><b>${esc(title)}</b><button class="kb-done" data-k="done">Done</button></div>
+        <div class="field"><span class="${text ? '' : 'ph'}">${text ? esc(text) : 'Type here…'}</span><span class="caret"></span></div>
+        ${options.map((o) => `<div class="chips wrap">${o.choices.map(([v, label]) => `<button class="chip small ${opts[o.key] === v ? 'on' : ''}" data-opt="${o.key}" data-v="${esc(JSON.stringify(v))}">${esc(label)}</button>`).join('')}</div>`).join('')}
+        <div class="keys">
+          <div class="krow">${[...rows[0]].map((c) => `<button data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+          <div class="krow">${[...rows[1]].map((c) => `<button data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+          <div class="krow"><button class="mod wide ${layer === 'upper' ? 'on' : ''}" data-k="shift">${layer === 'sym' ? 'ABC' : '⇧'}</button>
+            ${[...rows[2]].map((c) => `<button data-c="${esc(c)}">${esc(c)}</button>`).join('')}
+            <button class="mod wide" data-k="back">⌫</button></div>
+          <div class="krow"><button class="mod wide" data-k="sym">${layer === 'sym' ? 'abc' : '123'}</button>
+            <button class="mod" data-c=",">,</button><button class="space" data-c=" ">space</button><button class="mod" data-c=".">.</button></div>
+        </div>
       </div>`;
   }
 

@@ -47,11 +47,10 @@ class DotClock {
     c.width = o.w; c.height = o.h;
     const g = c.getContext('2d', { willReadFrequently: true });
     g.font = FONT.replace('{px}', o.font);
-    g.textBaseline = 'alphabetic'; g.fillStyle = '#fff';
+    g.textBaseline = 'middle'; g.fillStyle = '#fff';
     const width = g.measureText(text).width;
-    const x0 = o.align === 'center' ? (o.w - width) / 2 : 2;
-    // Digits are about 0.71em tall: sit them in the middle of the canvas.
-    g.fillText(text, x0, o.h / 2 + o.font * 0.355);
+    const x0 = o.align === 'center' ? (o.w - width) / 2 : o.step;
+    g.fillText(text, x0, o.h / 2 + o.font * 0.03);
     const edges = [...text].map((_, i) => x0 + g.measureText(text.slice(0, i + 1)).width);
     const px = g.getImageData(0, 0, o.w, o.h).data;
     const cells = [];
