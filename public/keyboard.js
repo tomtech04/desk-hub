@@ -109,5 +109,7 @@ function openOnScreen({ title, value = '', options = [], onDone }) {
   };
   document.addEventListener('keydown', onKey, true);
   draw();
+  // Slide up once, on opening (every keystroke redraws the sheet).
+  el.classList.add('opening'); setTimeout(() => el.classList.remove('opening'), 400);
   el.hidden = false;
 }

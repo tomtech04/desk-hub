@@ -316,16 +316,25 @@ function syncAssignments(list) {
 const dayToMs = (ymd) => { const [y, mo, d] = ymd.split('-').map(Number); return zonedToUtc(TZ, y, mo, d); };
 
 /** Tasks you say out loud are added straight away: you asked for them yourself. */
-async function handleVoice({ text, recordedAt, trigger }) {
+// Live events for open screens (Server-Sent Events): a voice note arriving, then what was done with it.
+const streams = new Set();
+function emit(event) {
+  const line = `data: ${JSON.stringify(event)}\n\n`;
+  for (const res of streams) { try { res.write(line); } catch { streams.delete(res); } }
+}
+setInterval(() => { for (const res of streams) { try { res.write(': ping\n\n'); } catch { streams.delete(res); } } }, 25e3);
+
+async function handleVoice({ text, recordedAt, trigger, source = 'ring' }) {
   const id = `v${recordedAt}`;
   if (state.journal.some((j) => j.id === id)) return; // the app retried a delivery
   // Said while winding down (or late): it shows on the wind-down screen's "Before you sleep".
   const hour = new Date(recordedAt).getHours();
   const evening = inWindDown() || hour >= 21 || hour < 4;
-  const entry = { id, at: recordedAt, text, note: '', kind: '', tasks: [], trigger, evening, pending: true };
+  const entry = { id, at: recordedAt, text, note: '', kind: '', tasks: [], trigger: source === 'typed' ? 'typed' : trigger, evening, pending: true };
   state.journal.push(entry);
   state.journal = state.journal.slice(-400);
   save();
+  emit({ type: 'journal.entry', id, source, said: text, stage: 'heard' });
 
   // Give Claude the open list with short refs, so "mark grocery shopping as done" can point at one.
   const openList = state.todos.filter((t) => !t.done && !t.suggested);
@@ -335,6 +344,7 @@ async function handleVoice({ text, recordedAt, trigger }) {
     byRef.set(ref, { task: t });
     return { ref, text: t.text, subtasks: (t.subtasks || []).filter((x) => !x.done).map((x, j) => { const r = `${ref}.${j + 1}`; byRef.set(r, { task: t, sub: x }); return { ref: r, text: x.text }; }) };
   });
+  if (DEMO) await new Promise((r) => setTimeout(r, 2500)); // stand in for Claude's thinking time
   const out = await interpretVoice({ text, tags: state.settings.tags, today: localDay(), weekday: weekdayName(), clock: new Date(recordedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), evening, open });
   for (const t of out.tasks) {
     state.todos.push(newTodo({ text: t.text, tag: t.tag, due: t.due ? dayToMs(t.due) : null, subtasks: t.subtasks, source: { why: 'Voice note' } }));
@@ -346,7 +356,14 @@ async function handleVoice({ text, recordedAt, trigger }) {
     if (hit.sub) { hit.sub.done = true; completed.push(hit.sub.text); }
     else { hit.task.done = true; hit.task.doneAt = Date.now(); completed.push(hit.task.text); }
   }
-  Object.assign(entry, { note: out.note, kind: out.kind || '', tasks: out.tasks.map((t) => t.text), completed, pending: false });
+  // What the pop-up lists: each thing done with the note, in the order it matters.
+  const actions = [
+    ...completed.map((t) => ({ kind: 'done', text: t })),
+    ...out.tasks.map((t) => ({ kind: 'task', text: t.text })),
+    ...(out.note ? [{ kind: out.kind === 'reflection' ? 'reflection' : 'note', text: out.note }] : []),
+  ];
+  if (!actions.length) actions.push({ kind: 'note', text: "Saved to today's journal" });
+  Object.assign(entry, { note: out.note, kind: out.kind || '', tasks: out.tasks.map((t) => t.text), completed, actions, pending: false });
   const n = out.tasks.length, c = completed.length;
   const title = [c && `Marked ${c} done`, n && `added ${n} task${n > 1 ? 's' : ''}`].filter(Boolean).join(', ');
   state.notifications = [...state.notifications, {
@@ -355,6 +372,7 @@ async function handleVoice({ text, recordedAt, trigger }) {
     body: (out.reply || [...completed.map((t) => `✓ ${t}`), ...out.tasks.map((t) => t.text)].join(' · ') || out.note || text).slice(0, 300),
   }].slice(-50);
   save();
+  emit({ type: 'journal.entry', id, source, said: text, stage: 'done', actions });
 }
 
 let recapRunning = false;
@@ -588,7 +606,8 @@ async function voice(req, res) {
   if (!note.text) return send(res, 400, { error: 'no transcription in request' });
   // Answer right away so the phone isn't kept waiting on Claude.
   send(res, 200, { ok: true, queued: `v${note.recordedAt}` });
-  handleVoice(note).catch((err) => console.error('[voice]', err.message));
+  // The ring's phone app signs in with the voice token; anything else is typed on a hub screen.
+  handleVoice({ ...note, source: tokenOk ? 'ring' : 'typed' }).catch((err) => console.error('[voice]', err.message));
 }
 
 function logout(req, res) {
@@ -760,8 +779,10 @@ const routes = {
   'POST /api/journal/daynote': ({ body }) => {
     const text = String(body.text || '').trim().slice(0, 1000);
     if (!text) return [400, { error: 'empty note' }];
-    state.journal.push({ id: `n${Date.now()}`, at: Date.now(), text, note: text, kind: 'daynote', tasks: [], trigger: 'typed' });
+    const id = `n${Date.now()}`, actions = [{ kind: 'note', text: "Saved to today's notes" }];
+    state.journal.push({ id, at: Date.now(), text, note: text, kind: 'daynote', tasks: [], actions, trigger: 'typed' });
     state.journal = state.journal.slice(-400); save();
+    emit({ type: 'journal.entry', id, source: 'typed', said: text, stage: 'done', actions });
     return { ok: true };
   },
   'POST /api/recap': () => {
@@ -796,6 +817,13 @@ http.createServer(async (req, res) => {
       // /api/notify can also be reached with its own bearer token (scripts, webhooks).
       const viaNotifyToken = url.pathname === '/api/notify' && NOTIFY_TOKEN && req.headers.authorization === `Bearer ${NOTIFY_TOKEN}`;
       if (!viaNotifyToken && !allowed(req)) return send(res, 401, { error: 'sign in required', canSignIn: Boolean(HUB_PASSWORD) });
+      if (url.pathname === '/api/events' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+        res.write(': connected\n\n');
+        streams.add(res);
+        req.on('close', () => streams.delete(res));
+        return;
+      }
       const found = match(req.method, url.pathname);
       if (!found) return send(res, 404, { error: 'not found' });
       const body = ['POST', 'PATCH'].includes(req.method) ? await readBody(req) : {};

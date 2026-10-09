@@ -142,7 +142,7 @@ async function api(method, url, body) {
 
 let D = null; // last dashboard snapshot
 let view = 'home';
-const ui = { taskFilter: 'open', chartSel: {}, schedDay: 0, drawer: 'alerts', reading: null, taskOpen: null, jTab: 'today', jQuery: '', jDays: null, jOpen: null };
+const ui = { taskFilter: 'open', chartSel: {}, schedDay: 0, drawer: 'alerts', reading: null, taskOpen: null, jTab: 'today', jQuery: '', jDays: null, jOpen: null, entering: true };
 
 async function load() {
   try {
@@ -150,6 +150,8 @@ async function load() {
     applySky();
     syncMode();
     handleAlerts();
+    watchJournal();
+    listenForEvents();
     render();
   } catch (err) {
     console.error(err);
@@ -931,6 +933,7 @@ const VIEWS = {
           row('Data', 'Reload mail, PayIt, calendar and weather now', btn('refresh', 'Refresh')),
           row('This screen', 'Reload the page', btn('reload', 'Reload')),
           row('Restart the Pi', D.canRestart ? 'Reboots the whole device; back in about a minute' : 'Not allowed yet: run scripts/allow-restart.sh on the Pi once', D.canRestart ? btn('restart-pi', 'Restart', 'danger') : ''),
+          KIOSK ? '' : row('Voice-note pop-ups here', 'Show what the ring heard, and what the hub did with it, on this device', `<button class="toggle ${ringOff() ? '' : 'on'}" data-act="ring-toggle" aria-pressed="${!ringOff()}"></button>`),
           D.signedIn ? row('Signed in on this device', '', btn('logout', 'Sign out')) : '',
         ])}
       </div>
@@ -1070,6 +1073,8 @@ function render() {
   if (winding() && !WIND_VIEWS.includes(view)) view = 'home';
   renderRail();
   renderStatus();
+  // The screen fades in when you arrive on it, not every time fresh data redraws it.
+  $('#view').classList.toggle('enter', Boolean(ui.entering)); ui.entering = false;
   $('#view').innerHTML = winding() && view === 'home' ? windHome() : VIEWS[view]();
   mountClocks();
   if (ui.jFocus) { const q = $('[data-jsearch]'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
@@ -1100,7 +1105,12 @@ function emailDoc(html) {
 const SRC_ICON = { payit: 'payit', mail: 'mail', calendar: 'schedule', tasks: 'tasks', journal: 'journal', voice: 'journal', system: 'settings', focus: 'focus' };
 const sheet = (inner, cls = '') => { $('#drawer').innerHTML = `<div class="sheet ${cls}" data-stop><i class="grab"></i>${inner}</div>`; };
 const sheetHead = (title, extra = '') => `<div class="sh-head"><b>${title}</b>${extra}<button class="sq-btn big" data-act="close-drawer" aria-label="Close">${icon('x')}</button></div>`;
-function openSheet(kind) { ui.drawer = kind; $('#drawer').hidden = false; renderDrawer(); }
+function showDrawer() {
+  const el = $('#drawer');
+  el.hidden = false; el.classList.add('opening');
+  clearTimeout(showDrawer.t); showDrawer.t = setTimeout(() => el.classList.remove('opening'), 400);
+}
+function openSheet(kind) { ui.drawer = kind; showDrawer(); renderDrawer(); }
 
 function renderDrawer() {
   if (ui.drawer === 'mail') return renderReader();
@@ -1184,6 +1194,98 @@ function renderReader() {
   // Scripts stay off in the frame; same-origin only lets the hub attach drag-scrolling to it.
   const frame = $('#drawer .rd-frame');
   if (frame && KIOSK) frame.addEventListener('load', () => { try { enableDragScroll(frame.contentDocument, () => frame.contentDocument.scrollingElement); } catch {} });
+}
+
+// ---------------------------------------------------------------------------
+// The voice-note pop-up: what the ring heard, then what the hub did with it.
+// The server announces each note twice over /api/events ("heard", then "done"
+// with the actions it took); the regular refresh catches anything that missed.
+// ---------------------------------------------------------------------------
+
+const NOTE_ACT = {
+  task: ['Added task', 'var(--g-tasks)', 'plus', '#FFD27A'],
+  done: ['Marked done', 'var(--g-money)', 'check', '#6EF0B4'],
+  cal: ['Calendar', 'var(--g-cal)', 'schedule', '#8AB4FF'],
+  note: ['Saved note', 'var(--g-journal)', 'journal', '#FF9DB0'],
+  reflection: ['Reflection', 'var(--g-mail)', 'journal', '#C59CFF'],
+};
+const HEARD_MS = 1100, DONE_MS = 5400;
+let ringNote = null; // { id, source, said, stage: 'heard' | 'think' | 'done', actions, at, timers }
+const ringSeen = new Set(); // "<id>:<stage>" already handled, so an event and the refresh don't both show it
+const ringOff = () => !KIOSK && localStorage.getItem('ringNotes') === 'off';
+
+function closeRing() {
+  ringNote?.timers.forEach(clearTimeout);
+  ringNote = null;
+  renderRing();
+}
+
+function finishRing() {
+  ringNote.stage = 'done';
+  renderRing();
+  ringNote.timers.push(setTimeout(closeRing, DONE_MS));
+}
+
+function showRing(ev) {
+  closeRing();
+  ringNote = { id: ev.id, source: ev.source, said: ev.said || '', stage: 'heard', actions: null, at: Date.now(), timers: [] };
+  renderRing(true);
+  // Hold "Got your voice note" for a beat, then either show the result or that Claude is still on it.
+  ringNote.timers.push(setTimeout(() => {
+    if (!ringNote) return;
+    if (ringNote.actions) finishRing(); else { ringNote.stage = 'think'; renderRing(); }
+  }, HEARD_MS));
+}
+
+function noteEvent(ev) {
+  if (ringOff() || !ev?.id || ringSeen.has(`${ev.id}:${ev.stage}`)) return;
+  ringSeen.add(`${ev.id}:${ev.stage}`);
+  if (ev.stage === 'heard') { if (!ringSeen.has(`${ev.id}:done`)) showRing(ev); return; }
+  if (ringNote?.id !== ev.id) showRing(ev); // the "heard" half never arrived
+  ringNote.actions = ev.actions?.length ? ev.actions : [{ kind: 'note', text: "Saved to today's journal" }];
+  if (ev.said) ringNote.said = ev.said;
+  if (Date.now() - ringNote.at >= HEARD_MS) { ringNote.timers.forEach(clearTimeout); finishRing(); }
+}
+
+function renderRing(first = false) {
+  const el = $('#ringnote');
+  if (!ringNote) { el.hidden = true; el.innerHTML = ''; return; }
+  const n = ringNote, acts = n.actions || [];
+  const title = n.stage === 'heard' ? (n.source === 'typed' ? 'Got your note' : 'Got your voice note') : n.stage === 'think' ? 'Working on it' : `Done · ${acts.length} thing${acts.length === 1 ? '' : 's'}`;
+  el.innerHTML = `<div class="rn-head"><span class="rn-tile"><i></i><b>${icon('journal')}</b></span>
+      <div class="grow"><b>${title}</b><span>${n.source === 'typed' ? 'Typed note' : 'From your ring'} · just now</span></div>
+      <button class="sq-btn" data-act="ring-close" aria-label="Close">${icon('x')}</button></div>
+    ${n.said ? `<p class="rn-said ${first ? 'in' : ''}">“${esc(n.said)}”</p>` : ''}
+    ${n.stage === 'think' ? '<div class="rn-think"><span>Working out what you meant…</span><div class="loadbar journal"><i></i></div></div>' : ''}
+    ${n.stage === 'done' ? `<div class="rn-acts">${acts.slice(0, 5).map((a, i) => { const [label, bg, ic, c] = NOTE_ACT[a.kind] || NOTE_ACT.note;
+        return `<div style="animation-delay:${(i * 0.18).toFixed(2)}s"><span class="tile" style="background:${bg}">${icon(ic)}</span><div class="grow"><em style="color:${c}">${label}</em><p>${esc(a.text)}</p></div></div>`; }).join('')}</div>
+      <div class="rn-foot"><div><i></i></div><span>Tap to open journal</span></div>` : ''}`;
+  el.hidden = false;
+}
+
+// Anything in the journal that this page hasn't shown yet (the event stream was down, or missed one).
+let journalSeen = null;
+function watchJournal() {
+  const list = D.journal || [];
+  if (journalSeen) for (const j of list) {
+    const isNew = !journalSeen.has(j.id);
+    const base = { id: j.id, source: j.trigger === 'typed' ? 'typed' : 'ring', said: j.text };
+    if (isNew) noteEvent({ ...base, stage: 'heard' });
+    if (!j.pending && (isNew || ringNote?.id === j.id)) noteEvent({ ...base, stage: 'done', actions: j.actions });
+  }
+  journalSeen = new Set(list.map((j) => j.id));
+}
+
+let events = null;
+function listenForEvents() {
+  if (events || !window.EventSource) return;
+  events = new EventSource('/api/events');
+  events.onmessage = (e) => {
+    let ev; try { ev = JSON.parse(e.data); } catch { return; }
+    if (ev.type !== 'journal.entry') return;
+    noteEvent(ev);
+    if (ev.stage === 'done') load(); // new tasks and ticked ones show at once
+  };
 }
 
 // Wind-down banner: 30 minutes before sleep mode kicks in.
@@ -1277,7 +1379,7 @@ let seenAlerts = null;
 function handleAlerts() {
   const ids = new Set(D.alerts.map((a) => a.id));
   if (seenAlerts) {
-    const fresh = D.alerts.filter((a) => !seenAlerts.has(a.id));
+    const fresh = D.alerts.filter((a) => !seenAlerts.has(a.id) && (a.source !== 'voice' || ringOff()));
     // During wind-down only real problems interrupt; everything else waits for morning.
     if (winding() || (T.lock && T.running && T.phase === 'focus')) fresh.splice(0, fresh.length, ...fresh.filter((a) => a.level !== 'info'));
     if (fresh.length && D.mode === 'day') {
@@ -1303,7 +1405,7 @@ function toast(a) {
 // Interactions (one delegated handler)
 // ---------------------------------------------------------------------------
 
-function go(v) { view = v; ui.chartSel = {}; if (v === 'schedule') ui.schedDay = 0; applySky(); render(); }
+function go(v) { if (v !== view) ui.entering = true; view = v; ui.chartSel = {}; if (v === 'schedule') ui.schedDay = 0; applySky(); render(); }
 
 async function addTask(preset = {}) {
   const tags = D.settings.tags;
@@ -1423,13 +1525,16 @@ document.addEventListener('click', async (e) => {
       case 'j-search':
         openKeyboard({ title: 'Search your journal', value: ui.jQuery, options: [], onDone: (text) => { ui.jQuery = text.trim(); render(); } });
         break;
+      case 'ring-close': closeRing(); break;
+      case 'ring-open': closeRing(); ui.jTab = 'today'; go('journal'); break;
+      case 'ring-toggle': localStorage.setItem('ringNotes', ringOff() ? 'on' : 'off'); render(); break;
       case 'todo-clear': await api('POST', '/api/todos/clear-done'); load(); break;
       case 'task-filter': ui.taskFilter = el.dataset.f; render(); break;
       case 'mail-open': {
         const listed = D.mail.data.accounts.flatMap((a) => a.messages).find((x) => x.id === el.dataset.id);
         ui.drawer = 'mail';
         ui.reading = { id: el.dataset.id, summary: listed?.ai ? listed.summary : '', action: listed?.action || '' };
-        $('#drawer').hidden = false; renderReader();
+        showDrawer(); renderReader();
         try { ui.reading.message = await api('POST', '/api/mail/read', { id: el.dataset.id }); }
         catch (err) { ui.reading.error = err.message; }
         if (ui.drawer === 'mail' && !$('#drawer').hidden) renderReader();
