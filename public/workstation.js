@@ -643,6 +643,7 @@ export function createWorkstation(h) {
         row('Sleep at', s.autoSleep ? '' : 'Automatic sleep is off', step('sleepAt', clock12(s.sleepAt))),
         row('Wake at', '', step('wakeAt', clock12(s.wakeAt))),
         row('Morning brief', 'Sunrise screen with your day', toggle('morningBrief')),
+        row('Return to Home', 'When the desk is left on another page', step('homeAfter', s.homeAfter ? `after ${s.homeAfter} min` : 'Never')),
         row('Desk screen', D.mode === 'day' ? 'Awake' : 'Asleep', `<button class="w-btn" data-act="mode" data-mode="${D.mode === 'day' ? 'sleep' : 'day'}">${D.mode === 'day' ? 'Put to sleep' : 'Wake'}</button>`),
         D.canRestart ? row('Restart the Pi', 'Back in about a minute', '<button class="w-btn danger" data-act="restart-pi">Restart</button>') : '',
       ])}

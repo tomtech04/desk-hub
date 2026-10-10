@@ -46,6 +46,7 @@ const DEFAULT_STATE = {
   settings: {
     dayBrightness: 85,
     textSize: 115, // percent; scales body text on every device
+    homeAfter: 3, // minutes untouched before the desk screen returns to Home; 0 = never
     sleepBrightness: 4,
     autoSleep: true,
     sleepAt: '23:30',

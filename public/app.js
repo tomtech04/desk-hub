@@ -909,6 +909,7 @@ const VIEWS = {
           row('Text size', `Bigger text for reading from your chair · ${st.textSize || 115}%`, range('textSize', 100, 140, 5)),
           row('Brightness', D.hasBacklight ? `Desk screen backlight · ${st.dayBrightness}%` : `No backlight here; this sets the desk screen · ${st.dayBrightness}%`, range('dayBrightness', 10, 100)),
           row('Sleep brightness', `How dim the bedside clock gets · ${st.sleepBrightness}%`, range('sleepBrightness', 0, 30)),
+          row('Return to Home', st.homeAfter ? 'When the desk screen has been left on another page' : 'The desk screen stays on whatever page you leave it', step('homeAfter', st.homeAfter ? `after ${st.homeAfter} min` : 'Never')),
           row('Sounds', '', toggle('chime')),
         ])}
         ${group('Evening and morning', [
@@ -1211,7 +1212,8 @@ function renderReader() {
     ${m?.attachments?.length ? `<div class="rd-attach">Attachments: ${m.attachments.map(esc).join(', ')}</div>` : ''}`, 'reader');
   // Scripts stay off in the frame; same-origin only lets the hub attach drag-scrolling to it.
   const frame = $('#drawer .rd-frame');
-  if (frame && KIOSK) frame.addEventListener('load', () => { try { enableDragScroll(frame.contentDocument, () => frame.contentDocument.scrollingElement); } catch {} });
+  // Touches inside the email also count as the screen being in use.
+  if (frame && KIOSK) frame.addEventListener('load', () => { try { enableDragScroll(frame.contentDocument, () => frame.contentDocument.scrollingElement); frame.contentDocument.addEventListener('pointerdown', () => (lastTouch = Date.now()), true); } catch {} });
 }
 
 // ---------------------------------------------------------------------------
@@ -1326,7 +1328,8 @@ function deskEvent(ev) {
     if (ev.type === 'desk.state' && D) { D.desk = ev.desk; if (wsMode()) render(); }
     return;
   }
-  lastTouch = Date.now(); // a view sent from the laptop shouldn't drift straight back to Home
+  if (ev.type === 'desk.state') return; // its own report coming back; nothing to do
+  lastTouch = Date.now(); // a view sent from the laptop counts as use, so it isn't sent straight back to Home
   if (ev.type === 'desk.view' && VIEWS[ev.view]) go(ev.view);
   else if (ev.type === 'desk.focus') {
     if (T.running || T.remaining != null) timerReset('focus');
@@ -1476,7 +1479,7 @@ async function addTask(preset = {}) {
   });
 }
 
-const SET_STEPS = { windDownAt: 15, recapAt: 15, digestAt: 15, sleepAt: 15, wakeAt: 15, focusMinutes: 5, shortBreak: 1, longBreak: 5 };
+const SET_STEPS = { homeAfter: 1, windDownAt: 15, recapAt: 15, digestAt: 15, sleepAt: 15, wakeAt: 15, focusMinutes: 5, shortBreak: 1, longBreak: 5 };
 
 async function patchSettings(patch) {
   Object.assign(D.settings, patch);
@@ -1644,7 +1647,8 @@ document.addEventListener('click', async (e) => {
           const [h, m] = v.split(':').map(Number);
           const t = (h * 60 + m + d + 1440) % 1440;
           v = `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
-        } else v = Math.max(1, Math.min(120, v + d));
+        } else if (k === 'homeAfter') v = Math.max(0, Math.min(30, v + d)); // 0 = never
+        else v = Math.max(1, Math.min(120, v + d));
         patchSettings({ [k]: v });
         break;
       }
@@ -1757,12 +1761,22 @@ function scrollerOf(el) {
 }
 if (KIOSK) enableDragScroll(document, scrollerOf);
 
-// Drift back to Home after a few idle minutes (unless the timer screen is up and running).
+// The desk screen goes back to Home by itself once it's been left alone for a while
+// (Settings → Display → Return to Home; 0 = never). Whatever was open is closed on
+// the way. A running focus session and the keyboard are never interrupted.
 let lastTouch = Date.now();
 document.addEventListener('pointerdown', () => (lastTouch = Date.now()), true);
-setInterval(() => {
-  if (KIOSK && view !== 'home' && Date.now() - lastTouch > 3 * 60e3 && !(view === 'focus' && T.running) && $('#keyboard').hidden) go('home');
-}, 15e3);
+function idleHome() {
+  const minutes = D?.settings.homeAfter ?? 3;
+  if (!KIOSK || !D || !minutes || Date.now() - lastTouch < minutes * 60e3) return;
+  if (!$('#keyboard').hidden || T.lock || (view === 'focus' && T.running)) return;
+  const sheetOpen = !$('#drawer').hidden;
+  if (view === 'home' && !sheetOpen) return;
+  $('#drawer').hidden = true;
+  Object.assign(ui, { taskOpen: null, taskFilter: 'open', jTab: 'today', jQuery: '', jOpen: null });
+  go('home');
+}
+setInterval(idleHome, 10e3);
 
 
 // Deep link: /#read=<email id> opens that email (handy from a notification or for testing).
