@@ -1,28 +1,30 @@
-// Dot-matrix clocks: the time lit up on a grid of dots (Home's hero and the
-// wind-down screen). Lit points sit exactly on the grid; when the minute changes
-// they travel along the grid's rows, then its columns, to the next number.
+// Dot-matrix clocks: the time lit up on a grid of dots (Home's hero, the wind-down
+// screen, the workstation). The numerals are drawn on the grid itself (dotfont.js),
+// so each digit always has the same shape and sits in a slot of the same width:
+// nothing shifts when the minute changes. Changed digits morph: their points travel
+// along the grid's rows, then its columns, to the next number.
 //
 // Views are re-rendered as HTML strings, so each clock keeps one canvas for its
 // whole life and mountClocks() re-attaches it to its placeholder after a render.
+import { layout } from './dotfont.js';
 
 const MOVE_MS = 1100;
 const FRAME_MS = 33;
-const FONT = "600 {px}px Geist, Inter, system-ui, sans-serif";
 
+// `font`: digit slot width and height in dots, stroke thickness, the gap between characters, and the colon's size.
 export const CLOCKS = {
-  // Home hero: white on the blue card.
-  day: { w: 380, h: 150, step: 8, font: 150, r: 2.8, align: 'left', grid: 'rgba(255,255,255,.13)', core: () => '255,255,255', glow: '200,230,255' },
+  // Home hero: white on the gradient card.
+  day: { w: 384, h: 150, step: 8, r: 2.8, align: 'left', font: { w: 9, h: 15, t: 3, gap: 2, colon: 3 }, grid: 'rgba(255,255,255,.13)', core: () => '255,255,255', glow: '200,230,255' },
   // The workstation's small hero.
-  mini: { w: 250, h: 84, step: 6, font: 86, r: 2, align: 'left', grid: 'rgba(255,255,255,.13)', core: () => '255,255,255', glow: '200,230,255' },
+  mini: { w: 250, h: 84, step: 6, r: 2, align: 'left', font: { w: 6, h: 10, t: 2, gap: 2, colon: 2 }, grid: 'rgba(255,255,255,.13)', core: () => '255,255,255', glow: '200,230,255' },
   // Wind-down: warm, peach to coral across the width.
-  wind: { w: 624, h: 220, step: 10, font: 200, r: 3.5, align: 'center', grid: 'rgba(217,145,74,.15)',
+  wind: { w: 624, h: 220, step: 10, r: 3.5, align: 'center', font: { w: 11, h: 15, t: 3, gap: 3, colon: 3, round: 3 }, grid: 'rgba(217,145,74,.15)',
     core: (f) => `255,${Math.round(214 - 70 * f)},${Math.round(160 - 50 * f)}`, glow: '232,120,60' },
 };
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const clamp01 = (t) => Math.max(0, Math.min(1, t));
-const fontReady = () => (document.fonts?.check?.('600 20px Geist') ? '+' : '-');
 const timeText = () => { const d = new Date(); return `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
 class DotClock {
@@ -43,32 +45,12 @@ class DotClock {
     for (let c = 0; c < this.cols; c++) for (let r = 0; r < this.rows; r++) g.fillRect(c * o.step + o.step / 2 - 1, r * o.step + o.step / 2 - 1, 2, 2);
   }
 
-  // Which grid cells the time lights, and which character each belongs to.
-  sample(text) {
-    const o = this.o, c = document.createElement('canvas');
-    c.width = o.w; c.height = o.h;
-    const g = c.getContext('2d', { willReadFrequently: true });
-    g.font = FONT.replace('{px}', o.font);
-    g.textBaseline = 'middle'; g.fillStyle = '#fff';
-    const width = g.measureText(text).width;
-    const x0 = o.align === 'center' ? (o.w - width) / 2 : o.step;
-    g.fillText(text, x0, o.h / 2 + o.font * 0.03);
-    const edges = [...text].map((_, i) => x0 + g.measureText(text.slice(0, i + 1)).width);
-    const px = g.getImageData(0, 0, o.w, o.h).data;
-    const cells = [];
-    for (let col = 0; col < this.cols; col++) for (let row = 0; row < this.rows; row++) {
-      const x = Math.floor(col * o.step + o.step / 2), y = Math.floor(row * o.step + o.step / 2);
-      if (px[(y * o.w + x) * 4 + 3] > 120) cells.push({ c: col, r: row, slot: Math.max(0, edges.findIndex((e) => x < e)) });
-    }
-    return cells;
-  }
-
   setTime(text, now) {
-    const key = text + fontReady();
-    if (key === this.shown) return;
-    const cells = this.sample(text);
-    const first = !this.shown, prev = this.shown.slice(0, -1);
-    const sameShape = !first && prev.length === text.length && this.shown.slice(-1) === key.slice(-1);
+    if (text === this.shown) return;
+    const cells = layout(text, this.o.font, { cols: this.cols, rows: this.rows, align: this.o.align });
+    const first = !this.shown, prev = this.shown;
+    // Same number of characters: every slot is where it was, so only the digits that changed move.
+    const sameShape = !first && prev.length === text.length;
     const old = this.dots.filter((d) => !d.dying);
     const move = (from, to, extra = {}) => ({ fc: from.c, fr: from.r, tc: to.c, tr: to.r, slot: to.slot, t0: now + rand(0, 420), hFirst: true, ...extra });
     const order = (a, b) => a.c - b.c || a.r - b.r;
@@ -94,7 +76,7 @@ class DotClock {
         return ch === prev[i] ? was : pair(was, cells.filter((t) => t.slot === i));
       });
     } else this.dots = pair(old, cells);
-    this.shown = key;
+    this.shown = text;
   }
 
   draw(now) {
