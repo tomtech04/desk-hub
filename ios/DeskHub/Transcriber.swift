@@ -24,9 +24,22 @@ final class Transcriber: ObservableObject {
         Task { _ = try? await manager() }
     }
 
+    /// The ring's 16-bit little-endian PCM.
     func transcribe(pcm: Data, sampleRate: Int) async throws -> String {
+        let count = pcm.count / 2
+        var samples = [Float](repeating: 0, count: count)
+        pcm.withUnsafeBytes { raw in
+            for i in 0..<count {
+                samples[i] = Float(Int16(littleEndian: raw.loadUnaligned(fromByteOffset: i * 2, as: Int16.self))) / 32768
+            }
+        }
+        return try await transcribe(samples: samples, sampleRate: Double(sampleRate))
+    }
+
+    /// Mono float samples at any rate (the phone's microphone); FluidAudio resamples to 16 kHz.
+    func transcribe(samples: [Float], sampleRate: Double) async throws -> String {
         let asr = try await manager()
-        let buffer = try Self.buffer(pcm: pcm, sampleRate: sampleRate)
+        let buffer = try Self.buffer(samples: samples, sampleRate: sampleRate)
         let layers = await asr.decoderLayerCount
         var decoderState = TdtDecoderState.make(decoderLayers: layers)
         let result = try await asr.transcribe(buffer, decoderState: &decoderState)
@@ -61,20 +74,15 @@ final class Transcriber: ObservableObject {
         }
     }
 
-    /// The ring's 16-bit little-endian PCM as a float buffer; FluidAudio resamples it to 16 kHz.
-    private static func buffer(pcm: Data, sampleRate: Int) throws -> AVAudioPCMBuffer {
-        let count = pcm.count / 2
-        guard count > 0,
-              let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Double(sampleRate), channels: 1, interleaved: false),
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)),
+    private static func buffer(samples: [Float], sampleRate: Double) throws -> AVAudioPCMBuffer {
+        guard !samples.isEmpty,
+              let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
               let out = buffer.floatChannelData?[0]
         else { throw TranscriberError.badAudio }
-        buffer.frameLength = AVAudioFrameCount(count)
-        pcm.withUnsafeBytes { raw in
-            for i in 0..<count {
-                let sample = Int16(littleEndian: raw.loadUnaligned(fromByteOffset: i * 2, as: Int16.self))
-                out[i] = Float(sample) / 32768
-            }
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        samples.withUnsafeBufferPointer { src in
+            if let base = src.baseAddress { out.update(from: base, count: samples.count) }
         }
         return buffer
     }

@@ -47,6 +47,7 @@ targets:
         UIBackgroundModes: [bluetooth-central]
         NSBluetoothAlwaysUsageDescription: Desk Hub connects to your Index 01 ring to collect its voice notes.
         NSLocalNetworkUsageDescription: Desk Hub connects to your hub on your home network.
+        NSMicrophoneUsageDescription: Desk Hub records journal notes you speak. They're transcribed on this iPhone; only the text goes to your hub.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         ITSAppUsesNonExemptEncryption: false

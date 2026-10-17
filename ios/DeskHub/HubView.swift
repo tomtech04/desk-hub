@@ -7,11 +7,11 @@ struct HubView: View {
 
     var body: some View {
         ZStack {
-            Color.graphite.ignoresSafeArea()
+            G.bg.ignoresSafeArea()
             if let url = settings.baseURL {
                 HubWebView(url: url)
             } else {
-                ContentUnavailableView("No hub address", systemImage: "network", description: Text("Add your hub's address on the Ring tab."))
+                ContentUnavailableView("No hub address", systemImage: "network", description: Text("Add your hub's address in More → Hub connection."))
             }
         }
     }
@@ -29,8 +29,8 @@ struct HubWebView: UIViewRepresentable {
         config.applicationNameForUserAgent = "DeskHubApp"
         let web = WKWebView(frame: .zero, configuration: config)
         web.isOpaque = false
-        web.backgroundColor = UIColor(Color.graphite)
-        web.scrollView.backgroundColor = UIColor(Color.graphite)
+        web.backgroundColor = UIColor(G.bg)
+        web.scrollView.backgroundColor = UIColor(G.bg)
         web.isInspectable = true
         web.navigationDelegate = context.coordinator
         web.uiDelegate = context.coordinator
@@ -38,7 +38,15 @@ struct HubWebView: UIViewRepresentable {
         refresh.addTarget(context.coordinator, action: #selector(Coordinator.pulled), for: .valueChanged)
         web.scrollView.refreshControl = refresh
         context.coordinator.web = web
-        context.coordinator.load(url)
+        // Share the app's sign-in with the page, so it doesn't ask for the password again.
+        let cookies = HTTPCookieStorage.shared.cookies(for: url) ?? []
+        let store = web.configuration.websiteDataStore.httpCookieStore
+        let group = DispatchGroup()
+        for cookie in cookies {
+            group.enter()
+            store.setCookie(cookie) { group.leave() }
+        }
+        group.notify(queue: .main) { context.coordinator.load(url) }
         return web
     }
 
@@ -111,7 +119,7 @@ struct HubWebView: UIViewRepresentable {
             h1{font-size:22px;margin:0 0 8px}p{color:#9AA0AA;line-height:1.45;margin:0 0 10px}code{color:#E8EAEE}
             a{display:inline-block;margin-top:14px;padding:12px 20px;border-radius:12px;background:#1B2029;color:#8AB4FF;text-decoration:none;font-weight:600}</style></head>
             <body><h1>Can't reach the hub</h1><p>\(esc(message))</p>
-            <p>Trying <code>\(esc(address))</code>. A <code>.local</code> address only works on the same Wi-Fi as the Pi; away from home use the hub's public address. You can change it on the Ring tab.</p>
+            <p>Trying <code>\(esc(address))</code>. A <code>.local</code> address only works on the same Wi-Fi as the Pi; away from home use the hub's public address. You can change it in More → Hub connection.</p>
             <a href="deskhub-retry:">Try again</a></body></html>
             """
         }

@@ -218,9 +218,9 @@ enum HubClient {
 
     @MainActor
     private static func post(_ body: [String: Any], settings: HubSettings) async throws {
-        guard let base = settings.baseURL else { throw HubError("Add your hub's address on the Ring tab.") }
+        guard let base = settings.baseURL else { throw HubError("Add your hub's address in More → Hub connection.") }
         let token = settings.voiceToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty else { throw HubError("Add the hub's voice token on the Ring tab.") }
+        guard !token.isEmpty else { throw HubError("Add the hub's voice token in More → Hub connection.") }
         var request = URLRequest(url: base.appendingPathComponent("api/voice"), timeoutInterval: 20)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

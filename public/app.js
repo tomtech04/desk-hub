@@ -803,7 +803,7 @@ const VIEWS = {
         <section class="card rows-card">
           <div class="ch plain"><span class="title">Voice notes</span><span class="meta dotted ${D.voiceReady ? 'good' : 'off'}"><i></i>${D.voiceReady ? 'Ring connected' : 'Ring not set up'}</span></div>
           ${voice.length ? voice.map((j) => `<div class="vnote">
-              <div class="vnote-top"><b>${esc(j.note || j.text)}</b><span>${j.kind === 'reflection' ? 'Reflection' : j.trigger === 'typed' ? 'Typed' : 'Note'} · ${hm(j.at)}</span></div>
+              <div class="vnote-top"><b>${esc(j.note || j.text)}</b><span>${j.kind === 'reflection' ? 'Reflection' : j.trigger === 'typed' ? 'Typed' : j.trigger === 'phone' ? 'Phone' : 'Note'} · ${hm(j.at)}</span></div>
               ${j.note && j.note !== j.text ? `<div class="vnote-said">“${esc(j.text)}”</div>` : ''}
               ${j.pending ? '<div class="vnote-wait">Working out what you meant…</div>'
                 : `${(j.completed || []).map((t) => `<div class="vnote-done">${icon('check')}Done: ${esc(t)}</div>`).join('')}${(j.tasks || []).map((t) => `<div class="vnote-task">${icon('plus')}${esc(t)}</div>`).join('')}`}
@@ -1273,7 +1273,7 @@ function renderRing(first = false) {
   const n = ringNote, acts = n.actions || [];
   const title = n.stage === 'heard' ? (n.source === 'typed' ? 'Got your note' : 'Got your voice note') : n.stage === 'think' ? 'Working on it' : `Done · ${acts.length} thing${acts.length === 1 ? '' : 's'}`;
   el.innerHTML = `<div class="rn-head"><span class="rn-tile"><i></i><b>${icon('journal')}</b></span>
-      <div class="grow"><b>${title}</b><span>${n.source === 'typed' ? 'Typed note' : 'From your ring'} · just now</span></div>
+      <div class="grow"><b>${title}</b><span>${{ typed: 'Typed note', phone: 'From your phone', computer: 'From your computer' }[n.source] || 'From your ring'} · just now</span></div>
       <button class="sq-btn" data-act="ring-close" aria-label="Close">${icon('x')}</button></div>
     ${n.said ? `<p class="rn-said ${first ? 'in' : ''}">“${esc(n.said)}”</p>` : ''}
     ${n.stage === 'think' ? '<div class="rn-think"><span>Working out what you meant…</span><div class="loadbar journal"><i></i></div></div>' : ''}
@@ -1289,7 +1289,7 @@ function watchJournal() {
   const list = D.journal || [];
   if (journalSeen) for (const j of list) {
     const isNew = !journalSeen.has(j.id);
-    const base = { id: j.id, source: j.trigger === 'typed' ? 'typed' : 'ring', said: j.text };
+    const base = { id: j.id, source: ['typed', 'phone', 'computer'].includes(j.trigger) ? j.trigger : 'ring', said: j.text };
     if (isNew) noteEvent({ ...base, stage: 'heard' });
     if (!j.pending && (isNew || ringNote?.id === j.id)) noteEvent({ ...base, stage: 'done', actions: j.actions });
   }

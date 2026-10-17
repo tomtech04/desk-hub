@@ -1,92 +1,75 @@
 import SwiftUI
 
-/// The ring, speech model, hub connection, and the notes that went through.
-struct RingView: View {
+/// The ring, the speech model, and the ring's notes on their way to the hub.
+struct RingSettingsView: View {
     @EnvironmentObject private var ring: RingController
     @EnvironmentObject private var outbox: VoiceOutbox
     @EnvironmentObject private var settings: HubSettings
     @EnvironmentObject private var transcriber: Transcriber
     @State private var pairing = false
     @State private var confirmForget = false
-    @State private var testResult: String?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    if ring.pairedId != nil {
-                        LabeledContent("Status", value: ring.status)
-                        if let firmware = ring.firmware { LabeledContent("Firmware", value: firmware) }
-                        if let mv = ring.batteryMilliVolts { LabeledContent("Battery", value: String(format: "%.2f V", Double(mv) / 1000)) }
-                        Button("Forget this ring", role: .destructive) { confirmForget = true }
-                    } else {
-                        Text("Pair your Index 01 and its voice notes come straight here, get transcribed on this iPhone, and go to the hub. No Pebble app needed.")
-                            .foregroundStyle(.secondary)
-                        Button("Pair ring") { pairing = true }
-                    }
-                } header: {
-                    Text("Ring")
+        Form {
+            Section {
+                if ring.pairedId != nil {
+                    LabeledContent("Status", value: ring.status)
+                    if let firmware = ring.firmware { LabeledContent("Firmware", value: firmware) }
+                    if let mv = ring.batteryMilliVolts { LabeledContent("Battery", value: String(format: "%.2f V", Double(mv) / 1000)) }
+                    Button("Forget this ring", role: .destructive) { confirmForget = true }
+                } else {
+                    Text("Pair your Index 01 and its voice notes come straight here, get transcribed on this iPhone, and go to the hub. No Pebble app needed.")
+                        .foregroundStyle(.secondary)
+                    Button("Pair ring") { pairing = true }
                 }
-
-                Section {
-                    modelRow
-                } header: {
-                    Text("Speech to text")
-                } footer: {
-                    Text("Parakeet runs on this iPhone's Neural Engine. Audio never leaves the phone; only the text goes to the hub.")
-                }
-
-                Section {
-                    TextField("http://deskhub.local:8080", text: $settings.hubAddress)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField("Voice token (HUB_VOICE_TOKEN)", text: $settings.voiceToken)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button("Send a test to the hub") { sendTest() }
-                    if let testResult { Text(testResult).font(.footnote).foregroundStyle(.secondary) }
-                } header: {
-                    Text("Hub")
-                } footer: {
-                    Text("Notes are sent to the hub's /api/voice with the voice token from its .env. Use the public address if you want notes to arrive while you're away from home.")
-                }
-
-                Section {
-                    if outbox.clips.isEmpty {
-                        Text("Hold the ring's button, speak, and let go. Each note shows up here and on the hub.")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(outbox.clips) { clip in
-                        ClipRow(clip: clip)
-                            .swipeActions {
-                                Button("Delete", role: .destructive) { outbox.remove(clip.id) }
-                                if clip.state == .failed { Button("Retry") { outbox.retry(clip.id) }.tint(.blue) }
-                            }
-                    }
-                } header: {
-                    Text("Recent notes")
-                }
-
-                Section {
-                    NavigationLink("Ring log") { LogView() }
-                }
+            } header: {
+                Text("Ring")
             }
-            .navigationTitle("Ring")
-            .refreshable { outbox.process() }
-            .sheet(isPresented: $pairing) { PairSheet() }
-            .confirmationDialog("Forget this ring?", isPresented: $confirmForget, titleVisibility: .visible) {
-                Button("Forget", role: .destructive) { ring.forget() }
-            } message: {
-                Text("Recordings stop coming to this app. To pair it with another phone, also forget it in Settings > Bluetooth.")
+
+            Section {
+                modelRow
+            } header: {
+                Text("Speech to text")
+            } footer: {
+                Text("Parakeet runs on this iPhone's Neural Engine. Audio never leaves the phone; only the text goes to the hub.")
             }
+
+            Section {
+                if outbox.clips.isEmpty {
+                    Text("Hold the ring's button, speak, and let go. Each note shows up here and on the hub.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(outbox.clips) { clip in
+                    ClipRow(clip: clip)
+                        .swipeActions {
+                            Button("Delete", role: .destructive) { outbox.remove(clip.id) }
+                            if clip.state == .failed { Button("Retry") { outbox.retry(clip.id) }.tint(.blue) }
+                        }
+                }
+            } header: {
+                Text("Recent notes")
+            }
+
+            Section {
+                NavigationLink("Ring log") { LogView() }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .graphitePage()
+        .navigationTitle("Ring & voice notes")
+        .refreshable { outbox.process() }
+        .sheet(isPresented: $pairing) { PairSheet() }
+        .confirmationDialog("Forget this ring?", isPresented: $confirmForget, titleVisibility: .visible) {
+            Button("Forget", role: .destructive) { ring.forget() }
+        } message: {
+            Text("Recordings stop coming to this app. To pair it with another phone, also forget it in Settings > Bluetooth.")
         }
     }
 
     @ViewBuilder private var modelRow: some View {
         switch transcriber.modelState {
         case .notLoaded:
-            Button("Download Parakeet (once, a few hundred MB)") { transcriber.prepareInBackground() }
+            Button("Download Parakeet (once, about 500 MB)") { transcriber.prepareInBackground() }
         case .downloading(let fraction):
             ProgressView(value: fraction) { Text("Downloading Parakeet") }
         case .loading:
@@ -97,18 +80,6 @@ struct RingView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Couldn't load Parakeet: \(message)").font(.footnote)
                 Button("Try again") { transcriber.prepareInBackground() }
-            }
-        }
-    }
-
-    private func sendTest() {
-        testResult = "Sending…"
-        Task {
-            do {
-                try await HubClient.sendTest(settings: settings)
-                testResult = "The hub got it; a \"Ring connected\" card should be showing."
-            } catch {
-                testResult = error.localizedDescription
             }
         }
     }

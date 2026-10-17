@@ -9,6 +9,8 @@ struct DeskHubApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(appDelegate.settings)
+                .environmentObject(appDelegate.hub)
+                .environmentObject(appDelegate.nav)
                 .environmentObject(appDelegate.ring)
                 .environmentObject(appDelegate.outbox)
                 .environmentObject(appDelegate.log)
@@ -16,7 +18,15 @@ struct DeskHubApp: App {
                 .preferredColorScheme(.dark)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { appDelegate.outbox.process() }
+            switch phase {
+            case .active:
+                appDelegate.hub.startRefreshing()
+                appDelegate.outbox.process()
+            case .background:
+                appDelegate.hub.stopRefreshing()
+            default:
+                break
+            }
         }
     }
 }
@@ -26,33 +36,90 @@ struct DeskHubApp: App {
 @MainActor
 final class AppDelegate: NSObject, UIApplicationDelegate {
     let log = RingLog()
+    let nav = AppNav()
     lazy var settings = HubSettings()
+    lazy var hub = HubStore(settings: settings)
     lazy var transcriber = Transcriber(log: log)
     lazy var outbox = VoiceOutbox(settings: settings, transcriber: transcriber, log: log)
     lazy var ring = RingController(outbox: outbox, log: log)
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         if launchOptions?[.bluetoothCentrals] != nil { log.add("Woken in the background by the ring") }
-        ring.start()
+        // Bluetooth starts only once a ring is paired, so there's no Bluetooth prompt before then.
+        if ring.pairedId != nil {
+            ring.start()
+            transcriber.prepareInBackground()
+        }
         outbox.process()
-        if ring.pairedId != nil { transcriber.prepareInBackground() }
+        styleBars()
         return true
+    }
+
+    /// Graphite tab and navigation bars.
+    private func styleBars() {
+        let tab = UITabBarAppearance()
+        tab.configureWithOpaqueBackground()
+        tab.backgroundColor = UIColor(Color(hex: 0x0F1115))
+        tab.shadowColor = UIColor(Color(hex: 0x1F232A))
+        UITabBar.appearance().standardAppearance = tab
+        UITabBar.appearance().scrollEdgeAppearance = tab
+
+        let bar = UINavigationBarAppearance()
+        bar.configureWithOpaqueBackground()
+        bar.backgroundColor = UIColor(G.bg)
+        bar.shadowColor = .clear
+        bar.titleTextAttributes = [.foregroundColor: UIColor(G.text)]
+        bar.largeTitleTextAttributes = [.foregroundColor: UIColor(G.text)]
+        UINavigationBar.appearance().standardAppearance = bar
+        UINavigationBar.appearance().scrollEdgeAppearance = bar
+        UINavigationBar.appearance().compactAppearance = bar
+    }
+}
+
+/// Which tab is showing, and requests that cross tabs ("record a note" from Today).
+@MainActor
+final class AppNav: ObservableObject {
+    enum Tab: String {
+        case today, tasks, journal, mail, more
+    }
+
+    // `-startTab mail` etc. on launch (used by the simulator screenshots).
+    @Published var tab = Tab(rawValue: UserDefaults.standard.string(forKey: "startTab") ?? "") ?? .today
+    @Published var wantsRecording = false
+    @Published var wantsNote = false
+
+    func record() {
+        wantsRecording = true
+        tab = .journal
+    }
+
+    func write() {
+        wantsNote = true
+        tab = .journal
     }
 }
 
 struct RootView: View {
-    var body: some View {
-        TabView {
-            HubView()
-                .tabItem { Label("Hub", systemImage: "square.grid.2x2") }
-            RingView()
-                .tabItem { Label("Ring", systemImage: "circle.circle") }
-        }
-        .tint(Color(red: 0.55, green: 0.71, blue: 1.0))
-    }
-}
+    @EnvironmentObject private var nav: AppNav
 
-extension Color {
-    /// The hub's Graphite background, so the app and the page behind it read as one surface.
-    static let graphite = Color(red: 12 / 255, green: 14 / 255, blue: 18 / 255)
+    var body: some View {
+        TabView(selection: $nav.tab) {
+            TodayView()
+                .tabItem { Label("Today", systemImage: "sun.max") }
+                .tag(AppNav.Tab.today)
+            TasksView()
+                .tabItem { Label("To do", systemImage: "checklist") }
+                .tag(AppNav.Tab.tasks)
+            JournalView()
+                .tabItem { Label("Journal", systemImage: "mic") }
+                .tag(AppNav.Tab.journal)
+            MailView()
+                .tabItem { Label("Mail", systemImage: "envelope") }
+                .tag(AppNav.Tab.mail)
+            MoreView()
+                .tabItem { Label("More", systemImage: "square.grid.2x2") }
+                .tag(AppNav.Tab.more)
+        }
+        .tint(G.text)
+    }
 }
