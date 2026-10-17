@@ -65,6 +65,31 @@ const VOICE_SCHEMA = (tags) => ({
 
 const norm = (t) => t.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\b(the|a|an|my|to|go|do|task|item)\b/g, ' ').replace(/\s+/g, ' ').trim();
 
+// Phrases that only ever mean "put this on my list", wherever they come in a recording.
+const ASKED = /\b(?:remember to|remind me to|don'?t forget to|do not forget to|add (?:a )?task(?: to)?|to-?do:)\s+([^.!?;\n]+)/gi;
+const STOP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'about', 'then', 'also', 'just', 'my', 'me', 'to', 'a', 'an', 'of', 'on', 'in', 'at', 'it']);
+const keywords = (t) => new Set(t.toLowerCase().replace(/[^a-z0-9' ]/g, ' ').split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w)));
+const overlap = (a, b) => { const x = keywords(a), y = keywords(b); if (!x.size) return 0; let n = 0; for (const w of x) if (y.has(w)) n++; return n / x.size; };
+
+/**
+ * A safety net under Claude's reading: an explicit "remember to…" / "remind me to…"
+ * always becomes a task, even if the note was filed as a journal entry instead.
+ * When that happens the same words aren't also kept as a note.
+ */
+export function withAskedTasks(text, out) {
+  const tasks = [...out.tasks];
+  let { note, kind } = out;
+  for (const m of text.matchAll(ASKED)) {
+    const asked = m[1].replace(/\s+(?:and then|then|please)\s*$/i, '').replace(/[,\s]+$/, '').trim();
+    if (asked.split(/\s+/).length < 2 || tasks.some((t) => overlap(asked, t.text) >= 0.5)) continue;
+    tasks.push({ text: asked[0].toUpperCase() + asked.slice(1), due: '', tag: '', subtasks: [] });
+    if (note && overlap(asked, note) >= 0.6) { note = ''; kind = ''; }
+  }
+  if (tasks.length === out.tasks.length) return out;
+  const added = tasks.length - out.tasks.length;
+  return { ...out, tasks, note, kind, reply: out.tasks.length ? out.reply : `Added ${tasks.length} task${tasks.length > 1 ? 's' : ''}.` + (added && note ? ' Saved the rest to your journal.' : '') };
+}
+
 /** No-AI fallback: sentences that sound like to-dos become tasks, "mark X as done" completes, the rest is a note. */
 function roughSplit(text, open = []) {
   const tasks = [], complete = [], rest = [];
@@ -98,23 +123,23 @@ export async function interpretVoice({ text, tags, today, weekday, clock = '', e
       schema: VOICE_SCHEMA(tags),
       system: `You act on a person's spoken note for their desk dashboard. They pressed a button on a ring and spoke; the text is an automatic transcription, so expect small mistakes and fix obvious ones. Today is ${weekday}, ${today}${clock ? `, and it's ${clock}` : ''}${evening ? ' (they are winding down for the night)' : ''}. You're given their open tasks, each with a ref (and refs for any subtasks).
 
-- tasks: every NEW to-do they stated or clearly meant for themselves, one per item, each a short imperative as they'd write it. Keep their specifics (names, numbers, places). due is YYYY-MM-DD when they gave or implied a day ("tomorrow", "by Friday", "tonight" = today), else "". tag is the best fit from the allowed list, or "". subtasks are the separate steps they listed for that task, if they listed any; otherwise empty.
+- tasks: every NEW to-do they stated or clearly meant for themselves, one per item, each a short imperative as they'd write it. Anything they ask to be reminded of or say they must do ("remember to…", "remind me to…", "don't forget to…", "I need to…", "I have to…", "make sure I…") is always a task, never just a note, even when names or words in it come through garbled: write it as best you can and keep unclear names as you heard them. Keep their specifics (names, numbers, places). due is YYYY-MM-DD when they gave or implied a day ("tomorrow", "by Friday", "tonight" = today), else "". tag is the best fit from the allowed list, or "". subtasks are the separate steps they listed for that task, if they listed any; otherwise empty.
 - complete: the refs of open tasks or subtasks they said are done ("mark grocery shopping as completed", "I finished the lab report", "done with step two of the onboarding"). Match by meaning, not exact words, but only when it's clear which one they mean; if it's ambiguous, leave it out and say so in reply. Copy refs exactly.
 - note: anything else worth keeping (an idea, something that happened, how the day went), cleaned up into one or two plain sentences in their voice. "" if there's nothing beyond tasks and completions.
-- kind: what the note is. "reflection" when they're looking back or inward: how the day went, how they feel, what they're grateful for or proud of, what's weighing on them, something they want to let go of before sleep. "note" when it's something to keep or pick up later: an idea, a fact, a reminder that isn't a task, a thought for tomorrow. Late at night, an unprompted musing about the day is a reflection. "" when note is "".
+- kind: what the note is. "reflection" when they're looking back or inward: how the day went, how they feel, what they're grateful for or proud of, what's weighing on them, something they want to let go of before sleep. "note" when it's something to keep or pick up later: an idea, a fact, something they want to remember that isn't an action for them, a thought for tomorrow. Late at night, an unprompted musing about the day is a reflection. "" when note is "".
 - reply: one short sentence confirming what you did, for a notification (e.g. "Marked grocery shopping as done." or "Added 2 tasks."). If you couldn't tell which task they meant, say that instead.
 
-Don't invent tasks they didn't ask for, don't turn a passing thought into a task, and don't add a task for something they just said they finished.`,
+Don't invent tasks they didn't ask for and don't turn a passing thought into a task, but anything framed as something to do or to be reminded of is a task. Don't add a task for something they just said they finished, and don't repeat a task in note.`,
       content: JSON.stringify({ open_tasks: open, recording: text }),
     });
     const refs = new Set(open.flatMap((t) => [t.ref, ...t.subtasks.map((x) => x.ref)]));
-    return {
+    return withAskedTasks(text, {
       tasks: out.tasks.map((t) => ({ ...t, due: /^\d{4}-\d{2}-\d{2}$/.test(t.due) ? t.due : '' })),
       complete: out.complete.filter((r) => refs.has(r)),
       note: out.note,
       kind: out.note ? out.kind || 'note' : '',
       reply: out.reply,
-    };
+    });
   } catch (err) {
     console.error('[voice] falling back to simple split:', err.message);
     return roughSplit(text, open);
