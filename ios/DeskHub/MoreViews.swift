@@ -147,11 +147,14 @@ struct PayItView: View {
     private func latest(_ recent: [PayTxn], newBusinesses: Int) -> some View {
         let shown = Array(recent.prefix(8))
         return Card {
-            CardHeader(icon: "list.bullet.rectangle.fill", title: "Latest transactions", gradient: G.money,
-                       meta: newBusinesses == 0 ? nil : newBusinesses == 1 ? "1 new business" : "\(newBusinesses) new businesses")
+            CardHeader(icon: "list.bullet.rectangle.fill", title: "Latest transactions", gradient: G.money)
             ForEach(shown) { txn in
                 TxnRow(txn: txn)
                 if txn.id != shown.last?.id { Divider().overlay(G.lineSoft) }
+            }
+            if newBusinesses > 0 {
+                Text(newBusinesses == 1 ? "1 new business signed up today" : "\(newBusinesses) new businesses signed up today")
+                    .font(G.mono(11)).foregroundStyle(G.muted)
             }
         }
     }
@@ -238,7 +241,7 @@ struct SubscriptionsCard: View {
 
     var body: some View {
         Card {
-            CardHeader(icon: "star.circle.fill", title: "PayIt Plus", gradient: G.money, meta: extra)
+            CardHeader(icon: "star.circle.fill", title: "PayIt Plus", gradient: G.money, meta: "this month")
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(subs.paying ?? 0)").font(.system(size: 38, weight: .semibold)).foregroundStyle(G.text)
@@ -251,6 +254,7 @@ struct SubscriptionsCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            if let extra { Text(extra).font(.system(size: 13, weight: .medium)).foregroundStyle(G.amber) }
             Text("Store prices, before Apple's cut.").font(G.mono(11)).foregroundStyle(Color(hex: 0x5C6370))
         }
     }

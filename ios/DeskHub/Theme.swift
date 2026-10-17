@@ -93,7 +93,7 @@ struct CardHeader: View {
     var body: some View {
         HStack(spacing: 10) {
             IconTile(icon: icon, gradient: gradient)
-            Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(G.title)
+            Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(G.title).lineLimit(1).layoutPriority(1)
             Spacer(minLength: 8)
             if let meta {
                 Text(meta).font(G.mono(12)).foregroundStyle(metaColor).lineLimit(1)
