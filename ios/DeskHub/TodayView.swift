@@ -40,6 +40,9 @@ struct TodayView: View {
                 .onAppear { scrollIfAsked(proxy) }
                 .onChange(of: hub.updatedAt) { _, _ in scrollIfAsked(proxy) }
             }
+            .overlay(alignment: .top) {
+                Color.clear.frame(height: 0).background(G.bg.ignoresSafeArea(edges: .top))
+            }
             .graphitePage()
             .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $openMail) { MailDetailSheet(message: $0) }
@@ -208,7 +211,10 @@ struct NeedsYouCard: View {
     let d: Dashboard
     @Binding var openMail: MailMessage?
 
-    private var total: Int { (d.alerts?.count ?? 0) + d.urgentMail.count + d.overdueTodos.count + (d.suggestedTodos.isEmpty ? 0 : 1) }
+    /// Warnings and errors only; the hub's info notices ("digest is ready") are updates, not asks.
+    private var alerts: [HubAlert] { (d.alerts ?? []).filter { $0.level == "error" || $0.level == "warn" } }
+
+    private var total: Int { alerts.count + d.urgentMail.count + d.overdueTodos.count + (d.suggestedTodos.isEmpty ? 0 : 1) }
 
     var body: some View {
         Card {
@@ -217,8 +223,8 @@ struct NeedsYouCard: View {
                 Label("Nothing needs you right now.", systemImage: "checkmark.seal.fill")
                     .font(.system(size: 15)).foregroundStyle(G.mint)
             }
-            ForEach(d.alerts ?? []) { alert in
-                NeedRow(icon: alertIcon(alert.level), gradient: alertGradient(alert.level), title: alert.title ?? "Alert",
+            ForEach(alerts) { alert in
+                NeedRow(icon: alertIcon(alert.level), gradient: alertGradient(alert.level), title: sentence(alert.title ?? "Alert"),
                         detail: [alert.source?.capitalized, alert.body].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
                     .contextMenu { Button("Dismiss") { Task { await hub.dismiss(alert) } } }
             }
@@ -244,6 +250,8 @@ struct NeedsYouCard: View {
             }
         }
     }
+
+    private func sentence(_ text: String) -> String { text.prefix(1).uppercased() + text.dropFirst() }
 
     private func alertIcon(_ level: String?) -> String {
         switch level {
@@ -316,7 +324,7 @@ struct EventRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(when).font(G.mono(13, .medium)).foregroundStyle(isNow ? G.blue : G.text2).frame(width: 74, alignment: .leading)
+            Text(when).font(G.mono(13, .medium)).foregroundStyle(isNow ? G.blue : G.text2).frame(width: 78, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.title ?? "Event").font(.system(size: 16, weight: .medium)).foregroundStyle(G.text).lineLimit(2)
                 let place = [event.location, event.calendar].compactMap { $0 }.first { !$0.isEmpty }
@@ -335,8 +343,7 @@ struct EventRow: View {
     private var when: String {
         if event.allDay == true { return "All day" }
         if isNow { return "Now" }
-        let start = Fmt.date(event.start)
-        return Fmt.dayOffset(start) == 0 ? Fmt.time(start) : Fmt.day(start, "EEE h:mm")
+        return Fmt.time(Fmt.date(event.start))
     }
 }
 
@@ -464,7 +471,7 @@ struct SystemsCard: View {
     var body: some View {
         Card {
             CardHeader(icon: "server.rack", title: "Systems", gradient: G.white, meta: issues == 0 ? "● All good" : "● \(plural(issues, "issue"))", metaColor: issues == 0 ? G.mint : G.amber)
-            SystemLine(icon: "display", name: "Desk screen", value: d.desk?.online == true ? "On · \(d.desk?.view ?? "home")" : "Not reporting", ok: d.desk?.online == true)
+            SystemLine(icon: "display", name: "Desk screen", value: d.desk?.online == true ? "On · \(d.desk?.view ?? "home")" : "Not reporting", ok: d.desk?.online == true ? true : nil)
             SystemLine(icon: "cpu", name: "Pi", value: piLine, ok: (d.system?.tempC ?? 0) < 75)
             ForEach(d.payit?.data?.systems ?? []) { check in
                 SystemLine(icon: "bolt.horizontal", name: check.system.replacingOccurrences(of: "_", with: " ").capitalized, value: check.detail ?? check.status, ok: check.isUp)
@@ -494,15 +501,16 @@ struct SystemLine: View {
     let icon: String
     let name: String
     let value: String
-    let ok: Bool
+    /// true = fine, false = a problem, nil = neither (switched off, not set up).
+    let ok: Bool?
 
     var body: some View {
         HStack(spacing: 10) {
-            Circle().fill(ok ? G.mint : G.coral).frame(width: 7, height: 7)
+            Circle().fill(ok == true ? G.mint : ok == false ? G.coral : Color(hex: 0x5C6370)).frame(width: 7, height: 7)
             Image(systemName: icon).font(.system(size: 13)).foregroundStyle(G.text3).frame(width: 18)
-            Text(name).font(.system(size: 15, weight: .medium)).foregroundStyle(G.text)
+            Text(name).font(.system(size: 15, weight: .medium)).foregroundStyle(G.text).lineLimit(1).layoutPriority(1)
             Spacer(minLength: 8)
-            Text(value).font(G.mono(11)).foregroundStyle(ok ? G.muted : G.coral).lineLimit(1).truncationMode(.tail)
+            Text(value).font(G.mono(11)).foregroundStyle(ok == false ? G.coral : G.muted).lineLimit(1).truncationMode(.tail)
         }
     }
 }

@@ -297,7 +297,8 @@ struct SystemsView: View {
     }
 
     private func feed(_ name: String, _ error: String?, _ updatedAt: Double?) -> some View {
-        SystemLine(icon: "arrow.triangle.2.circlepath", name: name, value: error ?? (updatedAt.map { "updated " + Fmt.ago(Fmt.date($0)) } ?? "not set up"), ok: error == nil)
+        SystemLine(icon: "arrow.triangle.2.circlepath", name: name, value: error ?? (updatedAt.map { "updated " + Fmt.ago(Fmt.date($0)) } ?? "not set up"),
+                   ok: error != nil ? false : updatedAt == nil ? nil : true)
     }
 }
 
