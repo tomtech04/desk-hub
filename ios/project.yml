@@ -32,6 +32,13 @@ targets:
       - package: FluidAudio
       - framework: RingKit/build/XCFrameworks/release/RingKit.xcframework
         embed: true
+    # HealthKit, and iOS waking the app when the watch syncs new heart data.
+    entitlements:
+      path: DeskHub/DeskHub.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
+        com.apple.developer.healthkit.background-delivery: true
     info:
       path: DeskHub/Info.plist
       properties:
@@ -48,6 +55,8 @@ targets:
         NSBluetoothAlwaysUsageDescription: Desk Hub connects to your Index 01 ring to collect its voice notes.
         NSLocalNetworkUsageDescription: Desk Hub connects to your hub on your home network.
         NSMicrophoneUsageDescription: Desk Hub records journal notes you speak. They're transcribed on this iPhone; only the text goes to your hub.
+        NSHealthShareUsageDescription: Desk Hub reads your heart rate, HRV, activity and workouts to estimate how your day is going. Only the day's totals go to your hub.
+        NSHealthUpdateUsageDescription: Desk Hub saves your check-ins to Health as State of Mind.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         ITSAppUsesNonExemptEncryption: false

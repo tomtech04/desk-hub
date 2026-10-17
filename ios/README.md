@@ -6,7 +6,8 @@ A private iPhone app for the hub: the one place to see what's going on with your
 - **To do:** every task, filtered by tag or due date, with steps, stars, and the tasks Claude suggested from email to keep or dismiss. Add tasks with a tag and due date.
 - **Journal:** tap to talk and say how the day is going; it's transcribed on the phone with Parakeet and the hub sorts it into tasks, notes and reflections, the same as a note from the ring. Or type a note. Today's entries, Claude's recap, and every past day, searchable.
 - **Mail:** the digest, and each unread email in one line with what to do about it. Open one for the summary, make it a task, mark it done, or read the whole thing. Nothing is sent or marked read.
-- **More:** PayIt in detail (by hour, last 7 days, payment methods), the schedule, systems and alerts, the ring, the hub connection, and the full hub page.
+- **How you're doing:** with Apple Health connected, the app follows your Apple Watch through the day and estimates how stressed you are compared with your own normal, flags stretches where your heart rate was up while you were sitting still, and asks for a one-minute check-in every evening (mood, stress, energy, what it was about, and a note you can say out loud). The day goes to the hub, and Claude's evening recap can mention it. Sleep isn't used.
+- **More:** PayIt in detail (by hour, last 7 days, payment methods, subscriptions), the schedule, systems and alerts, Apple Health (the day by hour, activity, check-ins, reminder settings), the ring, the hub connection, and the full hub page.
 - **The ring:** paired straight to the app. Hold the button, speak, let go: the recording comes over Bluetooth, Parakeet turns it into text on the phone, and the text goes to the hub's `/api/voice`, the same request the Pebble app's webhook made. It works with the app in the background, and if the hub can't be reached the note waits on the phone and is sent later.
 
 Nothing is published anywhere. You build it from this repo and install it on your own phone.
@@ -18,6 +19,8 @@ Nothing is published anywhere. You build it from this repo and install it on you
 <img src="../mockups/shots/iphone-journal.png" width="200" alt="Journal">
 <img src="../mockups/shots/iphone-mail.png" width="200" alt="Mail">
 <img src="../mockups/shots/iphone-payit.png" width="200" alt="PayIt">
+<img src="../mockups/shots/iphone-health.png" width="200" alt="Health">
+<img src="../mockups/shots/iphone-checkin.png" width="200" alt="Check-in">
 </p>
 
 *From the simulator, running against the hub's demo data (`npm run demo`).*
@@ -45,6 +48,21 @@ With a free Apple ID the app stops opening after 7 days; plug in and press Run a
 3. **More → Ring & voice notes → Pair ring**, then click the ring's button once to wake it. Tap it in the list and tap **Pair** when iOS asks. A ring already set up in the Pebble app is already paired with this iPhone, which is fine.
 4. Hold the button and speak. The note shows under **Recent notes** and pops up on the hub.
 5. Once notes arrive, **delete the Pebble app**. While both are installed, whichever gets to the ring first takes the recording.
+6. **Apple Health:** tap **Connect Apple Health** on Today and allow everything iOS lists, then allow notifications. The evening reminder is at 9 PM; change it or turn off the "stress looks high" questions in More → Health.
+
+## Apple Health and the stress estimate
+
+Apple doesn't give apps a stress number, so the app makes an explainable one from what the watch records, always compared with your own last 30 days:
+
+- **Heart-rate variability (HRV)** tends to drop when you're stressed. The watch measures it a few times a day on its own (more if you use the Breathe app).
+- **Resting heart rate** tends to rise.
+- **Raised heart rate while still:** 10 or more minutes at 25+ bpm over your resting rate with almost no steps and no workout. These stretches are listed on the card, and when one has just ended the app can ask how you're doing (at most twice a day).
+
+50 is a typical day for you; above 60 is elevated, above 75 high. For the first few days, until it has enough history, it says it's still learning your usual. It's an estimate, not a medical measurement, and your own check-ins count for more. Check-ins are also saved to Health as State of Mind (iOS 18).
+
+Read: heart rate, resting heart rate, HRV, steps, active energy, exercise minutes, stand hours, time in daylight, mindful minutes, workouts. Only the day's totals, the stress estimate and your check-ins go to the hub (`POST /api/health`), never raw samples. A check-in note is filed in the journal like a voice note. iOS wakes the app when the watch syncs new heart data, so it keeps up in the background; Apple decides how often, usually within the hour.
+
+**If Xcode won't sign the app after this update** with an error about HealthKit, your Apple ID's free team can't use it: either join the Apple Developer Program, or remove the `entitlements:` block from `project.yml` and rerun `setup.sh` (everything else keeps working; Health stays off).
 
 ## Good to know
 
@@ -58,6 +76,7 @@ With a free Apple ID the app stops opening after 7 days; plug in and press Run a
 - `RingKit/` is a small Kotlin library around `io.github.coredevices.haversine`, the ring's Bluetooth library from Core Devices' open-source Pebble app ([coredevices/mobileapp](https://github.com/coredevices/mobileapp)), published on Maven Central under Apache 2.0. Its Bluetooth code ships compiled, so RingKit makes the same calls the Pebble app makes (scan, transfer, decode) rather than reimplementing the protocol. It hands each finished recording to Swift as 16-bit PCM.
 - `DeskHub/` is the SwiftUI app. Pairing is CoreBluetooth: writing to the ring's encrypted characteristic makes iOS show its pairing prompt, as the Pebble app does. Speech to text is NVIDIA's Parakeet TDT 0.6B v3 through [FluidAudio](https://github.com/FluidInference/FluidAudio) 0.17.4 (Core ML).
 - `project.yml` describes the Xcode project (XcodeGen), so there's no `.xcodeproj` in git; `setup.sh` builds RingKit and generates it.
-- `DeskHub/` talks to the same JSON API as the hub's own screens (`/api/dashboard`, `/api/todos`, `/api/journal/*`, `/api/mail/*`), with the hub's session cookie when it has a password. Notes spoken into the phone go to `/api/voice` marked as coming from the phone.
+- `DeskHub/` talks to the same JSON API as the hub's own screens (`/api/dashboard`, `/api/todos`, `/api/journal/*`, `/api/mail/*`), with the hub's session cookie when it has a password. Notes spoken into the phone go to `/api/voice` marked as coming from the phone. The Health day goes to `/api/health` (session cookie, or the voice token from the background).
+- `HealthMonitor.swift` reads Apple Health with HealthKit's async queries, `StressModel` makes the estimate, and `HKObserverQuery` with background delivery wakes the app for new heart data. `-healthDemo YES` on launch shows sample data instead, for the simulator.
 - `scripts/screenshots.sh` boots an iPhone simulator, points the app at a hub on the same Mac (`npm run demo`), and screenshots every screen.
 - `.github/workflows/ios.yml` does all of that on a GitHub Mac runner: it builds the app, runs it in the simulator against the hub's demo data, and keeps the screenshots under the run's Artifacts. In a private repo those minutes count 10× against the free Actions allowance, so it only runs when `ios/` changes.

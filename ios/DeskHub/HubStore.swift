@@ -200,6 +200,23 @@ final class HubStore: ObservableObject {
         return (try? JSONDecoder().decode(JournalDays.self, from: reply.0))?.days ?? []
     }
 
+    // MARK: Health
+
+    /// The day's Apple Health summary and check-ins, as JSON. Uses the signed-in session, or the
+    /// voice token when there isn't one, so it works from the background too. Returns a problem, or nil.
+    func postHealth(_ json: Data) async -> String? {
+        do {
+            var (_, code) = try await call("POST", "api/health", raw: json)
+            if code == 401, !settings.voiceToken.isEmpty {
+                (_, code) = try await call("POST", "api/health", raw: json, headers: ["Authorization": "Bearer \(settings.voiceToken)"])
+            }
+            if (200..<300).contains(code) { return nil }
+            return code == 401 ? "Sign in to the hub or add the voice token (More → Hub connection)." : "The hub answered with an error (\(code))."
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     // MARK: Alerts
 
     func dismiss(_ alert: HubAlert) async {
@@ -229,7 +246,7 @@ final class HubStore: ObservableObject {
         change(&dashboard!.todos![i])
     }
 
-    private func call(_ method: String, _ path: String, _ body: [String: Any]? = nil, headers: [String: String] = [:]) async throws -> (Data, Int) {
+    private func call(_ method: String, _ path: String, _ body: [String: Any]? = nil, raw: Data? = nil, headers: [String: String] = [:]) async throws -> (Data, Int) {
         guard let base = settings.baseURL, let url = URL(string: path, relativeTo: base.appendingPathComponent("/")) else {
             throw HubError("Add your hub's address in More → Hub connection.")
         }
@@ -239,6 +256,9 @@ final class HubStore: ObservableObject {
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } else if let raw {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = raw
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)

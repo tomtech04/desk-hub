@@ -1,4 +1,5 @@
 DeskHub.xcodeproj/
 DeskHub/Info.plist
+DeskHub/DeskHub.entitlements
 Config/Team.xcconfig
 build/

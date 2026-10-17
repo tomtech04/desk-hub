@@ -28,6 +28,7 @@ struct TodayView: View {
                             NavigationLink { SystemsView() } label: { SystemsCard(d: d) }
                                 .buttonStyle(.plain)
                                 .id("systems")
+                            BodyCard().id("body")
                             JournalSummaryCard(d: d).id("journal")
                         } else if hub.status == .loading || hub.status == .idle {
                             ProgressView().tint(G.text2).padding(.top, 80)

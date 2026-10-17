@@ -4,11 +4,12 @@ import SwiftUI
 /// PayIt, the schedule, your systems, the ring, and the hub connection.
 struct MoreView: View {
     enum Page: String, Hashable {
-        case payit, schedule, systems, ring, connection, web
+        case payit, schedule, systems, health, ring, connection, web
     }
 
     @EnvironmentObject private var hub: HubStore
     @EnvironmentObject private var ring: RingController
+    @EnvironmentObject private var health: HealthMonitor
     // `-morePage payit` on launch, for the simulator screenshots.
     @State private var path: [Page] = UserDefaults.standard.string(forKey: "morePage").flatMap(Page.init(rawValue:)).map { [$0] } ?? []
 
@@ -19,6 +20,7 @@ struct MoreView: View {
                     link(.payit, "creditcard.fill", G.money, "PayIt", Fmt.money(hub.dashboard?.payit?.data?.today?.grossCents) + " today")
                     link(.schedule, "calendar", G.cal, "Schedule", "\(hub.dashboard?.events.count ?? 0) events coming up")
                     link(.systems, "server.rack", G.white, "Systems", systemsLine)
+                    link(.health, "heart.fill", G.heart, "Health", healthLine)
                 } header: { SectionLabel(text: "Your world") }
                 Section {
                     link(.ring, "circle.circle", G.journal, "Ring & voice notes", ring.pairedId == nil ? "Not paired" : ring.status)
@@ -36,6 +38,7 @@ struct MoreView: View {
                 case .payit: PayItView()
                 case .schedule: ScheduleView()
                 case .systems: SystemsView()
+                case .health: HealthPage()
                 case .ring: RingSettingsView()
                 case .connection: ConnectionView()
                 case .web: HubView().navigationTitle("Hub").navigationBarTitleDisplayMode(.inline)
@@ -48,6 +51,12 @@ struct MoreView: View {
         guard let d = hub.dashboard else { return "—" }
         let issues = d.payitIssues.count + d.failingFeeds.count
         return issues == 0 ? "All good" : plural(issues, "issue")
+    }
+
+    private var healthLine: String {
+        guard health.connected else { return health.status == .unavailable ? "Not available" : "Not connected" }
+        guard let stress = health.today?.stress else { return "No heart data yet today" }
+        return "Stress \(stress.label) · \(stress.score)"
     }
 
     private var connectionLine: String {

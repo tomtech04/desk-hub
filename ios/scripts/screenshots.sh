@@ -25,7 +25,8 @@ echo "Simulator $UDID, hub $HUB"
 shot() {
   local name="$1"; shift
   xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1 || true
-  xcrun simctl launch "$UDID" "$BUNDLE" -hubAddress "$HUB" "$@" >/dev/null
+  # -healthDemo: sample Apple Health data, since the simulator has no watch.
+  xcrun simctl launch "$UDID" "$BUNDLE" -hubAddress "$HUB" -healthDemo YES "$@" >/dev/null
   sleep "${WAIT:-8}"
   xcrun simctl io "$UDID" screenshot "$OUT/$name.png" >/dev/null
   echo "  $name"
@@ -46,3 +47,6 @@ shot 12-systems -startTab more -morePage systems
 shot 13-ring -startTab more -morePage ring
 shot 14-connection -startTab more -morePage connection
 shot 15-full-hub -startTab more -morePage web
+shot 16-today-health -startTab today -scrollTo body
+shot 17-health -startTab more -morePage health
+shot 18-checkin -startTab today -openCheckin YES

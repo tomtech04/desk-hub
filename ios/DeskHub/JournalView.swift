@@ -26,6 +26,7 @@ struct JournalView: View {
                 VStack(spacing: 14) {
                     recordCard
                     writeCard
+                    checkInRow
                     if let d = hub.dashboard {
                         RecapCard(recap: d.recap)
                         TodayEntriesCard(entries: d.todayJournal)
@@ -223,6 +224,28 @@ struct JournalView: View {
                 stage = .failed(hub.problem ?? "The hub didn't take the note.")
             }
         }
+    }
+
+    // MARK: Check-in
+
+    /// Mood, stress and energy in a few taps (the evening reminder opens the same sheet).
+    private var checkInRow: some View {
+        Button { nav.checkIn() } label: {
+            HStack(spacing: 12) {
+                IconTile(icon: "face.smiling", gradient: G.heart)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Calendar.current.component(.hour, from: Date()) >= 17 ? "How was today?" : "How are you doing?")
+                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(G.text)
+                    Text("Check in: mood, stress, energy").font(.system(size: 13)).foregroundStyle(G.muted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(G.muted)
+            }
+            .padding(16)
+            .background(G.panel, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(G.line, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Writing
