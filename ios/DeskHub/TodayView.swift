@@ -225,7 +225,7 @@ struct NeedsYouCard: View {
             }
             ForEach(alerts) { alert in
                 NeedRow(icon: alertIcon(alert.level), gradient: alertGradient(alert.level), title: sentence(alert.title ?? "Alert"),
-                        detail: [alert.source?.capitalized, alert.body].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                        detail: [alert.source.map(Self.sourceName), alert.body].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
                     .contextMenu { Button("Dismiss") { Task { await hub.dismiss(alert) } } }
             }
             ForEach(d.urgentMail) { message in
@@ -252,6 +252,8 @@ struct NeedsYouCard: View {
     }
 
     private func sentence(_ text: String) -> String { text.prefix(1).uppercased() + text.dropFirst() }
+
+    private static func sourceName(_ source: String) -> String { source == "payit" ? "PayIt" : source.capitalized }
 
     private func alertIcon(_ level: String?) -> String {
         switch level {

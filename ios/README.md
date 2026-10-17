@@ -11,6 +11,17 @@ A private iPhone app for the hub: the one place to see what's going on with your
 
 Nothing is published anywhere. You build it from this repo and install it on your own phone.
 
+<p>
+<img src="../mockups/shots/iphone-today.png" width="200" alt="Today">
+<img src="../mockups/shots/iphone-today-systems.png" width="200" alt="Today: PayIt, systems, journal">
+<img src="../mockups/shots/iphone-tasks.png" width="200" alt="To do">
+<img src="../mockups/shots/iphone-journal.png" width="200" alt="Journal">
+<img src="../mockups/shots/iphone-mail.png" width="200" alt="Mail">
+<img src="../mockups/shots/iphone-payit.png" width="200" alt="PayIt">
+</p>
+
+*From the simulator, running against the hub's demo data (`npm run demo`).*
+
 ## Install it
 
 You need a Mac. Pick one of these.
