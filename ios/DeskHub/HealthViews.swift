@@ -40,7 +40,7 @@ struct BodyCard: View {
             }
             if !health.connected, let c = health.today?.checkins.last { CheckInLine(checkin: c) }
             HStack(spacing: 10) {
-                Button { nav.checkIn() } label: { Label(checkedInToday ? "Check in again" : "Check in", systemImage: "face.smiling").frame(maxWidth: .infinity) }
+                Button { nav.checkIn() } label: { Label("Check in", systemImage: checkedInToday ? "checkmark.circle" : "face.smiling").lineLimit(1).frame(maxWidth: .infinity) }
                     .buttonStyle(GraphiteButton(primary: false))
                 if details, health.connected {
                     NavigationLink { HealthPage() } label: { Label("Details", systemImage: "chart.xyaxis.line").frame(maxWidth: .infinity) }
@@ -235,6 +235,7 @@ struct CheckInSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button(saving ? "Saving…" : "Save", action: save).disabled(saving || listening || transcribing) }
             }
         }
+        .tint(G.text)
     }
 
     private var moodColor: Color {
