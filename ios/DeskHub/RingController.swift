@@ -33,13 +33,13 @@ final class RingController: ObservableObject {
     /// Called once iOS has bonded with the ring.
     func paired(id: String) {
         start()
-        ring?.setPairedRing(id: id)
-        pairedId = id
+        ring?.setPairedRing(ringId: id)
+        pairedId = ring?.pairedRingId ?? id
         log.add("Paired with ring \(id.prefix(8))")
     }
 
     func forget() {
-        ring?.setPairedRing(id: nil)
+        ring?.setPairedRing(ringId: nil)
         pairedId = nil
         firmware = nil
         batteryMilliVolts = nil

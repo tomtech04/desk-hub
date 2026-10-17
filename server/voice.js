@@ -3,7 +3,8 @@
 // The Pebble Index 01 ring's phone app POSTs each recording to a webhook as
 // multipart/form-data: `transcription` (text, transcribed on the phone),
 // `recordedAt` (unix ms), `client`, optionally `audio` (m4a) and `test`.
-// Anything else that can send text works too (JSON { "text": "..." }).
+// The Desk Hub iPhone app (ios/) sends JSON { text, recordedAt, client } instead,
+// and anything else that can send text works too (JSON { "text": "..." }).
 import { askJson, aiEnabled } from './mail.js';
 
 /** Pull the text fields out of a multipart/form-data body; file parts (audio) are skipped. */

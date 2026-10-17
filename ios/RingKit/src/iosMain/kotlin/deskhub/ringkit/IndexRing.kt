@@ -153,7 +153,9 @@ class IndexRing(private val listener: IndexRingListener) {
      * Records a newly bonded ring (or forgets it with null). Recordings start flowing on the next
      * click of the ring's button.
      */
-    fun setPairedRing(id: String?) {
+    fun setPairedRing(ringId: String?) {
+        // Lowercase, the way the Pebble app stores it, which is what the library compares against.
+        val id = ringId?.lowercase()
         if (id == null) defaults.removeObjectForKey(KEY_PAIRED) else defaults.setObject(id, KEY_PAIRED)
         indexStorage.setLastSuccessfulCollectionIndex(null)
         paired.value = id
