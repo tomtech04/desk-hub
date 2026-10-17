@@ -57,6 +57,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # The ring library ships no Intel simulator slice; the simulator needs an Apple silicon Mac.
+        EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
 
 schemes:
   DeskHub:

@@ -58,8 +58,8 @@ jobs:
           xcodebuild -project ios/DeskHub.xcodeproj -scheme DeskHub -configuration Debug \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim \
             CODE_SIGNING_ALLOWED=NO build > build/xcodebuild-sim.log 2>&1 || true
-          grep -E "error:|\*\* BUILD" build/xcodebuild-sim.log | sort -u | head -60
-          test -d build/sim/Build/Products/Debug-iphonesimulator/DeskHub.app
+          grep -E "error:|\*\* BUILD|Undefined symbol" build/xcodebuild-sim.log | sort -u | head -60
+          grep -q "BUILD SUCCEEDED" build/xcodebuild-sim.log
 
       - name: Run it in the simulator and take screenshots
         run: bash ios/scripts/screenshots.sh build/sim/Build/Products/Debug-iphonesimulator/DeskHub.app build/screenshots
@@ -112,8 +112,8 @@ jobs:
           xcodebuild -project ios/DeskHub.xcodeproj -scheme DeskHub -configuration Release \
             -destination 'generic/platform=iOS' -derivedDataPath build/dd \
             CODE_SIGNING_ALLOWED=NO build > build/xcodebuild.log 2>&1 || true
-          grep -E "error:|\*\* BUILD" build/xcodebuild.log | sort -u | head -60
-          test -d build/dd/Build/Products/Release-iphoneos/DeskHub.app
+          grep -E "error:|\*\* BUILD|Undefined symbol" build/xcodebuild.log | sort -u | head -60
+          grep -q "BUILD SUCCEEDED" build/xcodebuild.log
 
       - name: Package the unsigned .ipa
         run: |
