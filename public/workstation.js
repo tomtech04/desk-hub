@@ -228,16 +228,16 @@ export function createWorkstation(h) {
       ${bodyMini()}`;
   }
 
-  // The iPhone app's day from Apple Health, in a few lines: the stress estimate, raised heart rate while still, the latest check-in.
+  // The iPhone app's day from Apple Health, as the few sentences the phone writes.
   function bodyMini() {
     const b = h.D.health;
     if (!b) return '';
-    const st = b.stress, c = b.checkins?.at(-1), tone = !st ? '' : st.score >= 75 ? 'coral' : st.score >= 60 ? 'amber' : 'mint';
-    const mood = ['', 'very unpleasant', 'unpleasant', 'slightly unpleasant', 'neutral', 'slightly pleasant', 'pleasant', 'very pleasant'];
-    return `<section class="w-card w-health"><div class="w-ch">${tile('heart', 'linear-gradient(135deg,#FF9DB0,#FF5E7A)')}<b>How you're doing</b><span>${b.steps != null ? `${Math.round(b.steps).toLocaleString()} steps` : ''}</span></div>
-      ${st ? `<div class="w-health-st"><b class="${tone}">${st.score}</b><div><em class="${tone}">${esc(st.label)}</em><span>${esc(st.basis)}</span></div></div>` : ''}
-      ${b.moments?.length ? `<div class="w-health-m">Raised heart rate while still: ${b.moments.map((m) => `${hm(m.start)} (${m.minutes} min)`).join(', ')}</div>` : ''}
-      ${c ? `<div class="w-health-m">Check-in ${hm(c.at)}: ${esc(mood[c.mood] || '')}, stress ${c.stress}/5, energy ${c.energy}/5${c.note ? ` · “${esc(c.note)}”` : ''}</div>` : ''}</section>`;
+    const st = b.stress, note = b.checkins?.at(-1)?.note, tone = !st ? '' : st.score >= 75 ? 'coral' : st.score >= 60 ? 'amber' : st.score < 35 ? 'blue' : 'mint';
+    const headline = b.headline || (st ? st.label.replace(/^./, (x) => x.toUpperCase()) : 'You checked in');
+    return `<section class="w-card w-health"><div class="w-ch">${tile('heart', 'linear-gradient(135deg,#FF9DB0,#FF5E7A)')}<b>How you're doing</b><span>${b.updatedAt ? hm(b.updatedAt) : ''}</span></div>
+      <em class="w-health-h ${tone}">${esc(headline)}</em>
+      ${b.summary ? `<div class="w-health-m">${esc(b.summary)}</div>` : ''}
+      ${note ? `<div class="w-health-m"><i>“${esc(note)}”</i></div>` : ''}</section>`;
   }
 
   function todayTasks() {

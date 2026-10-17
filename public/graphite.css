@@ -316,22 +316,10 @@ i.today, em.today { color: var(--amber); } i.overdue, em.overdue { color: var(--
 .sys em i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .sys em.up { color: #5EE6B0; } .sys em.down { color: var(--coral); } .sys em.plain { color: var(--text); font-size: calc(17px * var(--ts)); }
 /* Journal: the iPhone app's day from Apple Health. */
-.body-card { --sec: linear-gradient(135deg, #FF9DB0 0%, #FF5E7A 100%); gap: 14px; }
-.body-top { display: flex; align-items: center; gap: 16px; }
-.body-score { width: 92px; height: 92px; flex: none; border-radius: 50%; display: grid; place-content: center; text-align: center; border: 6px solid #5EE6B0; }
-.body-score.warn { border-color: var(--amber); } .body-score.bad { border-color: var(--coral); } .body-score.calm { border-color: var(--blue); }
-.body-score b { font-size: 34px; font-weight: 600; line-height: 1; } .body-score span { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 3px; }
+.body-card { --sec: linear-gradient(135deg, #FF9DB0 0%, #FF5E7A 100%); gap: 8px; }
 .body-label { font-size: calc(22px * var(--ts)); font-weight: 600; color: #5EE6B0; } .body-label.warn { color: var(--amber); } .body-label.bad { color: var(--coral); } .body-label.calm { color: var(--blue); }
-.body-label em { font-style: normal; font-family: var(--mono); font-size: calc(12px * var(--ts)); color: var(--muted); font-weight: 400; margin-left: 6px; }
-.body-top p { margin: 4px 0 0; font-size: calc(15px * var(--ts)); color: var(--text-2); line-height: 1.4; }
-.body-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.body-stats b { display: block; font-size: calc(20px * var(--ts)); font-weight: 600; } .body-stats span { display: block; font-family: var(--mono); font-size: calc(11px * var(--ts)); color: var(--muted); margin-top: 2px; }
-.body-moments { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.body-moments span { font-family: var(--mono); font-size: calc(13px * var(--ts)); color: var(--amber); background: rgba(255, 181, 71, .1); padding: 5px 10px; border-radius: 8px; }
-.body-moments em { font-style: normal; font-size: calc(13px * var(--ts)); color: var(--muted); }
-.body-check { border-top: 1px solid var(--line-soft); padding-top: 12px; display: flex; flex-direction: column; gap: 6px; font-size: calc(16px * var(--ts)); color: var(--text-2); }
-.body-check b { color: var(--text); font-weight: 600; } .body-check p { margin: 0; color: var(--text-2); font-style: italic; }
-.body-tags { display: flex; flex-wrap: wrap; gap: 6px; } .body-tags span { font-size: calc(13px * var(--ts)); color: var(--text-2); background: var(--control); border: 1px solid var(--border-control); padding: 3px 9px; border-radius: 8px; }
+.body-story { margin: 0; font-size: calc(17px * var(--ts)); color: var(--text-2); line-height: 1.45; }
+.body-note { margin: 4px 0 0; font-size: calc(16px * var(--ts)); color: var(--text-2); font-style: italic; }
 
 /* PayIt: Plus subscriptions, latest transactions, and the system checks folded into one row until tapped. */
 .subs { gap: 10px; }

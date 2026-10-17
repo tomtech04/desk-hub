@@ -55,8 +55,8 @@ struct MoreView: View {
 
     private var healthLine: String {
         guard health.connected else { return health.status == .unavailable ? "Not available" : "Not connected" }
-        guard let stress = health.today?.stress else { return "No heart data yet today" }
-        return "Stress \(stress.label) · \(stress.score)"
+        guard let day = health.today else { return "No data yet today" }
+        return day.headline ?? HealthStory.headline(day)
     }
 
     private var connectionLine: String {

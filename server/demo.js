@@ -122,9 +122,12 @@ export function digest() {
 // What the iPhone app sends from Apple Health on an ordinary, slightly stressful day.
 export function health() {
   const at = (h, m = 0) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime(); };
+  const hm = (ms) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   const day = new Date().toISOString().slice(0, 10);
   return {
     day, updatedAt: Date.now(),
+    headline: 'More stressed than usual',
+    summary: `Your heart rate was up while you were sitting still around ${hm(at(14, 10))} and ${hm(at(16, 40))}. At ${hm(at(17, 30))} you said you felt stressed and drained, mostly about school and PayIt, and low on energy. You got in a 32-minute walk.`,
     stress: { score: 62, label: 'elevated', basis: 'HRV 38 ms vs your usual 52, resting heart rate 64 vs 60, 40 min of raised heart rate while still', learning: false },
     hrv: { avg: 38, usual: 52, samples: 5 }, restingHR: { today: 64, usual: 60 }, heartRate: { avg: 78, max: 141 },
     steps: 8423, activeKcal: 512, exerciseMin: 34, standHours: 9, daylightMin: 46, mindfulMin: 5,

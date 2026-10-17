@@ -648,6 +648,7 @@ function cleanHealth(b) {
   return {
     day: /^\d{4}-\d{2}-\d{2}$/.test(b.day) ? b.day : localDay(),
     updatedAt: Date.now(),
+    headline: text(b.headline, 60), summary: text(b.summary, 600),
     stress: score === null ? null : { score: Math.round(score), label: text(b.stress.label, 20), basis: text(b.stress.basis, 300), learning: Boolean(b.stress.learning) },
     hrv: num(b.hrv?.avg, 0, 300) === null ? null : { avg: num(b.hrv.avg, 0, 300), usual: num(b.hrv.usual, 0, 300), samples: num(b.hrv.samples, 0, 500) },
     restingHR: b.restingHR ? { today: num(b.restingHR.today, 20, 220), usual: num(b.restingHR.usual, 20, 220) } : null,
@@ -677,16 +678,18 @@ async function health(req, res) {
   return send(res, 200, { ok: true });
 }
 
-/** A day's health in the few words the recap and Claude's tools need. */
+/** A day's health in words for the recap and Claude's tools: how it felt, not the numbers (the owner doesn't want stats there). */
 function healthBrief(h) {
   if (!h) return null;
   const time = (ms) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: TZ });
+  const mood = ['', 'very unpleasant', 'unpleasant', 'slightly unpleasant', 'neutral', 'slightly pleasant', 'pleasant', 'very pleasant'];
+  const level = ['', 'none', 'low', 'some', 'high', 'very high'];
   return {
-    stress_estimate: h.stress ? { score_0_to_100: h.stress.score, label: h.stress.label, why: h.stress.basis, still_learning_their_usual: h.stress.learning } : null,
-    steps: h.steps, exercise_minutes: h.exerciseMin, time_in_daylight_minutes: h.daylightMin,
-    raised_heart_rate_while_still: h.moments.map((m) => ({ at: time(m.start), minutes: m.minutes, bpm: m.bpm })),
-    workouts: h.workouts.map((w) => `${w.type}, ${w.minutes} min at ${time(w.start)}`),
-    check_ins: h.checkins.map((c) => ({ at: time(c.at), mood_1_to_7: c.mood, stress_1_to_5: c.stress, energy_1_to_5: c.energy, feelings: c.feelings, about: c.about, note: c.note || undefined })),
+    summary: h.summary || null,
+    stress_by_watch: h.stress ? h.stress.label : null,
+    tense_stretches_at: h.moments.map((m) => time(m.start)),
+    workouts: h.workouts.map((w) => `${w.type} at ${time(w.start)}`),
+    check_ins: h.checkins.map((c) => ({ at: time(c.at), mood: mood[c.mood] || null, stress: level[c.stress] || null, energy: level[c.energy] || null, feelings: c.feelings, about: c.about, note: c.note || undefined })),
   };
 }
 

@@ -21,10 +21,10 @@ struct BodyCard: View {
 
     var body: some View {
         Card {
-            CardHeader(icon: "heart.fill", title: "How you're doing", gradient: G.heart, meta: meta)
+            CardHeader(icon: "heart.fill", title: "How you're doing", gradient: G.heart)
             switch health.status {
             case .ready, .demo:
-                if let day = health.today { DaySummary(day: day) } else { ProgressView().tint(G.text2) }
+                if let day = health.today { DayStory(day: day) } else { ProgressView().tint(G.text2) }
             case .connecting:
                 HStack(spacing: 10) { ProgressView().tint(G.text2); Text("Connecting to Apple Health…").foregroundStyle(G.text2) }
             case .unavailable:
@@ -56,15 +56,27 @@ struct BodyCard: View {
         if case .failed(let message) = health.status { return message }
         return nil
     }
+}
 
-    private var meta: String? {
-        guard let steps = health.today?.steps else { return nil }
-        return steps >= 1000 ? String(format: "%.1fk steps", steps / 1000) : "\(Int(steps)) steps"
+/// The day in plain words: a headline in the stress colour and a few sentences.
+struct DayStory: View {
+    let day: HealthDay
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(day.headline ?? HealthStory.headline(day))
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(day.stress.map { G.stress($0.score) } ?? G.text)
+            Text(day.summary ?? HealthStory.summary(day))
+                .font(.system(size: 15)).foregroundStyle(G.text2).lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
-/// Stress estimate, the numbers behind it, raised-heart-rate stretches, and the latest check-in.
-struct DaySummary: View {
+/// The numbers behind the story, for the Health page: the estimate, HRV, resting heart rate,
+/// and the stretches of raised heart rate while still.
+struct DayNumbers: View {
     let day: HealthDay
 
     var body: some View {
@@ -99,7 +111,6 @@ struct DaySummary: View {
                     }
                 }
             }
-            if let c = day.checkins.last { CheckInLine(checkin: c) }
         }
     }
 
@@ -181,11 +192,13 @@ struct CheckInSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if let stress = health.today?.stress {
-                        HStack(spacing: 10) {
-                            StressRing(score: stress.score, size: 46)
-                            Text("By your watch today: \(stress.label). \(stress.basis).").font(.system(size: 13)).foregroundStyle(G.text2)
+                    if let day = health.today, let stress = day.stress {
+                        Label {
+                            Text("By your watch: \(HealthStory.headline(day).lowercased()).").foregroundStyle(G.text2)
+                        } icon: {
+                            Image(systemName: "applewatch").foregroundStyle(G.stress(stress.score))
                         }
+                        .font(.system(size: 14))
                     }
                     section("How do you feel?") {
                         VStack(alignment: .leading, spacing: 8) {
@@ -319,6 +332,12 @@ struct HealthPage: View {
             VStack(spacing: 14) {
                 BodyCard(details: false)
                 if health.connected, let day = health.today {
+                    if day.stress != nil {
+                        Card {
+                            CardHeader(icon: "speedometer", title: "The numbers", gradient: G.heart, meta: "vs your last 30 days")
+                            DayNumbers(day: day)
+                        }
+                    }
                     if !health.hours.isEmpty { chart }
                     activity(day)
                     if !day.checkins.isEmpty {
@@ -460,7 +479,7 @@ struct HealthPage: View {
             CardHeader(icon: "info.circle.fill", title: "How the estimate works", gradient: G.white)
             Text("Apple doesn't give apps a stress number, so this one is an estimate from your Apple Watch, compared with your own last 30 days. Heart-rate variability (HRV) tends to drop when you're stressed and your resting heart rate tends to rise; a heart rate well above resting while you're sitting still counts too. 50 is a typical day for you. Your own check-ins count for more than the number, and it isn't a medical measurement.")
                 .font(.system(size: 13)).foregroundStyle(G.text2).fixedSize(horizontal: false, vertical: true)
-            Text("Only the day's totals and your check-ins go to your hub, never the raw samples. The hub may use them in Claude's evening recap.")
+            Text("Only this summary, the day's totals and your check-ins go to your hub, never the raw samples. Claude's evening recap may mention how the day felt, without the numbers.")
                 .font(.system(size: 13)).foregroundStyle(G.text2).fixedSize(horizontal: false, vertical: true)
         }
     }

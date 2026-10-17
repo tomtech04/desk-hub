@@ -69,6 +69,7 @@ final class HealthMonitor: ObservableObject {
         if !checkins(on: key).isEmpty {
             var day = HealthDay(day: key)
             day.checkins = checkins(on: key)
+            day.retell()
             today = day
         }
         guard defaults.bool(forKey: Key.enabled) else { return }
@@ -152,6 +153,7 @@ final class HealthMonitor: ObservableObject {
             let (read, hourly) = try await HealthReader(store: store).read(start: Calendar.current.startOfDay(for: Date()), now: Date())
             var day = read
             day.checkins = checkins(on: day.day)
+            day.retell()
             today = day
             hours = hourly
             if nudge, nudges { nudgeIfStressed(day) }
@@ -194,6 +196,7 @@ final class HealthMonitor: ObservableObject {
         var day = today ?? HealthDay(day: key)
         if day.day != key { day = HealthDay(day: key) }
         day.checkins = all[key] ?? []
+        day.retell()
         today = day
         if status == .ready { await saveStateOfMind(checkin, evening: evening) }
         guard !Self.demo else { return }
@@ -486,6 +489,7 @@ enum HealthDemo {
         d.moments = [StressMoment(start: at(14, 10), minutes: 25, bpm: 98), StressMoment(start: at(16, 40), minutes: 15, bpm: 94)]
         d.workouts = [WorkoutStat(type: "Walking", start: at(12, 5), minutes: 32, kcal: 160)]
         d.checkins = [CheckIn(at: at(17, 30), mood: 3, stress: 4, energy: 2, feelings: ["Stressed", "Drained"], about: ["School", "PayIt"], note: "")]
+        d.retell()
         return d
     }
 

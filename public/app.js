@@ -454,32 +454,20 @@ function barChart(id, values, label, gap = 5) {
     <div class="bars" style="gap:${gap}px">${values.map((v, i) => `<button data-act="chart" data-id="${id}" data-i="${i}" aria-label="${esc(label(i))}"><i class="${i === sel ? 'on' : ''}" style="height:${Math.max(2, (v / max) * 100).toFixed(1)}%"></i></button>`).join('')}</div>`;
 }
 
-// The iPhone app's day from Apple Health: a stress estimate against the person's
-// own usual, stretches of raised heart rate while still, activity and check-ins.
-const MOOD = ['', 'Very unpleasant', 'Unpleasant', 'Slightly unpleasant', 'Neutral', 'Slightly pleasant', 'Pleasant', 'Very pleasant'];
-const STRESS_WORD = ['', 'none', 'low', 'some', 'high', 'very high'];
-const ENERGY_WORD = ['', 'empty', 'low', 'okay', 'good', 'great'];
+// The iPhone app's day from Apple Health, told in a few sentences (the phone writes them);
+// the numbers stay on the phone's Health page.
 function bodyCard() {
   const h = D.health;
   if (!h) return `<section class="card body-card"><div class="ch">${icon('heart')}<span class="title">How you're doing</span></div>
-    <div class="empty">Connect Apple Health in the Desk Hub iPhone app and your day's heart data and check-ins show up here.</div></section>`;
+    <div class="empty">Connect Apple Health in the Desk Hub iPhone app and a summary of how your day is going shows up here.</div></section>`;
   const st = h.stress, tone = !st ? '' : st.score >= 75 ? 'bad' : st.score >= 60 ? 'warn' : st.score < 35 ? 'calm' : '';
-  const k = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`);
-  const c = h.checkins?.at(-1);
-  const stats = [
-    h.hrv ? [`${Math.round(h.hrv.avg)} ms`, h.hrv.usual ? `HRV · usual ${Math.round(h.hrv.usual)}` : 'HRV'] : null,
-    h.restingHR?.today ? [`${Math.round(h.restingHR.today)} bpm`, h.restingHR.usual ? `resting · usual ${Math.round(h.restingHR.usual)}` : 'resting'] : null,
-    h.steps != null ? [k(h.steps), 'steps'] : null,
-    h.exerciseMin != null ? [`${Math.round(h.exerciseMin)} min`, 'exercise'] : null,
-  ].filter(Boolean);
+  const headline = h.headline || (st ? st.label.replace(/^./, (x) => x.toUpperCase()) : 'You checked in');
+  const note = h.checkins?.at(-1)?.note;
   return `<section class="card body-card">
     <div class="ch">${icon('heart')}<span class="title">How you're doing</span><span class="meta">${h.updatedAt ? `from your phone · ${hm(h.updatedAt)}` : ''}</span></div>
-    ${st ? `<div class="body-top"><div class="body-score ${tone}"><b>${st.score}</b><span>stress</span></div>
-      <div class="grow"><div class="body-label ${tone}">${esc(st.label.replace(/^./, (x) => x.toUpperCase()))}${st.learning ? ' <em>still learning your usual</em>' : ''}</div><p>${esc(st.basis)}</p></div></div>` : ''}
-    ${stats.length ? `<div class="body-stats">${stats.map(([v, l]) => `<div><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div>` : ''}
-    ${h.moments?.length ? `<div class="body-moments">${h.moments.map((m) => `<span>${hm(m.start)} · ${m.minutes} min at ${m.bpm} bpm</span>`).join('')}<em>raised heart rate while still</em></div>` : ''}
-    ${c ? `<div class="body-check"><div class="kicker">Check-in · ${hm(c.at)}</div><div><b>${esc(MOOD[c.mood] || '')}</b> · stress ${esc(STRESS_WORD[c.stress] || '')} · energy ${esc(ENERGY_WORD[c.energy] || '')}</div>
-      ${c.feelings?.length || c.about?.length ? `<div class="body-tags">${[...c.feelings, ...c.about].map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : ''}${c.note ? `<p>“${esc(c.note)}”</p>` : ''}</div>` : ''}
+    <div class="body-label ${tone}">${esc(headline)}</div>
+    ${h.summary ? `<p class="body-story">${esc(h.summary)}</p>` : ''}
+    ${note ? `<p class="body-note">“${esc(note)}”</p>` : ''}
   </section>`;
 }
 
