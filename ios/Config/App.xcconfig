@@ -1,0 +1,5 @@
+// Signing for the iPhone app. Your own team and, if Xcode says the bundle ID is taken,
+// a different bundle ID go in Team.xcconfig next to this file (setup.sh writes it from
+// TEAM_ID=... and BUNDLE_ID=...); it's ignored by git.
+DESKHUB_BUNDLE_ID = com.tomtech04.deskhub
+#include? "Team.xcconfig"
