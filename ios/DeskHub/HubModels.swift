@@ -75,6 +75,18 @@ struct PayItData: Decodable {
     var week: [PayDay]?
     var systems: [SystemCheck]?
     var recent: [PayTxn]?
+    var subscriptions: SubTotals?
+    var subscriptionsError: String?
+}
+
+/// PayIt Plus through the App Store: merchants paying now, and what was paid this month
+/// (store prices, before Apple's cut).
+struct SubTotals: Decodable {
+    var paying: Int?
+    var paidThisMonth: Int?
+    var monthCents: Double?
+    var inTrial: Int?
+    var billingIssues: Int?
 }
 
 /// One of the latest payments: amount, method, status and time (never who paid).

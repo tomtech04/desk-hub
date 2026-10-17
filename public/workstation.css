@@ -286,6 +286,10 @@ html.wsmode .ws:not([hidden]) { display: grid; height: 100%; grid-template-colum
 .w-sys > i { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); flex: none; } .w-sys > i.up { background: #5EE6B0; } .w-sys > i.down { background: var(--coral); }
 .w-sys b { display: block; font-size: 13.5px; font-weight: 500; text-transform: capitalize; } .w-sys span { display: block; font-size: 11.5px; color: var(--text-3); }
 .w-sys em { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--amber); } .w-sys em.up { color: #5EE6B0; } .w-sys em.down { color: var(--coral); }
+.w-subs .w-ch span { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.w-subs-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.w-subs-row b { display: block; font-size: 30px; font-weight: 600; letter-spacing: -.02em; } .w-subs-row b.mint { color: var(--mint); }
+.w-subs-row span { display: block; font-size: 12px; color: var(--text-3); margin-top: 2px; }
 .w-txn { min-height: 44px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line-soft); }
 .w-txn b { display: block; font-size: 13.5px; font-weight: 500; } .w-txn span { display: block; font-family: var(--mono); font-size: 11px; color: var(--text-3); }
 .w-txn em { font-style: normal; font-family: var(--mono); font-size: 10.5px; padding: 2px 7px; border-radius: 6px; color: var(--amber); background: rgba(255, 181, 71, .12); }

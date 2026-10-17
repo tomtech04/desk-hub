@@ -315,7 +315,12 @@ i.today, em.today { color: var(--amber); } i.overdue, em.overdue { color: var(--
 .sys em { font-style: normal; display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: calc(13px * var(--ts)); color: var(--amber); }
 .sys em i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .sys em.up { color: #5EE6B0; } .sys em.down { color: var(--coral); } .sys em.plain { color: var(--text); font-size: calc(17px * var(--ts)); }
-/* PayIt: latest transactions, and the system checks folded into one row until tapped. */
+/* PayIt: Plus subscriptions, latest transactions, and the system checks folded into one row until tapped. */
+.subs { gap: 10px; }
+.subs-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.subs-row b { display: block; font-size: 44px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; } .subs-row b.mint { color: var(--mint); }
+.subs-row span { display: block; font-size: calc(14px * var(--ts)); color: var(--text-3); margin-top: 4px; }
+.subs-note { margin: 0; font-family: var(--mono); font-size: calc(12px * var(--ts)); color: var(--faint); }
 .txn { min-height: 58px; display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line-soft); padding: 8px 0; }
 .txn b { display: block; font-size: calc(17px * var(--ts)); font-weight: 500; }
 .txn span { display: block; font-family: var(--mono); font-size: calc(13px * var(--ts)); color: var(--text-3); margin-top: 2px; }

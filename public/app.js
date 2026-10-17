@@ -453,6 +453,21 @@ function barChart(id, values, label, gap = 5) {
     <div class="bars" style="gap:${gap}px">${values.map((v, i) => `<button data-act="chart" data-id="${id}" data-i="${i}" aria-label="${esc(label(i))}"><i class="${i === sel ? 'on' : ''}" style="height:${Math.max(2, (v / max) * 100).toFixed(1)}%"></i></button>`).join('')}</div>`;
 }
 
+// PayIt Plus: merchants paying for the plan, and what they paid this month (store prices, before Apple's cut).
+function subsCard(p) {
+  const x = p.subscriptions;
+  if (!x) return p.subscriptionsError ? `<section class="card subs"><div class="ch plain"><span class="title">PayIt Plus</span></div><div class="empty pad warn">${esc(p.subscriptionsError)}</div></section>` : '';
+  const extra = [x.inTrial ? `${x.inTrial} in trial` : '', x.billingIssues ? `${x.billingIssues} billing issue${x.billingIssues > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ');
+  return `<section class="card subs">
+    <div class="ch plain"><span class="title">PayIt Plus</span><span class="meta">${extra}</span></div>
+    <div class="subs-row">
+      <div><b>${x.paying}</b><span>paying subscribers</span></div>
+      <div><b class="mint">${money(x.monthCents)}</b><span>from ${x.paidThisMonth} payment${x.paidThisMonth === 1 ? '' : 's'} this month</span></div>
+    </div>
+    <p class="subs-note">Store prices, before Apple's cut.</p>
+  </section>`;
+}
+
 function digestCard() {
   const d = D.digest;
   let body;
@@ -721,6 +736,7 @@ const VIEWS = {
             <div class="${t.declined ? 'warn' : ''}"><b>${t.declined}</b><span>declined · ${t.refunded} ref.</span></div>
           </div>
         </section>
+        ${subsCard(p)}
         <section class="card rows-card">
           <div class="ch plain"><span class="title">Latest transactions</span><span class="meta">${t.newBusinesses ? `${t.newBusinesses} new business${t.newBusinesses > 1 ? 'es' : ''} today` : ''}</span></div>
           ${(p.recent || []).length ? p.recent.slice(0, 8).map((x) => `<div class="txn ${esc(x.status)}"><div class="grow"><b>${esc(provName[x.provider] || x.provider)}</b><span>${ago(x.at) === 'now' ? 'just now' : `${ago(x.at)} ago`} · ${hm(Date.parse(x.at))}</span></div>${x.status === 'completed' ? '' : `<em>${esc(x.status)}</em>`}<strong>${money(x.cents, true)}</strong></div>`).join('')

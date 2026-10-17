@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import pg from 'pg';
-import { ROOT, fetchJson, startOfDay } from './util.js';
+import { ROOT, TZ, fetchJson, startOfDay, tzOffset, zonedToUtc } from './util.js';
 
 const DATABASE_URL = process.env.PAYIT_DATABASE_URL;
 const URL_BASE = process.env.SUPABASE_URL?.replace(/\/$/, '');
@@ -39,7 +39,7 @@ function pgSource() {
   });
   pool.on('error', (err) => console.error('[payit] pool:', err.message));
   const q = async (sql, params) => (await pool.query(sql, params)).rows;
-  const iso = (rows, key) => rows.map((r) => ({ ...r, [key]: r[key].toISOString() }));
+  const iso = (rows, key) => rows.map((r) => ({ ...r, [key]: r[key]?.toISOString() ?? null }));
   return {
     payments: async (since) => iso(await q(
       'select amount_cents, status, provider, business_id, transaction_id, created_at from public.payments where created_at >= $1 order by created_at',
@@ -52,6 +52,9 @@ function pgSource() {
     testBusinesses: async () => TEST_OWNER_IDS.length
       ? (await q('select id from public.businesses where owner_id = any($1::uuid[])', [TEST_OWNER_IDS])).map((r) => r.id)
       : [],
+    subscriptions: async () => iso(await q(
+      "select business_id, status, in_trial, price_cents, current_period_started_at from public.store_subscriptions where environment = 'Production'"),
+    'current_period_started_at'),
   };
 }
 
@@ -80,6 +83,7 @@ function restSource() {
       if (!owners.length) return [];
       return (await rest(`businesses?select=id&owner_id=in.(${owners.map(encodeURIComponent).join(',')})`)).map((b) => b.id);
     },
+    subscriptions: () => rest('store_subscriptions?select=business_id,status,in_trial,price_cents,current_period_started_at&environment=eq.Production'),
   };
 }
 
@@ -120,18 +124,39 @@ async function loadFees(sinceMs) {
     .map((f) => ({ at: f.created * 1000, kept: f.amount - f.amount_refunded }));
 }
 
+// PayIt Plus, the plan merchants pay PayIt for through the App Store
+// (store_subscriptions: one row per business, production only). "Paid this
+// month" is a billing period that started this month outside a free trial;
+// revenue is the store price before Apple's cut.
+function subscriptionTotals(subs, excluded, monthStart) {
+  const real = subs.filter((x) => !excluded.has(x.business_id));
+  const paying = real.filter((x) => ['active', 'grace_period'].includes(x.status) && !x.in_trial);
+  const paidThisMonth = real.filter((x) => !x.in_trial && x.current_period_started_at && Date.parse(x.current_period_started_at) >= monthStart);
+  return {
+    paying: paying.length,
+    paidThisMonth: paidThisMonth.length,
+    monthCents: paidThisMonth.reduce((a, x) => a + (x.price_cents || 0), 0),
+    inTrial: real.filter((x) => x.in_trial && x.status === 'active').length,
+    billingIssues: real.filter((x) => x.status === 'billing_retry').length,
+  };
+}
+
 export async function loadPayit() {
   const now = Date.now();
   const today = startOfDay(now);
   const weekStart = startOfDay(now, -6);
   const yesterday = startOfDay(now, -1);
+  const local = new Date(now + tzOffset(TZ, now));
+  const monthStart = zonedToUtc(TZ, local.getUTCFullYear(), local.getUTCMonth() + 1, 1);
 
-  const [payments, newBusinesses, checks, ignored, excluded] = await Promise.all([
+  const [payments, newBusinesses, checks, ignored, excluded, subs] = await Promise.all([
     db.payments(weekStart),
     db.newBusinessCount(today),
     db.checks(now - 3 * 3600e3),
     db.ignored().catch(() => []),
     excludedBusinesses(),
+    // Extra, like profit: without read access to store_subscriptions the rest still shows.
+    db.subscriptions().catch((err) => ({ error: err.message })),
   ]);
   // Profit is extra: if Stripe can't be reached, sales still show.
   let fees = null, profitError = null;
@@ -195,5 +220,8 @@ export async function loadPayit() {
     access: payitMode,
     systems: Object.values(latest).sort((a, b) => a.system.localeCompare(b.system)),
     recent,
+    subscriptions: Array.isArray(subs) ? subscriptionTotals(subs, excluded, monthStart) : null,
+    subscriptionsError: Array.isArray(subs) ? null : /permission denied/i.test(subs.error)
+      ? 'The read-only role needs access to store_subscriptions (sql/deskhub_reader_subscriptions.sql).' : subs.error,
   };
 }

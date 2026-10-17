@@ -84,6 +84,14 @@ struct PayItView: View {
             VStack(spacing: 14) {
                 if let d = hub.dashboard, let p = d.payit?.data {
                     hero(p)
+                    if let subs = p.subscriptions {
+                        SubscriptionsCard(subs: subs)
+                    } else if let error = p.subscriptionsError {
+                        Card {
+                            CardHeader(icon: "star.circle.fill", title: "PayIt Plus", gradient: G.money)
+                            Text(error).font(.system(size: 14)).foregroundStyle(G.coral)
+                        }
+                    }
                     if let recent = p.recent, !recent.isEmpty { latest(recent, newBusinesses: p.today?.newBusinesses ?? 0) }
                     if let hourly = p.hourly, !hourly.isEmpty { byHour(hourly) }
                     if let week = p.week, !week.isEmpty { lastWeek(week) }
@@ -221,6 +229,36 @@ struct PayItView: View {
         f.timeZone = TimeZone(identifier: "UTC")
         f.dateFormat = "EEE"
         return f.string(from: d)
+    }
+}
+
+/// PayIt Plus: how many merchants pay for the plan, and what came in this month.
+struct SubscriptionsCard: View {
+    let subs: SubTotals
+
+    var body: some View {
+        Card {
+            CardHeader(icon: "star.circle.fill", title: "PayIt Plus", gradient: G.money, meta: extra)
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(subs.paying ?? 0)").font(.system(size: 38, weight: .semibold)).foregroundStyle(G.text)
+                    Text("paying subscribers").font(.system(size: 13)).foregroundStyle(G.text3)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Fmt.money(subs.monthCents)).font(.system(size: 38, weight: .semibold)).foregroundStyle(G.mint).lineLimit(1).minimumScaleFactor(0.6)
+                    Text("from \(plural(subs.paidThisMonth ?? 0, "payment")) this month").font(.system(size: 13)).foregroundStyle(G.text3)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Text("Store prices, before Apple's cut.").font(G.mono(11)).foregroundStyle(Color(hex: 0x5C6370))
+        }
+    }
+
+    private var extra: String? {
+        let parts = [(subs.inTrial ?? 0) > 0 ? "\(subs.inTrial ?? 0) in trial" : nil,
+                     (subs.billingIssues ?? 0) > 0 ? plural(subs.billingIssues ?? 0, "billing issue") : nil].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
 

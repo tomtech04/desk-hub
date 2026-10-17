@@ -441,6 +441,15 @@ struct PayItCard: View {
                     stat("DECLINED", "\(today?.declined ?? 0)", (today?.declined ?? 0) > 0 ? G.amber : G.text)
                     stat("KEPT", Fmt.money(d.payit?.data?.profit?.todayCents), G.mint)
                 }
+                if let subs = d.payit?.data?.subscriptions {
+                    Divider().overlay(G.lineSoft)
+                    HStack(spacing: 8) {
+                        Text("PLUS").font(G.mono(10)).foregroundStyle(G.muted)
+                        Text("\(subs.paying ?? 0) paying · \(Fmt.money(subs.monthCents)) this month")
+                            .font(.system(size: 14, weight: .medium)).foregroundStyle(G.text)
+                        Spacer(minLength: 0)
+                    }
+                }
                 if let last = d.payit?.data?.recent?.first {
                     Divider().overlay(G.lineSoft)
                     HStack(spacing: 8) {

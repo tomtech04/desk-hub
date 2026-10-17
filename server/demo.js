@@ -36,6 +36,7 @@ export function payit() {
     profit: { todayCents: Math.round(gross * 0.71 * 0.029), weekCents: 41250, cardVolumeCents: Math.round(gross * 0.71) },
     hourly,
     week: Array.from({ length: 7 }, (_, i) => ({ date: new Date(startOfDay(Date.now(), i - 6)).toISOString(), cents: i === 6 ? gross : [182000, 241500, 198300, 265000, 301200, 227900][i], count: 40 })),
+    subscriptions: { paying: 38, paidThisMonth: 31, monthCents: 92969, inTrial: 6, billingIssues: 1 },
     recent: [[4250, 'stripe', 'completed', 3], [1800, 'cash', 'completed', 9], [6400, 'stripe', 'completed', 16], [2999, 'stripe', 'declined', 22],
       [1250, 'ath_movil', 'completed', 31], [8800, 'stripe', 'completed', 44], [3500, 'cash', 'completed', 58], [5200, 'stripe', 'refunded', 75]]
       .map(([cents, provider, status, min]) => ({ cents, provider, status, at: new Date(Date.now() - min * 60e3).toISOString() })),

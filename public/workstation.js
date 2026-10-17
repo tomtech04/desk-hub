@@ -536,6 +536,16 @@ export function createWorkstation(h) {
   // PayIt
   // ---------------------------------------------------------------------------
 
+  // PayIt Plus: merchants paying for the plan, and what they paid this month (store prices, before Apple's cut).
+  function subs(p) {
+    const x = p.subscriptions;
+    if (!x) return p.subscriptionsError ? `<section class="w-card w-subs"><div class="w-ch"><b>PayIt Plus</b></div><div class="w-empty">${esc(p.subscriptionsError)}</div></section>` : '';
+    const extra = [x.inTrial ? `${x.inTrial} in trial` : '', x.billingIssues ? `${x.billingIssues} billing issue${x.billingIssues > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ');
+    return `<section class="w-card w-subs"><div class="w-ch"><b>PayIt Plus</b><span>${extra}</span></div>
+      <div class="w-subs-row"><div><b>${x.paying}</b><span>paying subscribers</span></div>
+        <div><b class="mint">${money(x.monthCents)}</b><span>from ${x.paidThisMonth} payment${x.paidThisMonth === 1 ? '' : 's'} this month · before Apple's cut</span></div></div></section>`;
+  }
+
   function payit() {
     const s = h.D.payit;
     if (!s?.data) return patch('v-pay', `<div class="w-empty center">${s?.configured === false ? 'PayIt isn\'t set up on the hub yet.' : esc(s?.error || 'Loading…')}</div>`);
@@ -556,6 +566,7 @@ export function createWorkstation(h) {
         <section class="w-kpi"><div class="w-kick">Merchants</div><div><b>${t.activeMerchants}</b></div><span>active today</span></section>
         <section class="w-kpi ${t.declined ? 'warn' : ''}"><div class="w-kick">Declined</div><div><b>${t.declined}</b></div><span>${t.refunded} refunded</span></section>
       </div>
+      ${subs(p)}
       <div class="w-pay2">
         <section class="w-card"><div class="w-ch"><b>By hour</b></div>${h.barChart('hourly', hours, (x) => `${hl(x)}–${hl((x + 1) % 24)}`, 5)}<div class="bar-axis">${ticks.map((x) => `<span>${hl(x)}</span>`).join('')}</div></section>
         <section class="w-card"><div class="w-ch"><b>Latest transactions</b></div>
