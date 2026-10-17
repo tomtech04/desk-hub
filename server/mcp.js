@@ -170,6 +170,8 @@ export function createMcp(hub) {
         calendar: (d.calendar || []).filter((e) => e.start < tomorrow && e.end >= Date.now() - 1).map((e) => ({ title: e.title, start: new Date(e.start).toISOString(), all_day: e.allDay, location: e.location || undefined })),
         focus_minutes_today: state.focusLog.filter((f) => f.at >= today).reduce((a, f) => a + f.minutes, 0),
         mail_digest: d.digestHeadline || null,
+        // From the iPhone app: an estimate from Apple Watch heart data, activity, and their own check-ins.
+        body: d.body || null,
       };
     },
   };

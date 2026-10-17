@@ -159,7 +159,7 @@ const RECAP_SCHEMA = {
 };
 
 /** An evening summary of the day from what was said, done and left open. */
-export async function buildRecap({ today, weekday, notes, done, open, focusMinutes, focusSessions }) {
+export async function buildRecap({ today, weekday, notes, done, open, focusMinutes, focusSessions, health }) {
   if (!aiEnabled()) throw new Error('Add ANTHROPIC_API_KEY to .env to get a daily recap');
   const out = await askJson({
     schema: RECAP_SCHEMA,
@@ -170,8 +170,10 @@ export async function buildRecap({ today, weekday, notes, done, open, focusMinut
 - bullets: at most 5 short lines on what happened and what got done, most significant first. Use their voice notes for what the day was like; use the task and focus numbers as facts, not as a scorecard.
 - tomorrow: at most 3 short lines on what's waiting for tomorrow, taken only from the open tasks and anything they said they'd do. Empty if nothing is.
 
+"body" (when present) comes from their phone: a stress estimate from Apple Watch heart-rate variability and resting heart rate against their own usual, stretches of raised heart rate while sitting still, activity, and check-ins where they rated their own mood, stress and energy. Their own ratings and words count for more than the estimate. Use it for at most one bullet on how the day felt, as a plain observation tied to what happened (e.g. a stressful stretch around a deadline), never a diagnosis, and no health advice.
+
 Only use what's in the input. If there's very little, say less rather than padding.`,
-    content: JSON.stringify({ voice_notes: notes, tasks_completed_today: done, tasks_still_open: open, focus_minutes: focusMinutes, focus_sessions: focusSessions }),
+    content: JSON.stringify({ voice_notes: notes, tasks_completed_today: done, tasks_still_open: open, focus_minutes: focusMinutes, focus_sessions: focusSessions, body: health || undefined }),
   });
   return { headline: out.headline, bullets: out.bullets.slice(0, 5), tomorrow: out.tomorrow.slice(0, 3) };
 }

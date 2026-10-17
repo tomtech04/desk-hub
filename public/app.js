@@ -51,6 +51,7 @@ const ICONS = {
   rain: '<path d="M7 15a5 5 0 1 1 .9-9.9A6 6 0 0 1 19 7a4 4 0 0 1-1 8zM8 18l-1 3M12 18l-1 3M16 18l-1 3"/>',
   snow: '<path d="M7 15a5 5 0 1 1 .9-9.9A6 6 0 0 1 19 7a4 4 0 0 1-1 8zM8 19h0M12 21h0M16 19h0"/>',
   storm: '<path d="M7 15a5 5 0 1 1 .9-9.9A6 6 0 0 1 19 7a4 4 0 0 1-1 8zM12 14l-2 4h4l-2 4"/>',
+  heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
 };
 const icon = (name, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24">${ICONS[name]}</svg>`;
 
@@ -453,6 +454,35 @@ function barChart(id, values, label, gap = 5) {
     <div class="bars" style="gap:${gap}px">${values.map((v, i) => `<button data-act="chart" data-id="${id}" data-i="${i}" aria-label="${esc(label(i))}"><i class="${i === sel ? 'on' : ''}" style="height:${Math.max(2, (v / max) * 100).toFixed(1)}%"></i></button>`).join('')}</div>`;
 }
 
+// The iPhone app's day from Apple Health: a stress estimate against the person's
+// own usual, stretches of raised heart rate while still, activity and check-ins.
+const MOOD = ['', 'Very unpleasant', 'Unpleasant', 'Slightly unpleasant', 'Neutral', 'Slightly pleasant', 'Pleasant', 'Very pleasant'];
+const STRESS_WORD = ['', 'none', 'low', 'some', 'high', 'very high'];
+const ENERGY_WORD = ['', 'empty', 'low', 'okay', 'good', 'great'];
+function bodyCard() {
+  const h = D.health;
+  if (!h) return `<section class="card body-card"><div class="ch">${icon('heart')}<span class="title">How you're doing</span></div>
+    <div class="empty">Connect Apple Health in the Desk Hub iPhone app and your day's heart data and check-ins show up here.</div></section>`;
+  const st = h.stress, tone = !st ? '' : st.score >= 75 ? 'bad' : st.score >= 60 ? 'warn' : st.score < 35 ? 'calm' : '';
+  const k = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`);
+  const c = h.checkins?.at(-1);
+  const stats = [
+    h.hrv ? [`${Math.round(h.hrv.avg)} ms`, h.hrv.usual ? `HRV · usual ${Math.round(h.hrv.usual)}` : 'HRV'] : null,
+    h.restingHR?.today ? [`${Math.round(h.restingHR.today)} bpm`, h.restingHR.usual ? `resting · usual ${Math.round(h.restingHR.usual)}` : 'resting'] : null,
+    h.steps != null ? [k(h.steps), 'steps'] : null,
+    h.exerciseMin != null ? [`${Math.round(h.exerciseMin)} min`, 'exercise'] : null,
+  ].filter(Boolean);
+  return `<section class="card body-card">
+    <div class="ch">${icon('heart')}<span class="title">How you're doing</span><span class="meta">${h.updatedAt ? `from your phone · ${hm(h.updatedAt)}` : ''}</span></div>
+    ${st ? `<div class="body-top"><div class="body-score ${tone}"><b>${st.score}</b><span>stress</span></div>
+      <div class="grow"><div class="body-label ${tone}">${esc(st.label.replace(/^./, (x) => x.toUpperCase()))}${st.learning ? ' <em>still learning your usual</em>' : ''}</div><p>${esc(st.basis)}</p></div></div>` : ''}
+    ${stats.length ? `<div class="body-stats">${stats.map(([v, l]) => `<div><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div>` : ''}
+    ${h.moments?.length ? `<div class="body-moments">${h.moments.map((m) => `<span>${hm(m.start)} · ${m.minutes} min at ${m.bpm} bpm</span>`).join('')}<em>raised heart rate while still</em></div>` : ''}
+    ${c ? `<div class="body-check"><div class="kicker">Check-in · ${hm(c.at)}</div><div><b>${esc(MOOD[c.mood] || '')}</b> · stress ${esc(STRESS_WORD[c.stress] || '')} · energy ${esc(ENERGY_WORD[c.energy] || '')}</div>
+      ${c.feelings?.length || c.about?.length ? `<div class="body-tags">${[...c.feelings, ...c.about].map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : ''}${c.note ? `<p>“${esc(c.note)}”</p>` : ''}</div>` : ''}
+  </section>`;
+}
+
 // PayIt Plus: merchants paying for the plan, and what they paid this month (store prices, before Apple's cut).
 function subsCard(p) {
   const x = p.subscriptions;
@@ -816,6 +846,7 @@ const VIEWS = {
             ${canRun ? `<button class="mini-btn text" data-act="recap-run">${icon('reset')}${r?.headline ? 'Redo' : r?.error ? 'Try again' : 'Make it now'}</button>` : ''}</div>
           ${recap}
         </section>
+        ${bodyCard()}
         <section class="card rows-card">
           <div class="ch plain"><span class="title">Notes for today</span><button class="mini-btn text" data-act="daynote-add">${icon('plus')}Add</button></div>
           ${dayNotes.length ? dayNotes.map((n) => `<div class="daynote"><span>${hm(n.at)}</span><p>${esc(n.text)}</p></div>`).join('')

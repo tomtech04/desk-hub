@@ -35,6 +35,7 @@ const DEFAULT_STATE = {
   focusLog: [], // { at, minutes, label }
   notifications: [], // pushed via POST /api/notify
   days: {}, // per-day record for the journal archive: 'YYYY-MM-DD' -> { summary, note }
+  health: {}, // the iPhone app's Apple Health summary and check-ins: 'YYYY-MM-DD' -> see cleanHealth()
   mailHidden: {}, // emails marked done on the workstation: id -> when (hidden from the hub only; the mailbox is untouched)
   canvas: {}, // Canvas assignments already turned into tasks: uid -> due day (so a deleted one isn't re-added)
   journal: [], // voice notes: { id, at, text, note, kind: 'reflection'|'note'|'', evening, tasks: [text], trigger }
@@ -393,12 +394,13 @@ async function runRecap() {
       done: state.todos.filter((t) => t.done && t.doneAt >= today).map((t) => t.text),
       open: state.todos.filter((t) => !t.done && !t.suggested).map((t) => ({ task: t.text, due: t.due ? localDay(t.due) : null })),
       focusMinutes: focus.reduce((a, f) => a + f.minutes, 0), focusSessions: focus.length,
+      health: healthBrief(state.health[localDay()]),
     };
     const r = DEMO ? demo.recap() : await buildRecap(input);
     state.recap = { day: localDay(), at: Date.now(), ...r };
     // The headline doubles as that day's summary in Journal → Past days.
     state.days ||= {};
-    if (r.headline) state.days[localDay()] = { summary: r.headline };
+    if (r.headline) state.days[localDay()] = { ...state.days[localDay()], summary: r.headline };
   } catch (err) {
     state.recap = { ...(state.recap || {}), error: err.message, errorAt: Date.now() };
     console.error('[recap]', err.message);
@@ -519,6 +521,11 @@ function dashboard() {
     recap: state.recap?.day === localDay() ? state.recap : state.recap?.error ? { error: state.recap.error } : null,
     recapRunning,
     dayNote: state.days?.[localDay()]?.note || '',
+    health: state.health[localDay()] || (DEMO ? demo.health() : null),
+    healthWeek: Array.from({ length: 7 }, (_, i) => {
+      const day = localDay(startOfDay(Date.now(), i - 6)), h = state.health[day];
+      return { day, score: h?.stress?.score ?? null, steps: h?.steps ?? null, mood: h?.checkins?.at(-1)?.mood ?? null };
+    }),
     desk: { ...desk, online: Date.now() - desk.at < 75e3 },
     voiceReady: Boolean(VOICE_TOKEN),
     claudeReady: Boolean(MCP_TOKEN),
@@ -592,12 +599,17 @@ function login(req, res, body) {
 // The ring's phone app authenticates with a token it sends as the Authorization
 // header (set in the app: Index 01 Settings -> Webhook). Signed-in devices and
 // the desk screen can post notes too.
+// Accept "Bearer <token>" or the bare token, ignoring stray whitespace, since
+// it's typed into a phone app by hand.
+function voiceTokenOk(req) {
+  const bare = String(req.headers.authorization || '').trim().replace(/^bearer\s+/i, '').trim();
+  return Boolean(VOICE_TOKEN) && crypto.timingSafeEqual(Buffer.from(sha(bare)), Buffer.from(sha(VOICE_TOKEN)));
+}
+
 async function voice(req, res) {
-  // Accept "Bearer <token>" or the bare token, ignoring stray whitespace, since
-  // it's typed into a phone app by hand.
   const given = String(req.headers.authorization || '').trim();
   const bare = given.replace(/^bearer\s+/i, '').trim();
-  const tokenOk = Boolean(VOICE_TOKEN) && crypto.timingSafeEqual(Buffer.from(sha(bare)), Buffer.from(sha(VOICE_TOKEN)));
+  const tokenOk = voiceTokenOk(req);
   if (!tokenOk && !allowed(req)) {
     // Describe the shape of what arrived, never the value, so a mistyped header can be found.
     console.error(`[voice] 401 from ${client(req).ip}: authorization ${given ? 'present' : 'MISSING'}`
@@ -622,6 +634,62 @@ async function voice(req, res) {
   handleVoice({ ...note, source: tokenOk ? 'ring' : hinted }).catch((err) => console.error('[voice]', err.message));
 }
 
+// The iPhone app's day from Apple Health: a stress estimate from heart-rate
+// variability and resting heart rate against the person's own usual, stretches
+// of raised heart rate while still, activity, and the check-ins they made. Only
+// these daily figures arrive, never raw samples. The phone signs in like any
+// other device, or with the voice token so it can send from the background.
+const num = (v, lo, hi) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Math.min(hi, Math.max(lo, Number(v))));
+const text = (v, n) => String(v ?? '').trim().slice(0, n);
+const list = (a, n) => (Array.isArray(a) ? a.slice(0, n) : []);
+function cleanHealth(b) {
+  const words = (a) => list(a, 12).map((w) => text(w, 30)).filter(Boolean);
+  const score = num(b.stress?.score, 0, 100);
+  return {
+    day: /^\d{4}-\d{2}-\d{2}$/.test(b.day) ? b.day : localDay(),
+    updatedAt: Date.now(),
+    stress: score === null ? null : { score: Math.round(score), label: text(b.stress.label, 20), basis: text(b.stress.basis, 300), learning: Boolean(b.stress.learning) },
+    hrv: num(b.hrv?.avg, 0, 300) === null ? null : { avg: num(b.hrv.avg, 0, 300), usual: num(b.hrv.usual, 0, 300), samples: num(b.hrv.samples, 0, 500) },
+    restingHR: b.restingHR ? { today: num(b.restingHR.today, 20, 220), usual: num(b.restingHR.usual, 20, 220) } : null,
+    heartRate: num(b.heartRate?.avg, 20, 250) === null ? null : { avg: num(b.heartRate.avg, 20, 250), max: num(b.heartRate.max, 20, 250) },
+    steps: num(b.steps, 0, 200000), activeKcal: num(b.activeKcal, 0, 20000), exerciseMin: num(b.exerciseMin, 0, 1440),
+    standHours: num(b.standHours, 0, 24), daylightMin: num(b.daylightMin, 0, 1440), mindfulMin: num(b.mindfulMin, 0, 1440),
+    moments: list(b.moments, 24).map((m) => ({ start: num(m.start, 0, 1e14), minutes: num(m.minutes, 0, 1440), bpm: num(m.bpm, 20, 250) })).filter((m) => m.start),
+    workouts: list(b.workouts, 12).map((w) => ({ type: text(w.type, 40), start: num(w.start, 0, 1e14), minutes: num(w.minutes, 0, 1440), kcal: num(w.kcal, 0, 20000) })).filter((w) => w.start),
+    checkins: list(b.checkins, 12).map((c) => ({ at: num(c.at, 0, 1e14), mood: num(c.mood, 1, 7), stress: num(c.stress, 1, 5), energy: num(c.energy, 1, 5),
+      feelings: words(c.feelings), about: words(c.about), note: text(c.note, 2000) })).filter((c) => c.at),
+  };
+}
+
+async function health(req, res) {
+  if (!voiceTokenOk(req) && !allowed(req)) return send(res, 401, { error: 'sign in required', canSignIn: Boolean(HUB_PASSWORD) });
+  let body;
+  try { body = await readBody(req); } catch { return send(res, 400, { error: 'bad body' }); }
+  const day = cleanHealth(body);
+  const before = state.health[day.day];
+  state.health[day.day] = day;
+  for (const k of Object.keys(state.health).sort().slice(0, -90)) delete state.health[k];
+  save();
+  // A check-in's note is filed like a voice note (tasks, reminders, reflections), once each.
+  for (const c of day.checkins) {
+    if (c.note && !(before?.checkins || []).some((x) => x.at === c.at)) handleVoice({ text: c.note, recordedAt: c.at, source: 'phone' }).catch((err) => console.error('[health]', err.message));
+  }
+  return send(res, 200, { ok: true });
+}
+
+/** A day's health in the few words the recap and Claude's tools need. */
+function healthBrief(h) {
+  if (!h) return null;
+  const time = (ms) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: TZ });
+  return {
+    stress_estimate: h.stress ? { score_0_to_100: h.stress.score, label: h.stress.label, why: h.stress.basis, still_learning_their_usual: h.stress.learning } : null,
+    steps: h.steps, exercise_minutes: h.exerciseMin, time_in_daylight_minutes: h.daylightMin,
+    raised_heart_rate_while_still: h.moments.map((m) => ({ at: time(m.start), minutes: m.minutes, bpm: m.bpm })),
+    workouts: h.workouts.map((w) => `${w.type}, ${w.minutes} min at ${time(w.start)}`),
+    check_ins: h.checkins.map((c) => ({ at: time(c.at), mood_1_to_7: c.mood, stress_1_to_5: c.stress, energy_1_to_5: c.energy, feelings: c.feelings, about: c.about, note: c.note || undefined })),
+  };
+}
+
 function logout(req, res) {
   const key = sessionOf(req);
   if (key) { delete state.sessions[key]; save(); }
@@ -633,7 +701,7 @@ function logout(req, res) {
 const mcp = createMcp({
   state, save, newTodo, makeSubtasks, dayToMs, localDay, startOfDay,
   notify: (title, body) => { state.notifications = [...state.notifications, { id: crypto.randomUUID(), level: 'info', source: 'claude', at: Date.now(), title, body: String(body || '').slice(0, 300) }].slice(-50); save(); },
-  snapshot: () => ({ calendar: sources.calendar?.get().data?.events || [], digestHeadline: state.digest?.day === localDay() ? state.digest.headline : null }),
+  snapshot: () => ({ calendar: sources.calendar?.get().data?.events || [], digestHeadline: state.digest?.day === localDay() ? state.digest.headline : null, body: healthBrief(state.health[localDay()]) }),
 });
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' };
@@ -806,7 +874,9 @@ const routes = {
     const days = new Map();
     const day = (ms) => {
       const key = localDay(ms);
-      if (!days.has(key)) days.set(key, { date: key, at: startOfDay(ms), summary: state.days?.[key]?.summary || '', note: state.days?.[key]?.note || '', focusMinutes: 0, tasksDone: 0, entries: [] });
+      const h = state.health[key];
+      if (!days.has(key)) days.set(key, { date: key, at: startOfDay(ms), summary: state.days?.[key]?.summary || '', note: state.days?.[key]?.note || '', focusMinutes: 0, tasksDone: 0, entries: [],
+        health: h ? { score: h.stress?.score ?? null, label: h.stress?.label || null, steps: h.steps, mood: h.checkins.at(-1)?.mood ?? null } : null });
       return days.get(key);
     };
     for (const j of state.journal) {
@@ -879,6 +949,7 @@ http.createServer(async (req, res) => {
       if (url.pathname === '/api/login' && req.method === 'POST') return login(req, res, await readBody(req));
       if (url.pathname === '/api/logout' && req.method === 'POST') return logout(req, res);
       if (url.pathname === '/api/voice' && req.method === 'POST') return voice(req, res);
+      if (url.pathname === '/api/health' && req.method === 'POST') return health(req, res);
       // /api/notify can also be reached with its own bearer token (scripts, webhooks).
       const viaNotifyToken = url.pathname === '/api/notify' && NOTIFY_TOKEN && req.headers.authorization === `Bearer ${NOTIFY_TOKEN}`;
       if (!viaNotifyToken && !allowed(req)) return send(res, 401, { error: 'sign in required', canSignIn: Boolean(HUB_PASSWORD) });

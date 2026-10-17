@@ -144,6 +144,11 @@ html.wsmode .ws:not([hidden]) { display: grid; height: 100%; grid-template-colum
 .w-nowline { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
 .w-nowline span { font-family: var(--mono); font-size: 10.5px; color: var(--coral); } .w-nowline i { flex: 1; height: 1.5px; background: var(--coral); border-radius: 1px; }
 .w-tomorrow { padding: 13px 14px 6px; } .w-tomorrow .w-kick { margin-bottom: 4px; }
+.w-health { padding: 13px 14px 12px; } .w-health .w-ch span { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.w-health-st { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.w-health-st > b { font-size: 30px; font-weight: 600; letter-spacing: -.02em; }
+.w-health-st em { display: block; font-style: normal; font-size: 13px; font-weight: 600; text-transform: capitalize; } .w-health-st span { display: block; font-size: 11.5px; color: var(--text-3); line-height: 1.35; }
+.w-health-m { margin-top: 8px; font-size: 12px; color: var(--text-2); line-height: 1.4; }
 .w-tm { width: 100%; min-height: 36px; display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 10px; align-items: center; border-top: 1px solid var(--line-soft); }
 .w-tm b { font-size: 13px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .w-need { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
