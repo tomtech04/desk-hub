@@ -558,9 +558,9 @@ export function createWorkstation(h) {
       </div>
       <div class="w-pay2">
         <section class="w-card"><div class="w-ch"><b>By hour</b></div>${h.barChart('hourly', hours, (x) => `${hl(x)}–${hl((x + 1) % 24)}`, 5)}<div class="bar-axis">${ticks.map((x) => `<span>${hl(x)}</span>`).join('')}</div></section>
-        <section class="w-card"><div class="w-ch"><b>Systems</b><span class="w-dot ${down ? 'bad' : bad.length ? 'warn' : 'on'}"><i></i>${down ? `${down} down` : bad.length ? `${bad.length} degraded` : 'all up'}</span></div>
-          ${p.systems.map((x) => `<div class="w-sys"><i class="${esc(x.status)}"></i><div class="grow"><b>${esc(x.system.replace(/_/g, ' '))}</b><span>${x.detail ? esc(x.detail) : ago(x.checked_at) === 'now' ? 'checked just now' : `checked ${ago(x.checked_at)} ago`}</span></div><em class="${esc(x.status)}">${esc(x.status)}</em></div>`).join('')
-            || '<div class="w-empty">No checks in the last 3 hours.</div>'}</section>
+        <section class="w-card"><div class="w-ch"><b>Latest transactions</b></div>
+          ${(p.recent || []).slice(0, 8).map((x) => `<div class="w-txn ${esc(x.status)}"><div class="grow"><b>${esc(provName[x.provider] || x.provider)}</b><span>${ago(x.at) === 'now' ? 'just now' : `${ago(x.at)} ago`} · ${hm(Date.parse(x.at))}</span></div>${x.status === 'completed' ? '' : `<em>${esc(x.status)}</em>`}<strong>${money(x.cents, true)}</strong></div>`).join('')
+            || '<div class="w-empty">No payments this week yet.</div>'}</section>
       </div>
       <div class="w-pay2">
         <section class="w-card"><div class="w-ch"><b>Last 7 days</b><span>${money(p.week.reduce((a, d) => a + d.cents, 0))}${p.profit ? ` · kept ${money(p.profit.weekCents, true)}` : ''}</span></div>
@@ -568,8 +568,11 @@ export function createWorkstation(h) {
           <div class="bar-axis even">${p.week.map((d) => `<span>${new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' })}</span>`).join('')}</div></section>
         <section class="w-card"><div class="w-ch"><b>By payment method</b></div>
           ${providers.map(([k, v]) => `<div class="w-method"><span>${esc(provName[k] || k)}</span><i><u style="width:${((v / provMax) * 100).toFixed(1)}%"></u></i><b>${money(v)}</b></div>`).join('') || '<div class="w-empty">No sales yet today.</div>'}
-          <p class="w-foot-note">The hub reads PayIt's totals only. Individual payments and payout actions stay in the PayIt admin panel.</p></section>
-      </div>`);
+          <p class="w-foot-note">The hub shows totals and the latest payments (amount, method, status). Who paid, payouts and refunds stay in the PayIt admin panel.</p></section>
+      </div>
+      <section class="w-card w-fold ${st.sysOpen ? 'open' : ''}"><button class="w-ch w-fold-h" data-ws="sys-fold"><b>Systems</b><span class="w-dot ${down ? 'bad' : bad.length ? 'warn' : 'on'}"><i></i>${down ? `${down} down` : bad.length ? `${bad.length} degraded` : 'all up'}</span>${h.icon('chev')}</button>
+        ${st.sysOpen ? p.systems.map((x) => `<div class="w-sys"><i class="${esc(x.status)}"></i><div class="grow"><b>${esc(x.system.replace(/_/g, ' '))}</b><span>${x.detail ? esc(x.detail) : ago(x.checked_at) === 'now' ? 'checked just now' : `checked ${ago(x.checked_at)} ago`}</span></div><em class="${esc(x.status)}">${esc(x.status)}</em></div>`).join('')
+          || '<div class="w-empty">No checks in the last 3 hours.</div>' : ''}</section>`);
   }
 
   // ---------------------------------------------------------------------------
@@ -879,6 +882,7 @@ export function createWorkstation(h) {
         case 'palette': openPalette(); break;
         case 'palette-run': runPalette(Number(el.dataset.i)); break;
         case 'close-over': st.palette = null; st.alertsOpen = false; render(); break;
+        case 'sys-fold': st.sysOpen = !st.sysOpen; render(); break;
         case 'alerts': st.alertsOpen = !st.alertsOpen; st.palette = null; render(); break;
         case 'record': startRec(); break;
         case 'rec-save': saveRec(); break;

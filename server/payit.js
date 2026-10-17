@@ -1,5 +1,6 @@
-// PayIt stats from Supabase, read-only, aggregates only. The credential never
-// leaves the Pi; the screen only ever sees totals.
+// PayIt stats from Supabase, read-only. The credential never leaves the Pi; the
+// screen sees totals plus the latest few payments as amount, method, status and
+// time, never who paid or which business.
 //
 // Preferred: PAYIT_DATABASE_URL, a Postgres login as `deskhub_reader` — a role
 // that can SELECT only the columns used below (sql/deskhub_reader_role.sql). Fallback: the service-role key
@@ -163,6 +164,9 @@ export async function loadPayit() {
     else if (p.status === 'refunded') t.refunded++;
   }
 
+  // The latest payments through the platform, newest first.
+  const recent = rows.slice(-12).reverse().map((p) => ({ cents: p.amount_cents, provider: p.provider, status: p.status, at: p.created_at }));
+
   // Latest check per system — the hourly-system-check edge function writes these.
   const latest = {};
   for (const c of checks) latest[c.system] ??= c;
@@ -190,5 +194,6 @@ export async function loadPayit() {
     excludedBusinesses: excluded.size,
     access: payitMode,
     systems: Object.values(latest).sort((a, b) => a.system.localeCompare(b.system)),
+    recent,
   };
 }

@@ -84,15 +84,18 @@ struct PayItView: View {
             VStack(spacing: 14) {
                 if let d = hub.dashboard, let p = d.payit?.data {
                     hero(p)
-                    Card {
-                        CardHeader(icon: "bolt.horizontal.fill", title: "Systems", gradient: G.money, meta: d.payitIssues.isEmpty ? "● All up" : "● \(plural(d.payitIssues.count, "issue"))", metaColor: d.payitIssues.isEmpty ? G.mint : G.amber)
+                    if let recent = p.recent, !recent.isEmpty { latest(recent, newBusinesses: p.today?.newBusinesses ?? 0) }
+                    if let hourly = p.hourly, !hourly.isEmpty { byHour(hourly) }
+                    if let week = p.week, !week.isEmpty { lastWeek(week) }
+                    if let providers = p.today?.byProvider, !providers.isEmpty { methods(providers) }
+                    // System checks matter only when something's off, so they stay folded until tapped.
+                    FoldCard(icon: "bolt.horizontal.fill", title: "Systems", gradient: G.money,
+                             summary: d.payitIssues.isEmpty ? "● All up" : "● \(plural(d.payitIssues.count, "issue"))",
+                             summaryColor: d.payitIssues.isEmpty ? G.mint : G.amber) {
                         ForEach(p.systems ?? []) { check in
                             SystemLine(icon: "bolt.horizontal", name: check.system.replacingOccurrences(of: "_", with: " ").capitalized, value: check.detail ?? check.status, ok: check.isUp)
                         }
                     }
-                    if let hourly = p.hourly, !hourly.isEmpty { byHour(hourly) }
-                    if let week = p.week, !week.isEmpty { lastWeek(week) }
-                    if let providers = p.today?.byProvider, !providers.isEmpty { methods(providers) }
                 } else if let error = hub.dashboard?.payit?.error {
                     Card { Text(error).font(.system(size: 14)).foregroundStyle(G.coral) }
                 } else {
@@ -131,6 +134,18 @@ struct PayItView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(G.heroPayit, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(Color(hex: 0x1C5550), lineWidth: 1))
+    }
+
+    private func latest(_ recent: [PayTxn], newBusinesses: Int) -> some View {
+        let shown = Array(recent.prefix(8))
+        return Card {
+            CardHeader(icon: "list.bullet.rectangle.fill", title: "Latest transactions", gradient: G.money,
+                       meta: newBusinesses == 0 ? nil : newBusinesses == 1 ? "1 new business" : "\(newBusinesses) new businesses")
+            ForEach(shown) { txn in
+                TxnRow(txn: txn)
+                if txn.id != shown.last?.id { Divider().overlay(G.lineSoft) }
+            }
+        }
     }
 
     private func tile(_ label: String, _ value: String) -> some View {
@@ -206,6 +221,68 @@ struct PayItView: View {
         f.timeZone = TimeZone(identifier: "UTC")
         f.dateFormat = "EEE"
         return f.string(from: d)
+    }
+}
+
+/// One payment: method and time on the left, the amount on the right (struck through if it didn't go through).
+struct TxnRow: View {
+    let txn: PayTxn
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Fmt.provider(txn.provider)).font(.system(size: 15, weight: .medium)).foregroundStyle(G.text)
+                Text(txn.when.map { "\(Fmt.ago($0)) · \(Fmt.time($0))" } ?? "").font(G.mono(11)).foregroundStyle(G.muted)
+            }
+            Spacer(minLength: 6)
+            if !txn.completed, let status = txn.status {
+                Pill(text: status, color: status == "declined" ? G.amber : G.text3)
+            }
+            Text(Fmt.money(txn.cents, exact: true))
+                .strikethrough(!txn.completed, color: G.muted)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(txn.completed ? G.text : G.muted)
+        }
+    }
+}
+
+/// A card that shows only its title row until tapped.
+struct FoldCard<Content: View>: View {
+    let icon: String
+    let title: String
+    let gradient: LinearGradient
+    let summary: String
+    let summaryColor: Color
+    let content: () -> Content
+    @State private var open = false
+
+    init(icon: String, title: String, gradient: LinearGradient, summary: String, summaryColor: Color, @ViewBuilder content: @escaping () -> Content) {
+        self.icon = icon
+        self.title = title
+        self.gradient = gradient
+        self.summary = summary
+        self.summaryColor = summaryColor
+        self.content = content
+    }
+
+    var body: some View {
+        Card {
+            Button { withAnimation(.snappy) { open.toggle() } } label: {
+                HStack(spacing: 10) {
+                    IconTile(icon: icon, gradient: gradient)
+                    Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(G.title)
+                    Spacer(minLength: 8)
+                    Text(summary).font(G.mono(12)).foregroundStyle(summaryColor).lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(G.muted)
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if open { content() }
+        }
     }
 }
 

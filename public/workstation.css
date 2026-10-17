@@ -286,6 +286,15 @@ html.wsmode .ws:not([hidden]) { display: grid; height: 100%; grid-template-colum
 .w-sys > i { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); flex: none; } .w-sys > i.up { background: #5EE6B0; } .w-sys > i.down { background: var(--coral); }
 .w-sys b { display: block; font-size: 13.5px; font-weight: 500; text-transform: capitalize; } .w-sys span { display: block; font-size: 11.5px; color: var(--text-3); }
 .w-sys em { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--amber); } .w-sys em.up { color: #5EE6B0; } .w-sys em.down { color: var(--coral); }
+.w-txn { min-height: 44px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line-soft); }
+.w-txn b { display: block; font-size: 13.5px; font-weight: 500; } .w-txn span { display: block; font-family: var(--mono); font-size: 11px; color: var(--text-3); }
+.w-txn em { font-style: normal; font-family: var(--mono); font-size: 10.5px; padding: 2px 7px; border-radius: 6px; color: var(--amber); background: rgba(255, 181, 71, .12); }
+.w-txn.refunded em { color: var(--text-2); background: var(--control); }
+.w-txn strong { font-size: 14px; font-weight: 600; min-width: 72px; text-align: right; }
+.w-txn.declined strong, .w-txn.refunded strong { color: var(--muted); text-decoration: line-through; }
+.w-fold { margin-top: 14px; } .w-fold-h { width: 100%; background: none; border: 0; padding: 0; margin: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.w-fold-h .w-dot { margin-left: auto; } .w-fold-h svg { width: 16px; height: 16px; stroke: var(--muted); fill: none; stroke-width: 2; transition: transform .2s; }
+.w-fold.open .w-fold-h svg { transform: rotate(90deg); }
 .w-method { display: grid; grid-template-columns: 120px minmax(0, 1fr) 80px; align-items: center; gap: 12px; min-height: 34px; }
 .w-method span { font-size: 13px; color: var(--text-2); } .w-method i { height: 8px; border-radius: 4px; background: var(--control); overflow: hidden; }
 .w-method u { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #6EF0B4, #1FB5C9); } .w-method b { font-size: 13.5px; font-weight: 600; text-align: right; }

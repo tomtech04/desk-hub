@@ -315,6 +315,17 @@ i.today, em.today { color: var(--amber); } i.overdue, em.overdue { color: var(--
 .sys em { font-style: normal; display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: calc(13px * var(--ts)); color: var(--amber); }
 .sys em i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .sys em.up { color: #5EE6B0; } .sys em.down { color: var(--coral); } .sys em.plain { color: var(--text); font-size: calc(17px * var(--ts)); }
+/* PayIt: latest transactions, and the system checks folded into one row until tapped. */
+.txn { min-height: 58px; display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line-soft); padding: 8px 0; }
+.txn b { display: block; font-size: calc(17px * var(--ts)); font-weight: 500; }
+.txn span { display: block; font-family: var(--mono); font-size: calc(13px * var(--ts)); color: var(--text-3); margin-top: 2px; }
+.txn em { font-style: normal; font-family: var(--mono); font-size: calc(12px * var(--ts)); padding: 3px 8px; border-radius: 7px; color: var(--amber); background: rgba(255, 181, 71, .12); }
+.txn.refunded em { color: var(--text-2); background: var(--control); }
+.txn strong { font-size: calc(18px * var(--ts)); font-weight: 600; min-width: 84px; text-align: right; }
+.txn.declined strong, .txn.refunded strong { color: var(--muted); text-decoration: line-through; }
+.fold .fold-h { width: 100%; background: none; border: 0; padding: 0 0 12px; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.fold .fold-h svg { width: 20px; height: 20px; stroke: var(--muted); fill: none; stroke-width: 2; margin-left: 10px; transition: transform .2s var(--ease); }
+.fold.open .fold-h svg { transform: rotate(90deg); }
 .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
 .chart-card { padding: 18px 18px 14px; }
 .bar-cap { font-family: var(--mono); font-size: calc(13px * var(--ts)); color: var(--text-2); margin: 0 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

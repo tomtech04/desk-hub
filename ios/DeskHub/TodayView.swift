@@ -441,6 +441,16 @@ struct PayItCard: View {
                     stat("DECLINED", "\(today?.declined ?? 0)", (today?.declined ?? 0) > 0 ? G.amber : G.text)
                     stat("KEPT", Fmt.money(d.payit?.data?.profit?.todayCents), G.mint)
                 }
+                if let last = d.payit?.data?.recent?.first {
+                    Divider().overlay(G.lineSoft)
+                    HStack(spacing: 8) {
+                        Text("LATEST").font(G.mono(10)).foregroundStyle(G.muted)
+                        Text("\(Fmt.money(last.cents, exact: true)) · \(Fmt.provider(last.provider))")
+                            .font(.system(size: 14, weight: .medium)).foregroundStyle(last.completed ? G.text : G.muted)
+                        Spacer(minLength: 6)
+                        if let when = last.when { Text(Fmt.ago(when)).font(G.mono(11)).foregroundStyle(G.muted) }
+                    }
+                }
             }
         }
     }
@@ -475,9 +485,7 @@ struct SystemsCard: View {
             CardHeader(icon: "server.rack", title: "Systems", gradient: G.white, meta: issues == 0 ? "● All good" : "● \(plural(issues, "issue"))", metaColor: issues == 0 ? G.mint : G.amber)
             SystemLine(icon: "display", name: "Desk screen", value: d.desk?.online == true ? "On · \(d.desk?.view ?? "home")" : "Not reporting", ok: d.desk?.online == true ? true : nil)
             SystemLine(icon: "cpu", name: "Pi", value: piLine, ok: (d.system?.tempC ?? 0) < 75)
-            ForEach(d.payit?.data?.systems ?? []) { check in
-                SystemLine(icon: "bolt.horizontal", name: check.system.replacingOccurrences(of: "_", with: " ").capitalized, value: check.detail ?? check.status, ok: check.isUp)
-            }
+            if let checks = d.payit?.data?.systems, !checks.isEmpty { ChecksRow(checks: checks) }
             ForEach(d.failingFeeds) { feed in
                 SystemLine(icon: "antenna.radiowaves.left.and.right", name: feed.name, value: feed.error, ok: false)
             }
@@ -496,6 +504,44 @@ struct SystemsCard: View {
         if let m = d.system?.memUsedPct { parts.append("mem \(Int(m))%") }
         if let u = d.system?.uptimeH { parts.append(u >= 48 ? "up \(Int(u / 24))d" : "up \(Int(u))h") }
         return parts.isEmpty ? "No readings" : parts.joined(separator: " · ")
+    }
+}
+
+/// PayIt's system checks as one line ("4 up"), opening to each check when tapped.
+struct ChecksRow: View {
+    let checks: [SystemCheck]
+    @State private var open = false
+
+    init(checks: [SystemCheck]) {
+        self.checks = checks
+    }
+
+    var body: some View {
+        let bad = checks.filter { !$0.isUp }
+        VStack(alignment: .leading, spacing: 10) {
+            Button { withAnimation(.snappy) { open.toggle() } } label: {
+                HStack(spacing: 10) {
+                    Circle().fill(bad.isEmpty ? G.mint : G.coral).frame(width: 7, height: 7)
+                    Image(systemName: "bolt.horizontal").font(.system(size: 13)).foregroundStyle(G.text3).frame(width: 18)
+                    Text("PayIt checks").font(.system(size: 15, weight: .medium)).foregroundStyle(G.text).lineLimit(1).layoutPriority(1)
+                    Spacer(minLength: 8)
+                    Text(bad.isEmpty ? "\(checks.count) up" : "\(bad.count) of \(checks.count) need a look")
+                        .font(G.mono(11)).foregroundStyle(bad.isEmpty ? G.muted : G.coral).lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(G.muted)
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if open {
+                ForEach(checks) { check in
+                    SystemLine(icon: "bolt.horizontal", name: check.system.replacingOccurrences(of: "_", with: " ").capitalized, value: check.detail ?? check.status, ok: check.isUp)
+                }
+                .padding(.leading, 18)
+            }
+        }
     }
 }
 

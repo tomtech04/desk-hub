@@ -143,7 +143,7 @@ async function api(method, url, body) {
 
 let D = null; // last dashboard snapshot
 let view = 'home';
-const ui = { taskFilter: 'open', chartSel: {}, schedDay: 0, drawer: 'alerts', reading: null, taskOpen: null, jTab: 'today', jQuery: '', jDays: null, jOpen: null, entering: true };
+const ui = { taskFilter: 'open', chartSel: {}, schedDay: 0, drawer: 'alerts', reading: null, taskOpen: null, jTab: 'today', jQuery: '', jDays: null, jOpen: null, entering: true, sysOpen: false };
 
 async function load() {
   try {
@@ -722,11 +722,9 @@ const VIEWS = {
           </div>
         </section>
         <section class="card rows-card">
-          <div class="ch plain"><span class="title">Systems</span><span class="meta dotted ${down ? 'bad' : bad.length ? 'warn' : 'good'}"><i></i>${down ? `${down} down` : bad.length ? `${bad.length} degraded` : 'all up'}</span></div>
-          ${p.systems.length ? p.systems.map((x) => `<div class="sys"><div class="grow"><b>${esc(x.system.replace(/_/g, ' '))}</b><span>${x.detail ? esc(x.detail) : ago(x.checked_at) === 'now' ? 'checked just now' : `checked ${ago(x.checked_at)} ago`}</span></div>
-            <em class="${esc(x.status)}"><i></i>${esc(x.status)}</em></div>`).join('')
-            : '<div class="empty pad">No checks in the last 3 hours. Is the hourly-system-check cron running?</div>'}
-          ${t.newBusinesses ? `<div class="sys"><div class="grow"><b class="asis">New businesses today</b></div><em class="plain">${t.newBusinesses}</em></div>` : ''}
+          <div class="ch plain"><span class="title">Latest transactions</span><span class="meta">${t.newBusinesses ? `${t.newBusinesses} new business${t.newBusinesses > 1 ? 'es' : ''} today` : ''}</span></div>
+          ${(p.recent || []).length ? p.recent.slice(0, 8).map((x) => `<div class="txn ${esc(x.status)}"><div class="grow"><b>${esc(provName[x.provider] || x.provider)}</b><span>${ago(x.at) === 'now' ? 'just now' : `${ago(x.at)} ago`} · ${hm(Date.parse(x.at))}</span></div>${x.status === 'completed' ? '' : `<em>${esc(x.status)}</em>`}<strong>${money(x.cents, true)}</strong></div>`).join('')
+            : '<div class="empty pad">No payments this week yet.</div>'}
         </section>
         <div class="two">
           <section class="card chart-card">
@@ -743,6 +741,12 @@ const VIEWS = {
         <section class="card methods">
           <div class="ch plain"><span class="title">By payment method</span></div>
           ${providers.length ? providers.map(([k, v]) => `<div class="method"><span>${esc(provName[k] || k)}</span><i><u style="width:${((v / provMax) * 100).toFixed(1)}%"></u></i><b>${money(v)}</b></div>`).join('') : '<div class="empty">No sales yet today.</div>'}
+        </section>
+        <section class="card rows-card fold ${ui.sysOpen ? 'open' : ''}">
+          <button class="ch plain fold-h" data-act="sys-fold"><span class="title">Systems</span><span class="meta dotted ${down ? 'bad' : bad.length ? 'warn' : 'good'}"><i></i>${down ? `${down} down` : bad.length ? `${bad.length} degraded` : 'all up'}</span>${icon('chev')}</button>
+          ${ui.sysOpen ? (p.systems.length ? p.systems.map((x) => `<div class="sys"><div class="grow"><b>${esc(x.system.replace(/_/g, ' '))}</b><span>${x.detail ? esc(x.detail) : ago(x.checked_at) === 'now' ? 'checked just now' : `checked ${ago(x.checked_at)} ago`}</span></div>
+            <em class="${esc(x.status)}"><i></i>${esc(x.status)}</em></div>`).join('')
+            : '<div class="empty pad">No checks in the last 3 hours. Is the hourly-system-check cron running?</div>') : ''}
         </section>
       </div>
     </div>`;
@@ -1499,6 +1503,7 @@ document.addEventListener('click', async (e) => {
     switch (act) {
       case 'go': go(el.dataset.view); break;
       case 'chart': ui.chartSel[el.dataset.id] = Number(el.dataset.i); render(); break;
+      case 'sys-fold': ui.sysOpen = !ui.sysOpen; render(); break;
       case 't-start': if (T.phase === 'focus') startFocus(); else timerStart(); break;
       case 'lock-resume': timerStart(); break;
       case 'lock-break': T.done = null; timerStart(); break;

@@ -74,6 +74,18 @@ struct PayItData: Decodable {
     var hourly: [Double]?
     var week: [PayDay]?
     var systems: [SystemCheck]?
+    var recent: [PayTxn]?
+}
+
+/// One of the latest payments: amount, method, status and time (never who paid).
+struct PayTxn: Decodable, Identifiable {
+    var cents: Double
+    var provider: String?
+    var status: String?
+    var at: String
+    var id: String { "\(at)-\(cents)" }
+    var when: Date? { Fmt.isoDate(at) }
+    var completed: Bool { status == nil || status == "completed" }
 }
 
 struct PayToday: Decodable {
@@ -319,12 +331,22 @@ enum Fmt {
         return (day(d, offset < 7 ? "EEE" : "MMM d"), G.text2)
     }
 
-    static func money(_ cents: Double?) -> String {
+    static func money(_ cents: Double?, exact: Bool = false) -> String {
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.currencyCode = "USD"
-        f.maximumFractionDigits = 0
+        f.maximumFractionDigits = exact ? 2 : 0
+        f.minimumFractionDigits = exact ? 2 : 0
         return f.string(from: NSNumber(value: (cents ?? 0) / 100)) ?? "$0"
+    }
+
+    static func provider(_ name: String?) -> String {
+        switch name {
+        case "stripe": return "Card"
+        case "cash": return "Cash"
+        case "ath_movil": return "ATH Móvil"
+        default: return (name ?? "Payment").replacingOccurrences(of: "_", with: " ").capitalized
+        }
     }
 
     static func ago(_ date: Date) -> String {
