@@ -579,7 +579,7 @@ export function createWorkstation(h) {
           <div class="bar-axis even">${p.week.map((d) => `<span>${new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' })}</span>`).join('')}</div></section>
         <section class="w-card"><div class="w-ch"><b>By payment method</b></div>
           ${providers.map(([k, v]) => `<div class="w-method"><span>${esc(provName[k] || k)}</span><i><u style="width:${((v / provMax) * 100).toFixed(1)}%"></u></i><b>${money(v)}</b></div>`).join('') || '<div class="w-empty">No sales yet today.</div>'}
-          <p class="w-foot-note">The hub shows totals and the latest payments (amount, method, status). Who paid, payouts and refunds stay in the PayIt admin panel.</p></section>
+          <p class="w-foot-note">${p.excludedProviders?.length ? `${esc(p.excludedProviders.map((k) => provName[k] || k).join(' and '))} sales aren't counted. ` : ''}The hub shows totals and the latest payments (amount, method, status). Who paid, payouts and refunds stay in the PayIt admin panel.</p></section>
       </div>
       <section class="w-card w-fold ${st.sysOpen ? 'open' : ''}"><button class="w-ch w-fold-h" data-ws="sys-fold"><b>Systems</b><span class="w-dot ${down ? 'bad' : bad.length ? 'warn' : 'on'}"><i></i>${down ? `${down} down` : bad.length ? `${bad.length} degraded` : 'all up'}</span>${h.icon('chev')}</button>
         ${st.sysOpen ? p.systems.map((x) => `<div class="w-sys"><i class="${esc(x.status)}"></i><div class="grow"><b>${esc(x.system.replace(/_/g, ' '))}</b><span>${x.detail ? esc(x.detail) : ago(x.checked_at) === 'now' ? 'checked just now' : `checked ${ago(x.checked_at)} ago`}</span></div><em class="${esc(x.status)}">${esc(x.status)}</em></div>`).join('')

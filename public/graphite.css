@@ -346,6 +346,7 @@ i.today, em.today { color: var(--amber); } i.overdue, em.overdue { color: var(--
 .method i { height: 10px; border-radius: 5px; background: var(--control); overflow: hidden; }
 .method u { display: block; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #6EF0B4, #1FB5C9); }
 .method b { font-size: calc(17px * var(--ts)); font-weight: 600; text-align: right; }
+.method-note { font-size: calc(13px * var(--ts)); color: var(--muted); }
 
 /* ---------- Mail and Claude's cards ---------- */
 .ai-card { flex: none; border-radius: 26px; padding: 20px 22px; gap: 12px; --sec: var(--g-mail); }

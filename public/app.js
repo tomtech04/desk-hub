@@ -757,6 +757,7 @@ const VIEWS = {
         <section class="card methods">
           <div class="ch plain"><span class="title">By payment method</span></div>
           ${providers.length ? providers.map(([k, v]) => `<div class="method"><span>${esc(provName[k] || k)}</span><i><u style="width:${((v / provMax) * 100).toFixed(1)}%"></u></i><b>${money(v)}</b></div>`).join('') : '<div class="empty">No sales yet today.</div>'}
+          ${p.excludedProviders?.length ? `<div class="method-note">${esc(p.excludedProviders.map((k) => provName[k] || k).join(' and '))} sales aren't counted in these numbers.</div>` : ''}
         </section>
         <section class="card rows-card fold ${ui.sysOpen ? 'open' : ''}">
           <button class="ch plain fold-h" data-act="sys-fold"><span class="title">Systems</span><span class="meta dotted ${down ? 'bad' : bad.length ? 'warn' : 'good'}"><i></i>${down ? `${down} down` : bad.length ? `${bad.length} degraded` : 'all up'}</span>${icon('chev')}</button>

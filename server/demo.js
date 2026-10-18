@@ -31,14 +31,15 @@ export function payit() {
   const hourly = Array.from({ length: 24 }, (_, h) => (h <= hour && h >= 8 ? Math.round((Math.sin(h / 3) + 1.3) * 9000 + h * 700) : 0));
   const gross = hourly.reduce((a, b) => a + b, 0);
   return {
-    today: { grossCents: gross, count: 47, declined: 4, refunded: 1, activeMerchants: 9, byProvider: { stripe: gross * 0.71, cash: gross * 0.2, ath_movil: gross * 0.09 }, newBusinesses: 2, avgTicketCents: Math.round(gross / 47) },
+    today: { grossCents: gross, count: 47, declined: 4, refunded: 1, activeMerchants: 9, byProvider: { stripe: gross * 0.82, ath_movil: gross * 0.18 }, newBusinesses: 2, avgTicketCents: Math.round(gross / 47) },
     yesterdaySameTimeCents: Math.round(gross * 0.86),
-    profit: { todayCents: Math.round(gross * 0.71 * 0.029), weekCents: 41250, cardVolumeCents: Math.round(gross * 0.71) },
+    profit: { todayCents: Math.round(gross * 0.82 * 0.029), weekCents: 41250, cardVolumeCents: Math.round(gross * 0.82) },
     hourly,
     week: Array.from({ length: 7 }, (_, i) => ({ date: new Date(startOfDay(Date.now(), i - 6)).toISOString(), cents: i === 6 ? gross : [182000, 241500, 198300, 265000, 301200, 227900][i], count: 40 })),
+    excludedProviders: ['cash'],
     subscriptions: { paying: 38, paidThisMonth: 31, monthCents: 92969, inTrial: 6, billingIssues: 1 },
-    recent: [[4250, 'stripe', 'completed', 3], [1800, 'cash', 'completed', 9], [6400, 'stripe', 'completed', 16], [2999, 'stripe', 'declined', 22],
-      [1250, 'ath_movil', 'completed', 31], [8800, 'stripe', 'completed', 44], [3500, 'cash', 'completed', 58], [5200, 'stripe', 'refunded', 75]]
+    recent: [[4250, 'stripe', 'completed', 3], [1800, 'ath_movil', 'completed', 9], [6400, 'stripe', 'completed', 16], [2999, 'stripe', 'declined', 22],
+      [1250, 'ath_movil', 'completed', 31], [8800, 'stripe', 'completed', 44], [3500, 'stripe', 'completed', 58], [5200, 'stripe', 'refunded', 75]]
       .map(([cents, provider, status, min]) => ({ cents, provider, status, at: new Date(Date.now() - min * 60e3).toISOString() })),
     systems: [
       { system: 'database', status: 'up', detail: null, checked_at: new Date().toISOString() },

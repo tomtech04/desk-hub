@@ -21,6 +21,9 @@ const list = (v) => (v || '').split(',').map((s) => s.trim()).filter(Boolean);
 const TEST_OWNER_IDS = list(process.env.PAYIT_TEST_OWNER_IDS);
 const TEST_EMAILS = list(process.env.PAYIT_TEST_ACCOUNT_EMAILS);
 const EXTRA_EXCLUDED = list(process.env.PAYIT_EXCLUDE_BUSINESS_IDS);
+// Payment methods left out of every PayIt number on the hub. Cash by default: it's
+// recorded by hand at the counter and never goes through the platform.
+const EXCLUDED_PROVIDERS = new Set(list(process.env.PAYIT_EXCLUDE_PROVIDERS ?? 'cash').map((p) => p.toLowerCase()));
 
 export const payitConfigured = Boolean(DATABASE_URL || (URL_BASE && KEY));
 export const payitMode = DATABASE_URL ? 'read-only role' : URL_BASE && KEY ? 'service key' : 'off';
@@ -163,7 +166,7 @@ export async function loadPayit() {
   if (STRIPE_KEY) { try { fees = await loadFees(weekStart); } catch (err) { profitError = err.message; } }
 
   const ignoredTx = new Set(ignored);
-  const rows = payments.filter((p) => !excluded.has(p.business_id) && !ignoredTx.has(p.transaction_id));
+  const rows = payments.filter((p) => !excluded.has(p.business_id) && !ignoredTx.has(p.transaction_id) && !EXCLUDED_PROVIDERS.has(String(p.provider || '').toLowerCase()));
   const at = (p) => Date.parse(p.created_at);
 
   // 7 daily buckets of completed gross, oldest first.
@@ -217,6 +220,7 @@ export async function loadPayit() {
     } : null,
     profitError,
     excludedBusinesses: excluded.size,
+    excludedProviders: [...EXCLUDED_PROVIDERS],
     access: payitMode,
     systems: Object.values(latest).sort((a, b) => a.system.localeCompare(b.system)),
     recent,
