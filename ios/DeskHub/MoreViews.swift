@@ -23,7 +23,7 @@ struct MoreView: View {
                     link(.health, "heart.fill", G.heart, "Health", healthLine)
                 } header: { SectionLabel(text: "Your world") }
                 Section {
-                    link(.ring, "circle.circle", G.journal, "Ring & voice notes", ring.pairedId == nil ? "Not paired" : ring.status)
+                    link(.ring, "circle.circle", G.journal, "Ring & voice notes", ringLine)
                 } header: { SectionLabel(text: "Voice") }
                 Section {
                     link(.connection, "network", G.cal, "Hub connection", connectionLine)
@@ -57,6 +57,11 @@ struct MoreView: View {
         guard health.connected else { return health.status == .unavailable ? "Not available" : "Not connected" }
         guard let day = health.today else { return "No data yet today" }
         return day.headline ?? HealthStory.headline(day)
+    }
+
+    private var ringLine: String {
+        guard ring.pairedId != nil else { return "Not paired" }
+        return ring.batteryPercent.map { "\(ring.status) · \($0)% battery" } ?? ring.status
     }
 
     private var connectionLine: String {

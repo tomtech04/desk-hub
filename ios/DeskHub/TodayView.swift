@@ -500,7 +500,7 @@ struct SystemsCard: View {
                 SystemLine(icon: "antenna.radiowaves.left.and.right", name: feed.name, value: feed.error, ok: false)
             }
             if ring.pairedId != nil {
-                SystemLine(icon: "circle.circle", name: "Index 01", value: ring.status, ok: !ring.status.lowercased().contains("problem"))
+                SystemLine(icon: "circle.circle", name: "Index 01", value: ringLine, ok: !ringProblem && (ring.batteryPercent ?? 100) >= 10)
             }
         }
     }
@@ -514,6 +514,14 @@ struct SystemsCard: View {
         if let m = d.system?.memUsedPct { parts.append("mem \(Int(m))%") }
         if let u = d.system?.uptimeH { parts.append(u >= 48 ? "up \(Int(u / 24))d" : "up \(Int(u))h") }
         return parts.isEmpty ? "No readings" : parts.joined(separator: " · ")
+    }
+
+    private var ringProblem: Bool { ring.status.lowercased().contains("problem") || ring.status.lowercased().contains("failed") }
+
+    /// The battery while all is well; the ring's status when something's going on.
+    private var ringLine: String {
+        guard let battery = ring.batteryPercent, !ringProblem, ring.status.hasPrefix("Listening") else { return ring.status }
+        return "\(battery)% battery"
     }
 }
 

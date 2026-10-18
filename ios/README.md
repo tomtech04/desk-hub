@@ -68,6 +68,7 @@ Read: heart rate, resting heart rate, HRV, steps, active energy, exercise minute
 
 - The first time a ring syncs with this app, recordings still on it are cleared, as the Pebble app does when pairing. Sync anything you need in the Pebble app first.
 - **Firmware updates** come from Core Devices' servers through the Pebble app; this app doesn't install them. If the ring ever needs one, reinstall the Pebble app for that, then delete it again.
+- **Battery** (More → Ring & voice notes, and the Systems card) is a percentage the app estimates, since the ring only reports a voltage and its battery can't be charged: the lower of what the voltage says and how much of Pebble's 12 to 15 hours of recording the ring has used.
 - iOS wakes the app when the ring has something. If you force-quit it (swipe it away), open it once to start listening again.
 - **Something not working?** More → Ring & voice notes → **Ring log** has what the ring and the app did. The share button sends it anywhere.
 

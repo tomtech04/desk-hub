@@ -48,8 +48,11 @@ interface IndexRingListener {
      */
     fun onRecording(clipId: String, pcm: NSData, sampleRate: Int, recordedAtMs: Long)
 
-    /** Firmware version and battery voltage, whenever the ring reports them (either may be null). */
-    fun onRingInfo(firmware: String?, batteryMilliVolts: Int)
+    /**
+     * Firmware version, battery voltage and how many recordings the ring has made in its life,
+     * whenever the ring reports them (firmware may be null; the numbers are -1 when unknown).
+     */
+    fun onRingInfo(firmware: String?, batteryMilliVolts: Int, lifetimeRecordings: Int)
 
     /** Diagnostic lines for the in-app log. */
     fun onLog(line: String)
@@ -193,7 +196,8 @@ class IndexRing(private val listener: IndexRingListener) {
             is SatelliteStatus.Transferring -> when (val t = status.transferStatus) {
                 is TransferStatus.TransferStarted -> listener.onStatus("Receiving a recording")
                 is TransferStatus.TransferTypeDetermined -> {
-                    listener.onRingInfo(status.satellite.state.value?.firmwareVersion, t.batteryVoltageMilliV?.toInt() ?: -1)
+                    listener.onRingInfo(status.satellite.state.value?.firmwareVersion, t.batteryVoltageMilliV?.toInt() ?: -1,
+                        t.lifetimeCollectionCount?.toInt() ?: -1)
                     if (!t.isAudio) log("Ring button ${t.buttonSequence ?: "press"} (no audio)")
                 }
                 is TransferStatus.TransferComplete -> deliver(t)

@@ -15,7 +15,7 @@ struct RingSettingsView: View {
                 if ring.pairedId != nil {
                     LabeledContent("Status", value: ring.status)
                     if let firmware = ring.firmware { LabeledContent("Firmware", value: firmware) }
-                    if let mv = ring.batteryMilliVolts { LabeledContent("Battery", value: String(format: "%.2f V", Double(mv) / 1000)) }
+                    if let battery = ring.batteryPercent { LabeledContent("Battery", value: "\(battery)%") }
                     Button("Forget this ring", role: .destructive) { confirmForget = true }
                 } else {
                     Text("Pair your Index 01 and its voice notes come straight here, get transcribed on this iPhone, and go to the hub. No Pebble app needed.")
@@ -24,6 +24,10 @@ struct RingSettingsView: View {
                 }
             } header: {
                 Text("Ring")
+            } footer: {
+                if ring.pairedId != nil, ring.batteryPercent != nil {
+                    Text("Battery is an estimate. It can't be charged; Pebble rates it for 12 to 15 hours of recording, about two years of short notes.")
+                }
             }
 
             Section {
