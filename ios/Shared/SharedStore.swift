@@ -53,6 +53,9 @@ enum Shared {
 struct PayitSnapshot: Codable, Equatable {
     var todayCents: Double
     var count: Int
+    /// What the platform kept in fees today (Stripe application fees, less refunds). Nil when the
+    /// hub has no Stripe key.
+    var feesCents: Double?
     /// What yesterday had come to by this time of day, to say whether today is ahead.
     var yesterdaySameTimeCents: Double?
     /// The last seven days, oldest first.
@@ -83,10 +86,12 @@ extension PayitSnapshot {
         struct Feed: Decodable { var data: Body? }
         struct Body: Decodable {
             struct Today: Decodable { var grossCents: Double?; var count: Int? }
+            struct Profit: Decodable { var todayCents: Double? }
             struct Day: Decodable { var cents: Double? }
             struct Subs: Decodable { var paying: Int?; var monthCents: Double? }
             struct Check: Decodable { var status: String? }
             var today: Today?
+            var profit: Profit?
             var yesterdaySameTimeCents: Double?
             var week: [Day]?
             var subscriptions: Subs?
@@ -101,6 +106,7 @@ extension PayitSnapshot {
         return PayitSnapshot(
             todayCents: today.grossCents ?? 0,
             count: today.count ?? 0,
+            feesCents: body.profit?.todayCents,
             yesterdaySameTimeCents: body.yesterdaySameTimeCents,
             weekCents: (body.week ?? []).suffix(7).map { $0.cents ?? 0 },
             subsPaying: body.subscriptions?.paying,

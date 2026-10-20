@@ -51,11 +51,6 @@ struct StressReading {
     }
 }
 
-extension PayitSnapshot {
-    /// Seven days' sales, today included.
-    var weekTotalCents: Double { weekCents.reduce(0, +) }
-}
-
 extension WidgetContent {
     /// For the gallery, placeholders and the screenshots.
     static let sample = WidgetContent(
@@ -120,15 +115,17 @@ private struct SmallLayout: View {
                 }
                 Spacer(minLength: 4)
                 if let p = content.payit {
-                    Caption(text: "PAYIT", color: look.color(.payit), look: look, size: 9.5)
+                    Caption(text: "PAYIT TODAY", color: look.color(.payit), look: look, size: 9.5)
                     Text(Money.text(p.todayCents))
                         .font(look.number(28)).foregroundStyle(look.text)
                         .minimumScaleFactor(0.5).lineLimit(1)
-                    HStack(spacing: 5) {
+                    HStack(spacing: 6) {
                         Text(p.count == 1 ? "1 pay" : "\(p.count) pay").font(look.label(10.5)).foregroundStyle(look.color(.payments))
-                        VersusYesterday(payit: p, look: look, size: 10.5, short: true)
+                        if let fees = p.feesCents {
+                            Text("\(Money.text(fees)) fees").font(look.label(10.5)).foregroundStyle(look.color(.fees))
+                        }
                     }
-                    .lineLimit(1)
+                    .lineLimit(1).minimumScaleFactor(0.7)
                 }
                 Spacer(minLength: 5)
                 if let s = content.stress {
@@ -189,10 +186,14 @@ private struct MediumLayout: View {
 
     private func payit(_ p: PayitSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            HStack(spacing: 5) {
                 Caption(text: "PAYIT", color: look.color(.payit), look: look, size: 8.5)
                 if p.systemIssues > 0 { IssueBadge(count: p.systemIssues, look: look) }
                 Spacer(minLength: 0)
+                if p.versusYesterday != nil {
+                    Text("\(p.versusYesterday! >= 0 ? "↗" : "↘")\(Helpers.percent(p).dropFirst())")
+                        .font(look.label(9)).foregroundStyle(Helpers.tone(p, look))
+                }
                 if !content.live, let at = content.updatedAt {
                     Text(at.formatted(date: .omitted, time: .shortened)).font(look.label(8)).foregroundStyle(look.muted)
                 }
@@ -203,9 +204,9 @@ private struct MediumLayout: View {
                 .padding(.top, 3)
             Spacer(minLength: 4)
             HStack(spacing: 0) {
-                StatCell(caption: "PAYMENTS", value: "\(p.count)", color: look.color(.payments), look: look, size: 16).padding(.trailing, 6)
+                StatCell(caption: "FEES", value: p.feesCents.map(Money.text) ?? "–", color: look.color(.fees), look: look, size: 16).padding(.trailing, 6)
                 Separator(look: look)
-                StatCell(caption: "VS YDAY", value: Helpers.percent(p), color: Helpers.tone(p, look), look: look, size: 16).padding(.leading, 8)
+                StatCell(caption: "PAYMENTS", value: "\(p.count)", color: look.color(.payments), look: look, size: 16).padding(.leading, 8)
             }
             if let paying = p.subsPaying {
                 HStack(spacing: 5) {
@@ -312,13 +313,13 @@ private struct LargeLayout: View {
             }
             Spacer(minLength: 5)
             grid([
-                Stat("TODAY", Money.text(p.todayCents), look.color(.payit)),
+                Stat("TRANSACTED", Money.text(p.todayCents), look.color(.payit)),
+                Stat("FEES", p.feesCents.map(Money.text) ?? "–", look.color(.fees)),
                 Stat("PAYMENTS", "\(p.count)", look.color(.payments)),
-                Stat("VS YESTERDAY", Helpers.percent(p), Helpers.tone(p, look)),
             ])
             Spacer(minLength: 6)
             grid([
-                Stat("7 DAYS", Money.compact(p.weekTotalCents), look.color(.week)),
+                Stat("VS YESTERDAY", Helpers.percent(p), Helpers.tone(p, look)),
                 Stat("PLUS PAYING", p.subsPaying.map(String.init) ?? "–", look.color(.plus)),
                 Stat("PLUS THIS MONTH", p.subsMonthCents.map(Money.compact) ?? "–", look.color(.plus)),
             ])

@@ -39,7 +39,7 @@ extension WidgetLook {
         }
     }
 
-    enum Section { case weather, payit, payments, week, plus }
+    enum Section { case weather, payit, fees, payments, plus }
 
     /// Each part of the widget has its own colour, so the numbers sort themselves by eye.
     func color(_ section: Section) -> Color {
@@ -47,13 +47,13 @@ extension WidgetLook {
         switch (self, section) {
         case (.sky, .weather): return c(0.92, 0.97, 1.0)
         case (.sky, .payit): return c(0.76, 1.0, 0.87)
-        case (.sky, .payments): return c(1.0, 0.92, 0.62)
-        case (.sky, .week): return c(0.88, 0.94, 1.0)
+        case (.sky, .fees): return c(1.0, 0.92, 0.62)
+        case (.sky, .payments): return c(0.88, 0.94, 1.0)
         case (.sky, .plus): return c(0.92, 0.86, 1.0)
         case (_, .weather): return c(0.40, 0.82, 1.0)
         case (_, .payit): return good
-        case (_, .payments): return c(1.0, 0.78, 0.36)
-        case (_, .week): return c(0.55, 0.76, 1.0)
+        case (_, .fees): return c(1.0, 0.80, 0.34)
+        case (_, .payments): return c(0.55, 0.76, 1.0)
         case (_, .plus): return c(0.76, 0.64, 1.0)
         }
     }

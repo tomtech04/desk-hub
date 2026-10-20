@@ -67,7 +67,7 @@ struct DeskHubProvider: AppIntentTimelineProvider {
 extension PayitSnapshot {
     /// For the widget gallery and placeholders.
     static let sample = PayitSnapshot(
-        todayCents: 184_250, count: 47, yesterdaySameTimeCents: 163_900,
+        todayCents: 184_250, count: 47, feesCents: 5_240, yesterdaySameTimeCents: 163_900,
         weekCents: [182_000, 241_500, 198_300, 265_000, 301_200, 227_900, 184_250],
         subsPaying: 38, subsMonthCents: 92_969, systemIssues: 0, updatedAt: Date())
 }
