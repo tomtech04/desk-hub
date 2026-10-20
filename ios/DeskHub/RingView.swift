@@ -16,6 +16,8 @@ struct RingSettingsView: View {
                     LabeledContent("Status", value: ring.status)
                     if let firmware = ring.firmware { LabeledContent("Firmware", value: firmware) }
                     if let battery = ring.batteryPercent { LabeledContent("Battery", value: "\(battery)%") }
+                    NavigationLink("Ring buttons") { RingButtonsView() }
+                    Button("Restart ring sync") { ring.restartSync() }
                     Button("Forget this ring", role: .destructive) { confirmForget = true }
                 } else {
                     Text("Pair your Index 01 and its voice notes come straight here, get transcribed on this iPhone, and go to the hub. No Pebble app needed.")
@@ -25,8 +27,13 @@ struct RingSettingsView: View {
             } header: {
                 Text("Ring")
             } footer: {
-                if ring.pairedId != nil, ring.batteryPercent != nil {
-                    Text("Battery is an estimate. It can't be charged; Pebble rates it for 12 to 15 hours of recording, about two years of short notes.")
+                if ring.pairedId != nil {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if ring.batteryPercent != nil {
+                            Text("Battery is an estimate. It can't be charged; Pebble rates it for 12 to 15 hours of recording, about two years of short notes.")
+                        }
+                        Text("Ring firmware updates come from Core Devices' server, which only answers to a signed-in Pebble account, so they still go through the Pebble app. Install it when an update is due, then delete it again.")
+                    }
                 }
             }
 

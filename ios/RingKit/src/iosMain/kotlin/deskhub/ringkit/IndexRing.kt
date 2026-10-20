@@ -1,5 +1,6 @@
 package deskhub.ringkit
 
+import coredevices.haversine.ButtonSequenceDebouncer
 import coredevices.haversine.CollectionIndexStorage
 import coredevices.haversine.KMPHaversineAdvertisement
 import coredevices.haversine.KMPHaversineDebugDelegate
@@ -56,6 +57,13 @@ interface IndexRingListener {
 
     /** Diagnostic lines for the in-app log. */
     fun onLog(line: String)
+
+    /**
+     * A button gesture once the ring has finished counting clicks: "short", "short short",
+     * "short short short", "long", "short long"... Holds are recordings and arrive as audio too,
+     * so the app only acts on sequences made of short presses.
+     */
+    fun onButtonGesture(sequence: String)
 }
 
 /**
@@ -104,6 +112,9 @@ class IndexRing(private val listener: IndexRingListener) {
         override fun handleRxRSSI(rssi: Float, satellite: KMPHaversineSatellite) {}
     }
 
+    /** Counts the ring's clicks (the ring reports each press as its own transfer) into whole gestures. */
+    private val gestures = ButtonSequenceDebouncer(scope)
+
     private val manager: KMPHaversineSatelliteManager by lazy {
         KMPHaversineSatelliteManager(
             pairedSatelliteIdProvider = { paired.value },
@@ -112,9 +123,17 @@ class IndexRing(private val listener: IndexRingListener) {
             collectionIndexStorage = indexStorage,
             hwVersion = HW_VERSION,
             scope = scope,
-            // Firmware updates come from Core Devices' service, which needs a Pebble account.
+            // Core Devices' firmware server answers only to a signed-in Core Devices account
+            // (it replies 401 "Missing Authorization: Bearer <id token>" otherwise), which only
+            // the Pebble app can sign in to. So this app never has update files to hand over.
             updateJsonProvider = { null },
         )
+    }
+
+    /** The library's own "restart pre-emptive transfer", which the Pebble app offers on iOS as a way to unstick syncing. */
+    fun restartSync() {
+        manager.restartPreemptiveTransfer()
+        log("Restarted the ring sync")
     }
 
     /** The bonded ring's iOS identifier, or null. */
@@ -124,6 +143,7 @@ class IndexRing(private val listener: IndexRingListener) {
     fun start() {
         if (syncJob?.isActive == true) return
         syncJob = scope.launch {
+            launch { gestures.buttonGestures.collect { listener.onButtonGesture(it.sequence) } }
             paired.collectLatest { id ->
                 if (id == null) {
                     listener.onStatus("No ring paired")
@@ -193,21 +213,24 @@ class IndexRing(private val listener: IndexRingListener) {
 
     private fun handle(status: SatelliteStatus) {
         when (status) {
-            is SatelliteStatus.Transferring -> when (val t = status.transferStatus) {
-                is TransferStatus.TransferStarted -> listener.onStatus("Receiving a recording")
-                is TransferStatus.TransferTypeDetermined -> {
-                    listener.onRingInfo(status.satellite.state.value?.firmwareVersion, t.batteryVoltageMilliV?.toInt() ?: -1,
-                        t.lifetimeCollectionCount?.toInt() ?: -1)
-                    if (!t.isAudio) log("Ring button ${t.buttonSequence ?: "press"} (no audio)")
+            is SatelliteStatus.Transferring -> {
+                gestures.onTransferStatus(status.transferStatus)
+                when (val t = status.transferStatus) {
+                    is TransferStatus.TransferStarted -> listener.onStatus("Receiving a recording")
+                    is TransferStatus.TransferTypeDetermined -> {
+                        listener.onRingInfo(status.satellite.state.value?.firmwareVersion, t.batteryVoltageMilliV?.toInt() ?: -1,
+                            t.lifetimeCollectionCount?.toInt() ?: -1)
+                        if (!t.isAudio) log("Ring button ${t.buttonSequence ?: "press"} (no audio)")
+                    }
+                    is TransferStatus.TransferComplete -> deliver(t)
+                    is TransferStatus.TransferFailed -> {
+                        log("Transfer of recording ${t.collectionIndex} failed: ${t.exception?.message}")
+                        listener.onStatus("A transfer failed; it will retry")
+                    }
+                    is TransferStatus.IrrecoverableDataDetected ->
+                        log("The ring sent a recording that couldn't be decoded: ${t.exception?.message}")
+                    else -> {}
                 }
-                is TransferStatus.TransferComplete -> deliver(t)
-                is TransferStatus.TransferFailed -> {
-                    log("Transfer of recording ${t.collectionIndex} failed: ${t.exception?.message}")
-                    listener.onStatus("A transfer failed; it will retry")
-                }
-                is TransferStatus.IrrecoverableDataDetected ->
-                    log("The ring sent a recording that couldn't be decoded: ${t.exception?.message}")
-                else -> {}
             }
             is SatelliteStatus.BluetoothFailure -> {
                 log("Bluetooth problem: ${status.reason}")

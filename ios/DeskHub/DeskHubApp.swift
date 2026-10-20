@@ -13,6 +13,7 @@ struct DeskHubApp: App {
                 .environmentObject(appDelegate.hub)
                 .environmentObject(appDelegate.nav)
                 .environmentObject(appDelegate.ring)
+                .environmentObject(appDelegate.buttons)
                 .environmentObject(appDelegate.outbox)
                 .environmentObject(appDelegate.log)
                 .environmentObject(appDelegate.transcriber)
@@ -45,7 +46,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     lazy var hub = HubStore(settings: settings)
     lazy var transcriber = Transcriber(log: log)
     lazy var outbox = VoiceOutbox(settings: settings, transcriber: transcriber, log: log)
-    lazy var ring = RingController(outbox: outbox, log: log)
+    lazy var buttons = RingButtons(log: log)
+    lazy var ring = RingController(outbox: outbox, log: log, buttons: buttons)
     lazy var health = HealthMonitor(hub: hub, log: log)
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {

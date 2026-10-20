@@ -9,6 +9,7 @@ A private iPhone app for the hub: the one place to see what's going on with your
 - **How you're doing:** with Apple Health connected, the app follows your Apple Watch through the day and estimates how stressed you are compared with your own normal, flags stretches where your heart rate was up while you were sitting still, and asks for a one-minute check-in every evening (mood, stress, energy, what it was about, and a note you can say out loud). Today tells the day in a few plain sentences ("More stressed than usual. Your heart rate was up while you were sitting still around 2:10 PM…"); the numbers are on the Health page if you want them. The summary goes to the hub, and Claude's evening recap can mention how the day felt. Sleep isn't used.
 - **More:** PayIt in detail (by hour, last 7 days, payment methods, subscriptions), the schedule, systems and alerts, Apple Health (the day by hour, activity, check-ins, reminder settings), the ring, the hub connection, and the full hub page.
 - **The ring:** paired straight to the app. Hold the button, speak, let go: the recording comes over Bluetooth, Parakeet turns it into text on the phone, and the text goes to the hub's `/api/voice`, the same request the Pebble app's webhook made. It works with the app in the background, and if the hub can't be reached the note waits on the phone and is sent later.
+- **Ring clicks:** a click, double click or triple click can play, pause or skip music in Apple Music or Spotify (More → Ring & voice notes → Ring buttons). Out of the box a double click plays and pauses and a triple click skips to the next track. The Pebble app has these settings too but leaves them empty on iPhone, because iOS won't let one app press play in another; this app goes through Apple Music's own player or Spotify's web API instead.
 
 Nothing is published anywhere. You build it from this repo and install it on your own phone.
 
@@ -48,7 +49,8 @@ With a free Apple ID the app stops opening after 7 days; plug in and press Run a
 3. **More → Ring & voice notes → Pair ring**, then click the ring's button once to wake it. Tap it in the list and tap **Pair** when iOS asks. A ring already set up in the Pebble app is already paired with this iPhone, which is fine.
 4. Hold the button and speak. The note shows under **Recent notes** and pops up on the hub.
 5. Once notes arrive, **delete the Pebble app**. While both are installed, whichever gets to the ring first takes the recording.
-6. **Apple Health:** tap **Connect Apple Health** on Today and allow everything iOS lists, then allow notifications. The evening reminder is at 9 PM; change it or turn off the "stress looks high" questions in More → Health.
+6. **Ring clicks:** More → Ring & voice notes → **Ring buttons**. Pick Apple Music or Spotify. Apple Music needs nothing more than the permission iOS asks for. Spotify needs a one-time setup, because Spotify only lets an app control playback through its web API, and only for Premium accounts: make an app at developer.spotify.com/dashboard (Web API), add the redirect URI `deskhub://spotify-callback`, add your own account under User Management, paste its Client ID into the app and tap **Connect Spotify**. Nothing secret is stored on the phone (the sign-in uses PKCE). **Try it without the ring** has buttons to check the music side before you click the ring.
+7. **Apple Health:** tap **Connect Apple Health** on Today and allow everything iOS lists, then allow notifications. The evening reminder is at 9 PM; change it or turn off the "stress looks high" questions in More → Health.
 
 ## Apple Health and the stress estimate
 
@@ -67,7 +69,8 @@ Read: heart rate, resting heart rate, HRV, steps, active energy, exercise minute
 ## Good to know
 
 - The first time a ring syncs with this app, recordings still on it are cleared, as the Pebble app does when pairing. Sync anything you need in the Pebble app first.
-- **Firmware updates** come from Core Devices' servers through the Pebble app; this app doesn't install them. If the ring ever needs one, reinstall the Pebble app for that, then delete it again.
+- **Firmware updates** come from Core Devices' server, which answers only to a signed-in Core Devices account (a request without one gets a 401). Only the Pebble app can sign in, so this app can't fetch or install updates. If the ring ever needs one, reinstall the Pebble app for that, then delete it again.
+- **Clicks take a moment**: the ring waits to see whether another click follows before it reports one, and a click that wakes the app in the background can only reach Spotify or Apple Music if iOS lets the app run for those seconds. If a click does nothing, **Ring log** says what the app heard and what the music app answered.
 - **Battery** (More → Ring & voice notes, and the Systems card) is a percentage the app estimates, since the ring only reports a voltage and its battery can't be charged: the lower of what the voltage says and how much of Pebble's 12 to 15 hours of recording the ring has used.
 - iOS wakes the app when the ring has something. If you force-quit it (swipe it away), open it once to start listening again.
 - **Something not working?** More → Ring & voice notes → **Ring log** has what the ring and the app did. The share button sends it anywhere.

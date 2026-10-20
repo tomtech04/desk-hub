@@ -18,6 +18,7 @@ final class RingController: ObservableObject {
 
     fileprivate let outbox: VoiceOutbox
     fileprivate let log: RingLog
+    fileprivate let buttons: RingButtons
     private var ring: IndexRing?
 
     /// `-ringDemo YES` on launch: a paired ring with a battery reading and no Bluetooth (the simulator screenshots).
@@ -28,9 +29,10 @@ final class RingController: ObservableObject {
         static let clipSeconds = "ring.clipSeconds", clipCount = "ring.clipCount"
     }
 
-    init(outbox: VoiceOutbox, log: RingLog) {
+    init(outbox: VoiceOutbox, log: RingLog, buttons: RingButtons) {
         self.outbox = outbox
         self.log = log
+        self.buttons = buttons
         let saved = UserDefaults.standard
         pairedId = saved.string(forKey: "ring.paired")
         batteryMilliVolts = saved.object(forKey: Key.battery) as? Int
@@ -96,6 +98,12 @@ final class RingController: ObservableObject {
         log.add("Paired with ring \(id.prefix(8))")
     }
 
+    /// The library's "restart pre-emptive transfer": unsticks syncing if the ring stops delivering notes.
+    func restartSync() {
+        start()
+        ring?.restartSync()
+    }
+
     func forget() {
         ring?.setPairedRing(ringId: nil)
         pairedId = nil
@@ -137,6 +145,10 @@ private final class Listener: NSObject, IndexRingListener {
 
     func onLog(line: String) {
         Task { @MainActor [weak self] in self?.controller?.log.add(line) }
+    }
+
+    func onButtonGesture(sequence: String) {
+        Task { @MainActor [weak self] in self?.controller?.buttons.handle(sequence: sequence) }
     }
 }
 
