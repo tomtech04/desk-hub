@@ -186,8 +186,41 @@ struct SectionLabel: View {
 }
 
 extension View {
-    /// The screen background and dark bars every page shares.
+    /// The screen background every page shares, running to every edge of the screen.
     func graphitePage() -> some View {
         background(G.bg.ignoresSafeArea())
+    }
+
+    /// For the tab screens: no navigation bar, the title is the first thing in the scrolling content
+    /// (a `ScreenHeader`, like Today's), and the strip under the status bar stays the background
+    /// colour so content that scrolls up never runs into the clock.
+    func graphiteRoot() -> some View {
+        overlay(alignment: .top) { Color.clear.frame(height: 0).background(G.bg.ignoresSafeArea(edges: .top)) }
+            .graphitePage()
+            .toolbar(.hidden, for: .navigationBar)
+    }
+}
+
+/// A tab screen's title, in the same place and style as Today's greeting: just under the status
+/// bar, with room for a button on the right.
+struct ScreenHeader<Trailing: View>: View {
+    let title: String
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(alignment: .center) {
+            Text(title).font(.system(size: 30, weight: .bold)).foregroundStyle(G.text)
+            Spacer(minLength: 12)
+            trailing
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 10)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+extension ScreenHeader where Trailing == EmptyView {
+    init(_ title: String) {
+        self.init(title: title) { EmptyView() }
     }
 }

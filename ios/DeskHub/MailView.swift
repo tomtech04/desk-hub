@@ -12,6 +12,7 @@ struct MailView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
+                    ScreenHeader("Mail")
                     if let d = hub.dashboard {
                         digest(d)
                         if let error = d.mail?.error {
@@ -28,8 +29,7 @@ struct MailView: View {
                 .padding(.bottom, 28)
             }
             .refreshable { await hub.refresh() }
-            .navigationTitle("Mail")
-            .graphitePage()
+            .graphiteRoot()
             .sheet(item: $open) { MailDetailSheet(message: $0) }
             .onAppear(perform: openIfAsked)
             .onChange(of: hub.updatedAt) { _, _ in openIfAsked() }

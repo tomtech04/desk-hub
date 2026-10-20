@@ -68,6 +68,7 @@ struct RingSettingsView: View {
         .scrollContentBackground(.hidden)
         .graphitePage()
         .navigationTitle("Ring & voice notes")
+        .navigationBarTitleDisplayMode(.inline)
         .refreshable { outbox.process() }
         .sheet(isPresented: $pairing) { PairSheet() }
         .confirmationDialog("Forget this ring?", isPresented: $confirmForget, titleVisibility: .visible) {
@@ -220,6 +221,7 @@ private struct LogView: View {
                 .padding()
         }
         .navigationTitle("Ring log")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar { ShareLink(item: log.lines.joined(separator: "\n")) }
     }
 }

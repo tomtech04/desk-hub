@@ -24,6 +24,7 @@ struct JournalView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
+                    ScreenHeader("Journal")
                     recordCard
                     writeCard
                     checkInRow
@@ -47,8 +48,7 @@ struct JournalView: View {
                 .padding(.bottom, 28)
             }
             .refreshable { await hub.refresh() }
-            .navigationTitle("Journal")
-            .graphitePage()
+            .graphiteRoot()
             .onAppear(perform: takeRequests)
             .onChange(of: nav.wantsRecording) { _, _ in takeRequests() }
             .onChange(of: nav.wantsNote) { _, _ in takeRequests() }
@@ -407,6 +407,7 @@ struct PastDaysView: View {
         .scrollContentBackground(.hidden)
         .graphitePage()
         .navigationTitle("Past days")
+        .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $search, prompt: "Search your journal")
         .task(id: search) {
             try? await Task.sleep(for: .milliseconds(search.isEmpty ? 0 : 350))

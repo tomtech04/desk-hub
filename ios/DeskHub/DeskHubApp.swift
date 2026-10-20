@@ -78,7 +78,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         [.banner, .sound]
     }
 
-    /// Graphite tab and navigation bars.
+    /// The graphite tab bar. Navigation bars are left to the system, which draws them clear over
+    /// the page and blurs them as content scrolls beneath.
     private func styleBars() {
         let tab = UITabBarAppearance()
         tab.configureWithOpaqueBackground()
@@ -86,16 +87,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         tab.shadowColor = UIColor(Color(hex: 0x1F232A))
         UITabBar.appearance().standardAppearance = tab
         UITabBar.appearance().scrollEdgeAppearance = tab
-
-        let bar = UINavigationBarAppearance()
-        bar.configureWithOpaqueBackground()
-        bar.backgroundColor = UIColor(G.bg)
-        bar.shadowColor = .clear
-        bar.titleTextAttributes = [.foregroundColor: UIColor(G.text)]
-        bar.largeTitleTextAttributes = [.foregroundColor: UIColor(G.text)]
-        UINavigationBar.appearance().standardAppearance = bar
-        UINavigationBar.appearance().scrollEdgeAppearance = bar
-        UINavigationBar.appearance().compactAppearance = bar
     }
 }
 

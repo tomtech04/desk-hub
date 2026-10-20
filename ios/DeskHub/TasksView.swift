@@ -16,6 +16,16 @@ struct TasksView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
+                    ScreenHeader(title: "To do") {
+                        Button { adding = true } label: {
+                            Image(systemName: "plus").font(.system(size: 17, weight: .semibold)).foregroundStyle(G.text)
+                                .frame(width: 40, height: 40)
+                                .background(G.control, in: Circle())
+                                .overlay(Circle().strokeBorder(G.line, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("New task")
+                    }
                     if let d = hub.dashboard {
                         if !d.suggestedTodos.isEmpty { SuggestedCard(todos: d.suggestedTodos) }
                         chips
@@ -42,13 +52,7 @@ struct TasksView: View {
                 .padding(.bottom, 28)
             }
             .refreshable { await hub.refresh() }
-            .navigationTitle("To do")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { adding = true } label: { Image(systemName: "plus").font(.system(size: 17, weight: .semibold)) }
-                }
-            }
-            .graphitePage()
+            .graphiteRoot()
             .sheet(isPresented: $adding) { AddTaskSheet() }
         }
     }

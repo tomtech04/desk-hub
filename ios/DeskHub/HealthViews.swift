@@ -202,6 +202,7 @@ struct HealthPage: View {
         .refreshable { await health.refresh(force: true) }
         .graphitePage()
         .navigationTitle("Health")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var chart: some View {

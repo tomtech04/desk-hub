@@ -18,6 +18,12 @@ struct MoreView: View {
         NavigationStack(path: $path) {
             List {
                 Section {
+                    ScreenHeader("More")
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 4, trailing: 4))
+                }
+                Section {
                     link(.payit, "creditcard.fill", G.money, "PayIt", Fmt.money(hub.dashboard?.payit?.data?.today?.grossCents) + " today")
                     link(.schedule, "calendar", G.cal, "Schedule", "\(hub.dashboard?.events.count ?? 0) events coming up")
                     link(.systems, "server.rack", G.white, "Systems", systemsLine)
@@ -32,8 +38,9 @@ struct MoreView: View {
                 } header: { SectionLabel(text: "Hub") }
             }
             .scrollContentBackground(.hidden)
-            .graphitePage()
-            .navigationTitle("More")
+            // The title row above is the top of the page, like the other tabs.
+            .contentMargins(.top, 0, for: .scrollContent)
+            .graphiteRoot()
             .navigationDestination(for: Page.self) { page in
                 switch page {
                 case .payit: PayItView()
@@ -142,6 +149,7 @@ struct PayItView: View {
         .refreshable { await hub.refresh() }
         .graphitePage()
         .navigationTitle("PayIt")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func hero(_ p: PayItData) -> some View {
@@ -390,6 +398,7 @@ struct ScheduleView: View {
         .refreshable { await hub.refresh() }
         .graphitePage()
         .navigationTitle("Schedule")
+        .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $open) { EventSheet(event: $0) }
     }
 
@@ -440,6 +449,7 @@ struct SystemsView: View {
         .refreshable { await hub.refresh() }
         .graphitePage()
         .navigationTitle("Systems")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func feed(_ name: String, _ error: String?, _ updatedAt: Double?) -> some View {
@@ -490,6 +500,7 @@ struct ConnectionView: View {
         .scrollContentBackground(.hidden)
         .graphitePage()
         .navigationTitle("Hub connection")
+        .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $signingIn) { SignInSheet() }
     }
 
