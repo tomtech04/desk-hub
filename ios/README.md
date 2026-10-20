@@ -44,6 +44,25 @@ With a free Apple ID the app stops opening after 7 days; plug in and press Run a
 
 **B. No Xcode:** pushes to `main` that change `ios/` (or a manual run of the workflow) build the app on a Mac in GitHub Actions. Open the repo's **Actions** tab → **iPhone app** → the latest run → download **DeskHub-unsigned-ipa**, and install it with [Sideloadly](https://sideloadly.io) or AltStore, which sign it with your Apple ID. Same 7-day limit with a free Apple ID.
 
+## TestFlight: no cable, no 7-day expiry
+
+With a paid Apple Developer team the app installs and updates through the TestFlight app, the builds last 90 days, and just for you (internal testing) there is no App Review. One-time setup, in a browser, signed in as an **Admin or Account Holder** of the team:
+
+1. **Team ID:** developer.apple.com → Account → Membership details → *Team ID* (ten characters).
+2. **API key:** App Store Connect → Users and Access → Integrations → App Store Connect API → generate a key with **Admin** access. Download the `.p8` file (Apple only lets you once) and note the *Key ID* and *Issuer ID* at the top of the page.
+3. **On this Mac:** put the file at `~/.appstoreconnect/private_keys/AuthKey_<KeyID>.p8`, and make `~/.appstoreconnect/desk-hub.env` containing
+   ```
+   TEAM_ID=...
+   ASC_KEY_ID=...
+   ASC_ISSUER_ID=...
+   ```
+4. **Register the app:** run `bash ios/scripts/testflight.sh` once. It will build, then fail at the upload because the app doesn't exist in App Store Connect yet; on the way Xcode registers `com.tomtech04.deskhub`, its widget and the shared storage group for your team.
+5. **Create the app:** App Store Connect → Apps → **+** → New App. Platform iOS, bundle ID `com.tomtech04.deskhub`, any SKU. The *name* has to be unique across the whole App Store (even for an app nobody else can install), so use something distinctive like "Desk Hub (Tomas)"; the name under the icon on the phone stays "Desk Hub".
+6. **On the iPhone:** install TestFlight from the App Store, signed in with the Apple ID that is a user on the team.
+7. Run `bash ios/scripts/testflight.sh` again. After Apple finishes processing (usually 10 to 15 minutes) the build appears in TestFlight; tap Install. From then on, each update is that one command.
+
+`bash ios/scripts/testflight.sh --archive-only` checks that the app builds and archives, with any team, without uploading.
+
 ## Set it up
 
 1. **More → Hub connection:** the hub's address (`http://deskhub.local:8080` at home, or its public address so it works from anywhere). If the hub has `HUB_PASSWORD` set, sign in there; you stay signed in for 30 days. The ring's notes go through that sign-in, so no token is needed. If you'd rather they also arrive when the phone isn't signed in, add the voice token (`HUB_VOICE_TOKEN` from the Pi's `.env`). **Send a test to the hub** should put a "Ring connected" card on the hub.
