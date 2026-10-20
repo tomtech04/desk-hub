@@ -151,9 +151,12 @@ struct MailMessage: Decodable, Identifiable, Equatable {
     var date: String?
     var summary: String?
     var priority: String?
+    /// customer, person, school, business, automated or marketing: who it's from.
+    var kind: String?
     var action: String?
 
     var isUrgent: Bool { priority == "urgent" }
+    var isCustomer: Bool { kind == "customer" }
     var when: Date? { date.flatMap(Fmt.isoDate) }
 }
 

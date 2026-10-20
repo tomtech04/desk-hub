@@ -794,14 +794,15 @@ const VIEWS = {
       <div class="ph"><h1>Mail</h1><span class="ph-meta">${s.data.aiEnabled ? 'Summaries by Claude · ' : 'Updated '}${s.updatedAt ? hm(s.updatedAt) : '—'}</span></div>
       ${digestCard()}
       <div class="scroll">${s.data.accounts.map((a) => `<section class="card rows-card">
-        <div class="ch plain"><span class="title">${esc(a.name)}</span>${a.needsSignIn ? '' : `<span class="tagc">${a.unread} unread</span>`}</div>
+        <div class="ch plain"><span class="title">${esc(a.name)}</span>${a.needsSignIn ? '' : `<span class="tagc">${a.unread} unread</span>${a.syncedAt ? `<span class="tagc quiet">synced ${ago(new Date(a.syncedAt).toISOString())}</span>` : ''}`}</div>
         ${a.needsSignIn ? `<div class="mail-off"><span>${esc(a.name)} mail isn't connected yet.</span><button class="btn primary small" data-act="go" data-view="settings">Connect</button></div>`
           : a.error ? `<div class="empty pad warn">${esc(a.error)}</div>` : ''}
         ${a.messages.filter((m) => !m.hidden).map((m) => `<button class="mail-row ${m.priority === 'low' ? 'low' : ''}" data-act="mail-open" data-id="${esc(m.id)}">
-          <div class="mail-top"><b>${esc(m.from)}</b>${m.priority === 'urgent' ? '<em>Urgent</em>' : ''}<span>${ago(m.date)}</span></div>
+          <div class="mail-top"><b>${esc(m.from)}</b>${m.priority === 'urgent' ? '<em>Urgent</em>' : ''}${m.kind === 'customer' ? '<em class="cust">Customer</em>' : ''}<span>${ago(m.date)}</span></div>
           <p>${esc(m.summary)}</p>
           ${m.action ? `<div class="mail-act">${icon('arrow')}${esc(m.action)}</div>` : ''}
         </button>`).join('') || (a.needsSignIn || a.error ? '' : '<div class="empty pad">No unread mail from the last few days.</div>')}
+        ${a.hiddenAutomated ? `<div class="mail-more">+${a.hiddenAutomated} newsletters and notifications not shown</div>` : ''}
       </section>`).join('')}</div>
     </div>`;
   },

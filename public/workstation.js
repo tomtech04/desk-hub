@@ -312,7 +312,7 @@ export function createWorkstation(h) {
       ${digest ? `<section class="w-digest"><div class="w-kick violet">Digest · Claude · ${hm(digest.at)}</div><p>${esc(digest.headline)}</p></section>` : ''}`);
     patch('v-list', `<label class="w-search">${icon('search')}<input data-k="mailsearch" data-input="mail-search" placeholder="Search mail" autocomplete="off" value="${esc(st.mailQuery)}"></label>
       <div class="w-mlist" data-s="mlist">${list.map((m) => `<button class="w-mrow ${m.id === st.mailSel ? 'sel' : ''} ${m.priority === 'low' ? 'low' : ''}" data-ws="mail-select" data-id="${esc(m.id)}">
-          <div><i class="${m.hidden ? 'off' : ''}"></i><b>${esc(m.from)}</b>${m.priority === 'urgent' ? '<em>URGENT</em>' : ''}<span>${esc(m.account)} · ${ago(m.date)}</span></div>
+          <div><i class="${m.hidden ? 'off' : ''}"></i><b>${esc(m.from)}</b>${m.priority === 'urgent' ? '<em>URGENT</em>' : ''}${m.kind === 'customer' ? '<em class="cust">CUSTOMER</em>' : ''}<span>${esc(m.account)} · ${ago(m.date)}</span></div>
           <strong>${esc(m.subject || '')}</strong><p>${esc(m.summary || '')}</p></button>`).join('') || `<div class="w-empty center">${st.mailQuery ? 'Nothing matches.' : st.mailFolder === 'done' ? 'Nothing marked done.' : 'Inbox zero. Nice.'}</div>`}</div>
       <div class="w-hint">J / K move · D draft reply · E done · T task</div>`);
     patch('v-reader', reader(list.find((m) => m.id === st.mailSel)));

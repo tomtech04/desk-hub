@@ -68,10 +68,14 @@ struct AccountCard: View {
     @Binding var open: MailMessage?
 
     private var messages: [MailMessage] {
-        let rank = ["urgent": 0, "normal": 1, "low": 2]
+        // Urgent, then customers, then the rest by priority; newest first within each.
+        func rank(_ m: MailMessage) -> Int {
+            if m.priority == "urgent" { return 0 }
+            if m.isCustomer { return 1 }
+            return m.priority == "low" ? 3 : 2
+        }
         return (account.messages ?? []).sorted {
-            let a = rank[$0.priority ?? "normal"] ?? 1, b = rank[$1.priority ?? "normal"] ?? 1
-            return a != b ? a < b : ($0.when ?? .distantPast) > ($1.when ?? .distantPast)
+            rank($0) != rank($1) ? rank($0) < rank($1) : ($0.when ?? .distantPast) > ($1.when ?? .distantPast)
         }
     }
 
@@ -101,6 +105,11 @@ struct MailRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(message.from ?? "Unknown").font(.system(size: 15, weight: .semibold)).foregroundStyle(G.text).lineLimit(1)
+                    if message.isCustomer {
+                        Text("CUSTOMER").font(G.mono(9)).foregroundStyle(G.mint)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(G.mint.opacity(0.14), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    }
                     Spacer(minLength: 6)
                     if let when = message.when {
                         Text(Fmt.isToday(when) ? Fmt.time(when) : Fmt.day(when, "MMM d")).font(G.mono(11)).foregroundStyle(G.muted)

@@ -3,3 +3,4 @@ node_modules/
 data/*.json
 .DS_Store
 .supabase-link/
+data/mail-push/

@@ -8,7 +8,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { ROOT, TZ, readJson, writeJson, refresher, startOfDay, hmToMin, nowMinutes, tzOffset, zonedToUtc } from './util.js';
 import { payitConfigured, loadPayit } from './payit.js';
-import { mailConfigured, loadMail, buildDigest, aiEnabled, readMessage, taskFromEmail, tasksFromNewMail, draftReply } from './mail.js';
+import { mailConfigured, loadMail, buildDigest, aiEnabled, readMessage, taskFromEmail, tasksFromNewMail, draftReply, pushEnabled, pushTokenOk, receivePush } from './mail.js';
 import { calendarConfigured, loadCalendar } from './calendar.js';
 import { setBrightness, hasBacklight, systemStats, loadWeather } from './system.js';
 import { readVoiceRequest, interpretVoice, buildRecap } from './voice.js';
@@ -458,7 +458,22 @@ function buildAlerts(snap) {
 
   for (const acct of snap.mail?.data?.accounts || []) {
     if (acct.error && !acct.needsSignIn) add(`mailerr:${acct.id}`, 'warn', 'mail', `${acct.name} mail isn't connecting`, acct.error);
-    for (const m of acct.messages) if (m.priority === 'urgent' && !state.mailHidden?.[m.id]) add(`mail:${m.id}`, 'info', 'mail', `${acct.name}: ${m.from}`, m.summary);
+    let customerNudges = 0;
+    for (const m of acct.messages) {
+      if (state.mailHidden?.[m.id]) continue;
+      if (m.priority === 'urgent') add(`mail:${m.id}`, 'info', 'mail', `${acct.name}: ${m.from}`, m.summary);
+      // A customer is worth a nudge even when it isn't urgent, so one can't sit unseen in a long list.
+      // Only today's, and at most three at a time, so a first sync doesn't set off a pile of chimes.
+      else if (m.kind === 'customer' && !m.read && customerNudges < 3 && Date.now() - Date.parse(m.date) < 24 * 3600e3) {
+        customerNudges++;
+        add(`mail:${m.id}`, 'info', 'mail', `Customer · ${m.from}`, m.summary);
+      }
+    }
+    // The Mac stopped syncing (asleep, signed out, Mail closed). Only said in the daytime.
+    const hour = Math.floor(nowMinutes() / 60);
+    if (acct.kind === 'push' && acct.syncedAt && Date.now() - acct.syncedAt > 4 * 3600e3 && hour >= 9 && hour < 21) {
+      add(`mailsync:${acct.id}:${localDay()}`, 'info', 'mail', `${acct.name} mail hasn't synced for ${Math.floor((Date.now() - acct.syncedAt) / 3600e3)}h`, 'It syncs from your Mac whenever it is awake and Mail is open.');
+    }
   }
 
   const now = Date.now();
@@ -716,10 +731,25 @@ function send(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-async function readBody(req) {
+async function readBody(req, limit = 64e3) {
   let raw = '';
-  for await (const chunk of req) { raw += chunk; if (raw.length > 64e3) throw new Error('body too large'); }
+  for await (const chunk of req) { raw += chunk; if (raw.length > limit) throw new Error('body too large'); }
   return raw ? JSON.parse(raw) : {};
+}
+
+// The Mac's mail sync (scripts/mail-sync-install.sh) posts the school inbox here with its own token.
+async function mailPush(req, res) {
+  if (!pushTokenOk(req.headers.authorization)) return send(res, 401, { error: pushEnabled ? 'wrong mail token' : 'HUB_MAIL_TOKEN is not set on the hub' });
+  let body;
+  try { body = await readBody(req, 24e6); } catch (err) { return send(res, 400, { error: err.message }); }
+  try {
+    const out = await receivePush(body);
+    sources.mail?.refresh();
+    console.log(`[mail] ${out.account}: ${out.accepted} messages pushed, ${out.unread} unread`);
+    return send(res, 200, { ok: true, ...out });
+  } catch (err) {
+    return send(res, 400, { error: err.message });
+  }
 }
 
 const routes = {
@@ -954,6 +984,7 @@ http.createServer(async (req, res) => {
       if (url.pathname === '/api/logout' && req.method === 'POST') return logout(req, res);
       if (url.pathname === '/api/voice' && req.method === 'POST') return voice(req, res);
       if (url.pathname === '/api/health' && req.method === 'POST') return health(req, res);
+      if (url.pathname === '/api/mail/push' && req.method === 'POST') return mailPush(req, res);
       // /api/notify can also be reached with its own bearer token (scripts, webhooks).
       const viaNotifyToken = url.pathname === '/api/notify' && NOTIFY_TOKEN && req.headers.authorization === `Bearer ${NOTIFY_TOKEN}`;
       if (!viaNotifyToken && !allowed(req)) return send(res, 401, { error: 'sign in required', canSignIn: Boolean(HUB_PASSWORD) });

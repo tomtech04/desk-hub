@@ -374,6 +374,9 @@ i.today, em.today { color: var(--amber); } i.overdue, em.overdue { color: var(--
 .mail-top em { font-style: normal; font-family: var(--mono); font-size: calc(11px * var(--ts)); padding: 2px 7px; border-radius: 6px; background: rgba(255,122,122,.16); color: #FF9A9A; }
 .mail-top span { margin-left: auto; font-family: var(--mono); font-size: calc(12px * var(--ts)); color: var(--muted); }
 .mail-row p { font-size: calc(16px * var(--ts)); line-height: 1.4; color: #C9CFD8; }
+.mail-top em.cust { background: rgba(111,240,181,.14); color: #6FF0B5; }
+.tagc.quiet { margin-left: 8px; background: none; color: var(--muted); padding-left: 0; padding-right: 0; }
+.mail-more { padding: 10px 0 2px; font-family: var(--mono); font-size: calc(12px * var(--ts)); color: var(--muted); border-top: 1px solid var(--line-soft); }
 .mail-row.low b { color: var(--text-3); } .mail-row.low p { color: var(--muted); }
 .mail-act { display: flex; align-items: center; gap: 6px; font-size: calc(15px * var(--ts)); font-weight: 500; color: var(--amber); }
 .mail-off { padding: 16px 0 18px; display: flex; align-items: center; gap: 14px; border-top: 1px solid var(--line-soft); }

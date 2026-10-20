@@ -182,6 +182,7 @@ html.wsmode .ws:not([hidden]) { display: grid; height: 100%; grid-template-colum
 .w-mrow i { width: 6px; height: 6px; border-radius: 50%; background: var(--violet); flex: none; } .w-mrow i.off { background: #3A404B; }
 .w-mrow b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .w-mrow em { font-style: normal; font-family: var(--mono); font-size: 9.5px; padding: 1px 5px; border-radius: 4px; background: rgba(255,122,122,.16); color: #FF9A9A; flex: none; }
+.w-mrow em.cust { background: rgba(111,240,181,.14); color: #6FF0B5; }
 .w-mrow span { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; }
 .w-mrow strong, .w-mrow p { padding-left: 14px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .w-mrow strong { font-weight: 500; } .w-mrow p { color: var(--text-3); font-size: 12.5px; }

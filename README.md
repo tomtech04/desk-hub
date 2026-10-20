@@ -97,6 +97,21 @@ Either way the screen receives totals and the latest few payments (amount, metho
 
 If the organization doesn't let you register apps or approve this permission, it needs their IT department's sign-off.
 
+**School mail that can't sign in anywhere else: sync it from your Mac.** If the school account is already in Mail on your Mac (System Settings → Internet Accounts), no sign-in is needed on the hub at all: a small program on the Mac reads the inbox out of Mail and pushes it to the hub every 15 minutes. It runs whenever the Mac is awake and you're signed in, Mail doesn't need to be on screen (it's opened in the background if closed), and the Pi never sees a password.
+
+1. `bash scripts/deploy.sh <you>@deskhub.local`, so the hub can receive it.
+2. `bash scripts/mail-sync-install.sh <you>@deskhub.local` (on the home Wi-Fi). By default it syncs the Mail account called "Georgia Tech" and shows it on the hub as "School"; for others, `--account "Mail name=Hub name=school|business|personal"` (repeat it). It makes a secret token (`HUB_MAIL_TOKEN` on the Pi, `~/.deskhub/mail-sync.json` on the Mac), restarts the hub and installs the job. When macOS asks whether `node` may control Mail, choose Allow.
+3. The Mail page shows "synced 3m ago" on the account. If the Mac stays asleep or closed for 4 hours in the daytime, the hub says so. The log is `~/Library/Logs/deskhub-mail-sync.log` (counts only, never what an email says). Remove it with `bash scripts/mail-sync-install.sh --uninstall`.
+
+Each sync replaces the account's last three days on the hub (read and unread, and the full message so you can read it as it was sent), kept in `data/` on the Pi and cleared as mail ages out. Nothing is marked read or changed in the mailbox.
+
+**Who matters, and who doesn't.** Every email is triaged by who it's from: *customer*, *person* (a professor, TA, teammate, friend), *school* notices, *business* mail, *automated* messages or *marketing*. Customers and people are never "low" and always come first; automated and marketing mail is "low", and only five of them are shown per account with a count of the rest. Customers also get a nudge on the screen's bell (the newest three from today), so one can't sit in a long list. Every inbox is read 80 unread messages deep, and 30 real messages are shown per account, so a busy inbox can't push a customer off the list. Tell it about your world in `.env`:
+
+- `MAIL_CUSTOMER_ACCOUNTS=BulledUp,support@example.com`: accounts (named as on the hub) where a person writing is a customer, merchant or prospect.
+- `MAIL_VIP=prof.smith@gatech.edu,gatech.edu`: senders (an address, a domain or part of a name) that are never low.
+- `MAIL_MUTE=clubs-announce,glassdoor`: senders or subject words that are always low.
+- `MAIL_CARE_ABOUT` and `MAIL_NOT_INTERESTED`: a sentence each, in your words, that Claude reads when it triages.
+
 **Summaries and digest.** Set `ANTHROPIC_API_KEY` (starts with `sk-ant-`). Both use Claude Haiku 4.5 by default, the cheapest current model; for a sharper digest only, set `DIGEST_MODEL=claude-sonnet-5-5`. Each email is summarized once and cached by Message-ID. Without a key, mail still shows with a plain preview and there's no digest.
 
 **Calendars.** Set `CALENDAR_FEEDS=Canvas|https://...,Personal|https://...`. Canvas → Calendar → Calendar Feed gives you a link with every assignment due date. With a Canvas feed, every assignment due in the next 30 days also becomes a School task with its course and due date; if the due date moves in Canvas the task follows and says so. The feed doesn't say what you've submitted, so you tick those off yourself. An assignment is only ever added once, so deleting its task keeps it gone.
