@@ -494,7 +494,7 @@ struct ConnectionView: View {
             } header: {
                 SectionLabel(text: "Ring notes")
             } footer: {
-                Text("The ring's notes are sent with the voice token from the hub's .env, so they arrive even when this phone isn't signed in.")
+                Text("Optional. Signed in above, the ring's notes go through your sign-in. With the voice token from the hub's .env (HUB_VOICE_TOKEN) they also arrive when this phone isn't signed in.")
             }
         }
         .scrollContentBackground(.hidden)

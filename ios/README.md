@@ -46,7 +46,7 @@ With a free Apple ID the app stops opening after 7 days; plug in and press Run a
 
 ## Set it up
 
-1. **More → Hub connection:** the hub's address (`http://deskhub.local:8080` at home, or its public address so it works from anywhere). If the hub has `HUB_PASSWORD` set, sign in there; you stay signed in for 30 days. For the ring, also add the voice token (`HUB_VOICE_TOKEN` from the Pi's `.env`); **Send a test to the hub** should put a "Ring connected" card on the hub.
+1. **More → Hub connection:** the hub's address (`http://deskhub.local:8080` at home, or its public address so it works from anywhere). If the hub has `HUB_PASSWORD` set, sign in there; you stay signed in for 30 days. The ring's notes go through that sign-in, so no token is needed. If you'd rather they also arrive when the phone isn't signed in, add the voice token (`HUB_VOICE_TOKEN` from the Pi's `.env`). **Send a test to the hub** should put a "Ring connected" card on the hub.
 2. **Parakeet** downloads by itself the first time (about 500 MB, so be on Wi-Fi). After that it runs offline on the phone's Neural Engine.
 3. **More → Ring & voice notes → Pair ring**, then click the ring's button once to wake it. Tap it in the list and tap **Pair** when iOS asks. A ring already set up in the Pebble app is already paired with this iPhone, which is fine.
 4. Hold the button and speak. The note shows under **Recent notes** and pops up on the hub.
@@ -71,6 +71,8 @@ Read: heart rate, resting heart rate, HRV, steps, active energy, exercise minute
 **If Xcode won't sign the app after this update** with an error about HealthKit, your Apple ID's free team can't use it: either join the Apple Developer Program, or remove the `entitlements:` block from `project.yml` and rerun `setup.sh` (everything else keeps working; Health stays off).
 
 ## Good to know
+
+- **Notes from the ring are read on the phone first and sent second.** If the hub can't be reached (you're away, or not signed in), each note still gets transcribed and waits as "Transcribed, not sent yet" with the reason; they're sent the next time the app opens or the network changes. Before this was fixed, one failed send stopped the notes behind it from even being transcribed.
 
 - **The widget can only reach the hub on your home network** (or wherever its address works). On iPhone, the widget and the app share the hub's address and your sign-in through an App Group, which free Apple IDs are allowed to use. If the widget stays on "No numbers yet", open the app once on the home Wi-Fi.
 - **Spoken check-ins are read on the phone.** The words come from Parakeet, then mood, stress and energy come from what you said: numbers ("stress was a 4", "7 out of 10") and phrases ("exhausted", "wasn't a bad day") first, and Apple's on-device language model only for a level you didn't say, marked "my guess". Feelings and topics come only from words you said, so nothing is tagged that you didn't mention. Without Apple Intelligence it still works, just with the keyword rules alone.

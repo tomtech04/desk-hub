@@ -4,7 +4,8 @@ import UIKit
 
 struct VoiceClip: Codable, Identifiable, Equatable {
     enum State: String, Codable {
-        case waiting, transcribing, sending, sent, empty, failed
+        /// `transcribed`: read on the phone, not on the hub yet.
+        case waiting, transcribing, transcribed, sending, sent, empty, failed
     }
 
     let id: String
@@ -105,6 +106,9 @@ final class VoiceOutbox: ObservableObject {
 
     private func runPass() async {
         let pending = clips.filter { $0.state != .sent && $0.state != .empty }.sorted { $0.recordedAt < $1.recordedAt }
+        // Reading a note happens on the phone and doesn't need the hub, so every waiting note gets
+        // read even when the hub can't be reached. Only the sending stops, at the first failure.
+        var hubProblem: String?
         for clip in pending {
             var text = clip.transcript
             if text == nil {
@@ -128,6 +132,10 @@ final class VoiceOutbox: ObservableObject {
                     continue
                 }
             }
+            if let hubProblem {
+                update(clip.id) { $0.state = .transcribed; $0.problem = hubProblem }
+                continue
+            }
             update(clip.id) { $0.state = .sending; $0.problem = nil }
             do {
                 try await HubClient.sendNote(text: text ?? "", recordedAt: clip.recordedAt, settings: settings)
@@ -135,9 +143,9 @@ final class VoiceOutbox: ObservableObject {
                 deleteAudio(clip.id)
                 log.add("Sent to the hub: \((text ?? "").prefix(60))")
             } catch {
-                update(clip.id) { $0.state = .failed; $0.problem = error.localizedDescription }
+                hubProblem = error.localizedDescription
+                update(clip.id) { $0.state = .transcribed; $0.problem = hubProblem }
                 log.add("Couldn't send to the hub: \(error.localizedDescription)")
-                return // the hub is out of reach; the rest wait for the next try
             }
         }
     }
@@ -181,7 +189,7 @@ final class VoiceOutbox: ObservableObject {
         // Anything caught mid-step when the app last stopped starts that step again.
         clips = saved.map { clip in
             var clip = clip
-            if clip.state == .transcribing || clip.state == .sending { clip.state = .waiting }
+            if clip.state == .transcribing || clip.state == .sending { clip.state = clip.transcript == nil ? .waiting : .transcribed }
             return clip
         }
     }
@@ -197,8 +205,8 @@ final class VoiceOutbox: ObservableObject {
     }
 }
 
-/// Posts to the hub's voice webhook, signed in with the voice token, exactly like the Pebble
-/// app's webhook did.
+/// Posts to the hub's voice webhook: with the voice token, exactly like the Pebble app's webhook
+/// did, or, if there's no token, as this app signed in to the hub (the hub accepts either).
 enum HubClient {
     struct HubError: LocalizedError {
         let errorDescription: String?
@@ -220,17 +228,21 @@ enum HubClient {
     private static func post(_ body: [String: Any], settings: HubSettings) async throws {
         guard let base = settings.baseURL else { throw HubError("Add your hub's address in More → Hub connection.") }
         let token = settings.voiceToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty else { throw HubError("Add the hub's voice token in More → Hub connection.") }
         var request = URLRequest(url: base.appendingPathComponent("api/voice"), timeoutInterval: 20)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // Signed in, the session cookie rides along by itself; this says the note is from the ring.
+        request.setValue("ring", forHTTPHeaderField: "x-hub-source")
+        if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (_, response) = try await URLSession.shared.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         switch code {
         case 200..<300: return
-        case 401: throw HubError("The hub turned down the voice token. It has to match HUB_VOICE_TOKEN in the hub's .env.")
+        case 401:
+            throw HubError(token.isEmpty
+                ? "Sign in to the hub in More → Hub connection (or add the voice token)."
+                : "The hub turned down the voice token, and this app isn't signed in. Sign in under More → Hub connection, or fix the token (HUB_VOICE_TOKEN in the hub's .env).")
         default: throw HubError("The hub answered with an error (\(code)).")
         }
     }

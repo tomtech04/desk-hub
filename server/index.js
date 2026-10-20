@@ -628,9 +628,10 @@ async function voice(req, res) {
   if (!note.text) return send(res, 400, { error: 'no transcription in request' });
   // Answer right away so the phone isn't kept waiting on Claude.
   send(res, 200, { ok: true, queued: `v${note.recordedAt}` });
-  // The ring's phone app signs in with the voice token; the workstation and the iPhone app say
-  // where a recording came from; anything else is typed on a hub screen.
-  const hinted = ['computer', 'phone'].includes(req.headers['x-hub-source']) ? req.headers['x-hub-source'] : 'typed';
+  // The ring's phone app signs in with the voice token; the workstation and the iPhone app (which
+  // may be signed in instead of holding the token) say where a recording came from; anything else
+  // is typed on a hub screen.
+  const hinted = ['computer', 'phone', 'ring'].includes(req.headers['x-hub-source']) ? req.headers['x-hub-source'] : 'typed';
   handleVoice({ ...note, source: tokenOk ? 'ring' : hinted }).catch((err) => console.error('[voice]', err.message));
 }
 
