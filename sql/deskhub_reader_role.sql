@@ -4,9 +4,8 @@
 --
 -- Least privilege, column by column: the hub needs amounts and statuses to
 -- sum, which business a payment belongs to (to leave out team/test
--- businesses, same rule as PayIt's admin panel), the hourly system checks,
--- and PayIt Plus subscription statuses and prices. Nothing that identifies a
--- customer, no auth schema, no writes.
+-- businesses, same rule as PayIt's admin panel), and the hourly system
+-- checks. Nothing that identifies a customer, no auth schema, no writes.
 --
 -- This file lives in the desk hub's own repo on purpose. It is NOT a PayIt
 -- migration and is never added to PayIt's repo or migration history: it only
@@ -20,7 +19,6 @@
 --   drop policy deskhub_reader_select on public.businesses;
 --   drop policy deskhub_reader_select on public.admin_system_checks;
 --   drop policy deskhub_reader_select on public.admin_ignored_transactions;
---   drop policy deskhub_reader_select on public.store_subscriptions;
 --   drop owned by deskhub_reader; drop role deskhub_reader;
 --
 -- The password is deliberately NOT set here, since this file is committed to
@@ -46,13 +44,8 @@ grant select (system, status, detail, checked_at)
   on public.admin_system_checks to deskhub_reader;
 grant select (transaction_id)
   on public.admin_ignored_transactions to deskhub_reader;
--- PayIt Plus subscriptions, to count paying merchants and this month's revenue
--- (no store transaction ids). An existing role gets these two statements from
--- sql/deskhub_reader_subscriptions.sql.
-grant select (business_id, environment, status, in_trial, price_cents, current_period_started_at)
-  on public.store_subscriptions to deskhub_reader;
 
--- All five tables have RLS enabled, and their existing policies are written
+-- All four tables have RLS enabled, and their existing policies are written
 -- for anon/authenticated (or, for the admin tables, don't exist at all), so
 -- the grants above alone would return zero rows. These policies apply only
 -- to deskhub_reader and only to SELECT; the column grants still limit what
@@ -64,6 +57,4 @@ create policy deskhub_reader_select on public.businesses
 create policy deskhub_reader_select on public.admin_system_checks
   for select to deskhub_reader using (true);
 create policy deskhub_reader_select on public.admin_ignored_transactions
-  for select to deskhub_reader using (true);
-create policy deskhub_reader_select on public.store_subscriptions
   for select to deskhub_reader using (true);

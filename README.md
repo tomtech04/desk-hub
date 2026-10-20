@@ -83,7 +83,7 @@ The focus timer runs in each browser, so a timer started on your phone isn't the
 
 Either way the screen receives totals and the latest few payments (amount, method, status and time, never who paid or which business), and revenue follows the admin panel's rules: businesses owned by team/test accounts and admin-ignored transactions are left out.
 
-*PayIt Plus subscriptions.* The PayIt page counts merchants paying for PayIt Plus through the App Store (`store_subscriptions`, production only, outside free trials) and what they paid this month, at store prices before Apple's cut. The service key can read that already. A read-only role set up before this needs one more grant, `sql/deskhub_reader_subscriptions.sql` (same sign-off as the role itself); until then the PayIt page says so and everything else keeps working.
+*PayIt Plus subscriptions.* The PayIt page counts merchants paying for PayIt Plus through the App Store (production only, outside free trials) and what they paid this month, at store prices before Apple's cut. **Comped businesses ("Comp Plus" in the admin panel) and the hub's test accounts are left out.** The hub's read-only role can't read the subscriptions table, and that stays true: it calls one database function, `sql/deskhub_plus_totals.sql`, which returns five totals and no individual businesses. Apply it once with `supabase --workdir .supabase-link db query --linked -f sql/deskhub_plus_totals.sql` (it changes the production database, so it needs your sign-off); until then the PayIt page says so and everything else keeps working. The service-key fallback calls the same function.
 
 **Personal Gmail.** Turn on 2-Step Verification, create an App Password, and put it in `MAIL_1_PASS`.
 
