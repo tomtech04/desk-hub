@@ -60,8 +60,11 @@ export function writeJson(name, value) {
  */
 export function refresher(name, intervalMs, load) {
   const state = { data: null, error: null, updatedAt: null, loading: false, failures: 0 };
-  async function refresh() {
-    if (state.loading) return;
+  let again = false;
+  // Asked for on purpose (new mail was pushed, a sign-in finished) while a load is already running:
+  // that load may have missed it, so run once more right after. The timer's own ticks don't queue.
+  async function refresh(queueIfBusy = true) {
+    if (state.loading) { if (queueIfBusy) again = true; return; }
     state.loading = true;
     try {
       state.data = await load();
@@ -74,13 +77,14 @@ export function refresher(name, intervalMs, load) {
       console.error(`[${name}]`, state.error);
       // A one-off network blip (a failed DNS lookup, a dropped connection)
       // shouldn't wait a whole interval: try again shortly, a couple of times.
-      if (state.failures <= 2) setTimeout(refresh, 10e3).unref();
+      if (state.failures <= 2) setTimeout(() => refresh(false), 10e3).unref();
     } finally {
       state.loading = false;
+      if (again) { again = false; setTimeout(refresh, 0).unref(); }
     }
   }
-  refresh();
-  setInterval(refresh, intervalMs).unref();
+  refresh(false);
+  setInterval(() => refresh(false), intervalMs).unref();
   return { get: () => ({ ...state }), refresh };
 }
 
