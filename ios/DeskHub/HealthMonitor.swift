@@ -2,6 +2,7 @@ import Foundation
 import HealthKit
 import UIKit
 import UserNotifications
+import WidgetKit
 
 /// Watches the day through Apple Health (what the Apple Watch records), estimates stress against
 /// the person's own usual, keeps their check-ins, and sends the day to the hub. iOS wakes the app
@@ -14,7 +15,9 @@ final class HealthMonitor: ObservableObject {
     }
 
     @Published private(set) var status: Status = .off
-    @Published private(set) var today: HealthDay?
+    @Published private(set) var today: HealthDay? {
+        didSet { shareWithWidget() }
+    }
     @Published private(set) var hours: [HourPoint] = []
     @Published private(set) var sentAt: Date?
     @Published private(set) var sendProblem: String?
@@ -58,6 +61,7 @@ final class HealthMonitor: ObservableObject {
             status = .demo
             today = HealthDemo.day()
             hours = HealthDemo.hours()
+            shareWithWidget()
         }
     }
 
@@ -177,6 +181,17 @@ final class HealthMonitor: ObservableObject {
         } else {
             log.add("Couldn't send health to the hub: \(sendProblem ?? "")")
         }
+    }
+
+    /// Hands the widget today's stress, and refreshes it when the figures changed.
+    private func shareWithWidget() {
+        guard let day = today else { return }
+        let snapshot = WellnessSnapshot(
+            day: day.day, score: day.stress?.score, label: day.stress?.label, learning: day.stress?.learning ?? false,
+            checkinStress: day.checkins.last?.stress, headline: day.headline, steps: day.steps, updatedAt: Date())
+        guard !snapshot.sameNumbers(as: Shared.wellness) else { return }
+        Shared.wellness = snapshot
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: Check-ins

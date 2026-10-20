@@ -75,9 +75,15 @@ final class HubStore: ObservableObject {
         if let base = settings.baseURL {
             Shared.hubCookie = HTTPCookieStorage.shared.cookies(for: base)?.first { $0.name == "hub_session" }?.value
         }
-        guard let snapshot = PayitSnapshot.parse(dashboard: data) else { return }
-        let changed = !snapshot.sameNumbers(as: Shared.payit)
-        Shared.payit = snapshot
+        var changed = false
+        if let snapshot = PayitSnapshot.parse(dashboard: data) {
+            changed = !snapshot.sameNumbers(as: Shared.payit)
+            Shared.payit = snapshot
+        }
+        if let weather = WeatherSnapshot.parse(dashboard: data) {
+            changed = changed || !weather.sameNumbers(as: Shared.weather)
+            Shared.weather = weather
+        }
         if changed { WidgetCenter.shared.reloadAllTimelines() }
     }
 

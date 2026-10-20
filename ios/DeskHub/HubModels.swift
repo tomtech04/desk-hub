@@ -370,33 +370,7 @@ enum Fmt {
     }
 
     /// SF Symbol for a WMO weather code (the codes Open-Meteo uses).
-    static func weatherIcon(_ code: Int?, day: Bool = true) -> String {
-        switch code ?? 0 {
-        case 0: return day ? "sun.max.fill" : "moon.stars.fill"
-        case 1, 2: return day ? "cloud.sun.fill" : "cloud.moon.fill"
-        case 3: return "cloud.fill"
-        case 45, 48: return "cloud.fog.fill"
-        case 51...57: return "cloud.drizzle.fill"
-        case 61...67, 80...82: return "cloud.rain.fill"
-        case 71...77, 85, 86: return "cloud.snow.fill"
-        case 95...99: return "cloud.bolt.rain.fill"
-        default: return "cloud.fill"
-        }
-    }
+    static func weatherIcon(_ code: Int?, day: Bool = true) -> String { WeatherSnapshot.symbol(code, day: day) }
 
-    static func weatherWord(_ code: Int?) -> String {
-        switch code ?? 0 {
-        case 0: return "Clear"
-        case 1: return "Mostly clear"
-        case 2: return "Partly cloudy"
-        case 3: return "Cloudy"
-        case 45, 48: return "Fog"
-        case 51...57: return "Drizzle"
-        case 61...67: return "Rain"
-        case 71...77: return "Snow"
-        case 80...82: return "Showers"
-        case 95...99: return "Storms"
-        default: return "Cloudy"
-        }
-    }
+    static func weatherWord(_ code: Int?) -> String { WeatherSnapshot.word(code) }
 }
