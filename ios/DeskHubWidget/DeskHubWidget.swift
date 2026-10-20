@@ -28,7 +28,7 @@ struct DeskHubIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Desk Hub"
     static var description = IntentDescription("Choose how the widget looks.")
 
-    @Parameter(title: "Style", default: .aurora)
+    @Parameter(title: "Style", default: .graphite)
     var look: WidgetLook
 }
 
@@ -41,7 +41,7 @@ struct DeskHubEntry: TimelineEntry {
 
 struct DeskHubProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> DeskHubEntry {
-        DeskHubEntry(date: Date(), family: context.family, content: .sample, look: .aurora)
+        DeskHubEntry(date: Date(), family: context.family, content: .sample, look: .graphite)
     }
 
     func snapshot(for configuration: DeskHubIntent, in context: Context) async -> DeskHubEntry {

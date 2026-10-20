@@ -3,10 +3,10 @@ import SwiftUI
 
 /// The three looks of the Desk Hub widget, picked in Edit Widget > Style.
 enum WidgetLook: String, AppEnum, CaseIterable {
-    /// Deep night with soft violet, teal and pink glows, and frosted panels.
-    case aurora
     /// Near-black with hairlines and monospaced labels, like the hub's own screen.
     case graphite
+    /// Deep night with soft violet, teal and pink glows, and frosted panels.
+    case aurora
     /// The sky outside: the background follows the weather and the time of day.
     case sky
 
@@ -39,6 +39,42 @@ extension WidgetLook {
         }
     }
 
+    enum Section { case weather, payit, payments, week, plus }
+
+    /// Each part of the widget has its own colour, so the numbers sort themselves by eye.
+    func color(_ section: Section) -> Color {
+        func c(_ r: Double, _ g: Double, _ b: Double) -> Color { Color(red: r, green: g, blue: b) }
+        switch (self, section) {
+        case (.sky, .weather): return c(0.92, 0.97, 1.0)
+        case (.sky, .payit): return c(0.76, 1.0, 0.87)
+        case (.sky, .payments): return c(1.0, 0.92, 0.62)
+        case (.sky, .week): return c(0.88, 0.94, 1.0)
+        case (.sky, .plus): return c(0.92, 0.86, 1.0)
+        case (_, .weather): return c(0.40, 0.82, 1.0)
+        case (_, .payit): return good
+        case (_, .payments): return c(1.0, 0.78, 0.36)
+        case (_, .week): return c(0.55, 0.76, 1.0)
+        case (_, .plus): return c(0.76, 0.64, 1.0)
+        }
+    }
+
+    /// The day's high and low.
+    var hiColor: Color { self == .sky ? Color(red: 1.0, green: 0.92, blue: 0.70) : Color(red: 1.0, green: 0.70, blue: 0.40) }
+    var loColor: Color { self == .sky ? Color(red: 0.84, green: 0.93, blue: 1.0) : Color(red: 0.50, green: 0.78, blue: 1.0) }
+
+    /// Graphite colours the temperature from icy blue to hot orange; the others keep it white.
+    func tint(forTemperature w: WeatherSnapshot) -> Color {
+        guard self == .graphite else { return text }
+        let f = w.unit == "C" ? w.temp * 9 / 5 + 32 : w.temp
+        switch f {
+        case ..<40: return Color(red: 0.55, green: 0.78, blue: 1.0)
+        case ..<60: return Color(red: 0.42, green: 0.88, blue: 1.0)
+        case ..<76: return Color(red: 0.74, green: 0.95, blue: 0.48)
+        case ..<90: return Color(red: 1.0, green: 0.78, blue: 0.36)
+        default: return Color(red: 1.0, green: 0.52, blue: 0.40)
+        }
+    }
+
     var warn: Color { Color(red: 1.0, green: 0.76, blue: 0.34) }
     var bad: Color { Color(red: 1.0, green: 0.50, blue: 0.54) }
 
@@ -67,7 +103,6 @@ extension WidgetLook {
         level < 0.35 ? good : level < 0.6 ? cool : level < 0.75 ? warn : bad
     }
 
-    var weatherSymbols: SymbolRenderingMode { self == .graphite ? .monochrome : .multicolor }
 }
 
 // MARK: Backgrounds

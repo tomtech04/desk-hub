@@ -51,6 +51,11 @@ struct StressReading {
     }
 }
 
+extension PayitSnapshot {
+    /// Seven days' sales, today included.
+    var weekTotalCents: Double { weekCents.reduce(0, +) }
+}
+
 extension WidgetContent {
     /// For the gallery, placeholders and the screenshots.
     static let sample = WidgetContent(
@@ -101,13 +106,13 @@ private struct SmallLayout: View {
             VStack(alignment: .leading, spacing: 0) {
                 if let w = content.weather {
                     HStack(spacing: 6) {
-                        WeatherIcon(code: w.code, day: w.isDay, look: look, size: 22)
-                        Text(Temp.text(w.temp)).font(look.number(28)).foregroundStyle(look.text)
+                        WeatherIcon(code: w.code, day: w.isDay, size: 22)
+                        Text(Temp.text(w.temp)).font(look.number(28)).foregroundStyle(look.tint(forTemperature: w)).lineLimit(1)
                         Spacer(minLength: 0)
                         if let hi = w.hi, let lo = w.lo {
                             VStack(alignment: .trailing, spacing: 0) {
-                                Text(Temp.text(hi)).foregroundStyle(look.text)
-                                Text(Temp.text(lo)).foregroundStyle(look.muted)
+                                Text(Temp.text(hi)).foregroundStyle(look.hiColor)
+                                Text(Temp.text(lo)).foregroundStyle(look.loColor)
                             }
                             .font(look.number(11, .medium))
                         }
@@ -115,11 +120,15 @@ private struct SmallLayout: View {
                 }
                 Spacer(minLength: 4)
                 if let p = content.payit {
-                    Caption(text: "PAYIT", look: look, size: 9.5)
+                    Caption(text: "PAYIT", color: look.color(.payit), look: look, size: 9.5)
                     Text(Money.text(p.todayCents))
                         .font(look.number(28)).foregroundStyle(look.text)
                         .minimumScaleFactor(0.5).lineLimit(1)
-                    VersusYesterday(payit: p, look: look, size: 10.5, short: true)
+                    HStack(spacing: 5) {
+                        Text(p.count == 1 ? "1 pay" : "\(p.count) pay").font(look.label(10.5)).foregroundStyle(look.color(.payments))
+                        VersusYesterday(payit: p, look: look, size: 10.5, short: true)
+                    }
+                    .lineLimit(1)
                 }
                 Spacer(minLength: 5)
                 if let s = content.stress {
@@ -128,7 +137,7 @@ private struct SmallLayout: View {
                         Text(s.word).font(look.label(11.5)).foregroundStyle(look.text).lineLimit(1).minimumScaleFactor(0.7)
                         Spacer(minLength: 0)
                         if let number = s.number {
-                            Text(number).font(look.number(12, .medium)).foregroundStyle(look.text2)
+                            Text(number).font(look.number(12, .medium)).foregroundStyle(look.tint(forStress: s.level))
                         }
                     }
                     .padding(.horizontal, 9).padding(.vertical, 6)
@@ -153,59 +162,77 @@ private struct MediumLayout: View {
             EmptyNote(look: look).padding(16)
         } else {
             HStack(spacing: 8) {
-                if let w = content.weather {
-                    VStack(alignment: .leading, spacing: 0) {
-                        WeatherIcon(code: w.code, day: w.isDay, look: look, size: 26)
-                        Spacer(minLength: 2)
-                        Text(Temp.text(w.temp)).font(look.number(36)).foregroundStyle(look.text)
-                        Text(WeatherSnapshot.word(w.code)).font(look.label(11)).foregroundStyle(look.text2).lineLimit(1).minimumScaleFactor(0.8)
-                        if let hi = w.hi, let lo = w.lo {
-                            Text("H\(Temp.text(hi)) L\(Temp.text(lo))").font(look.number(11, .medium)).foregroundStyle(look.muted)
-                                .padding(.top, 1)
-                        }
-                    }
-                    .padding(11)
-                    .frame(width: 96, alignment: .leading)
-                    .frame(maxHeight: .infinity)
-                    .lookPanel(look)
-                }
-                if let p = content.payit {
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            Caption(text: "PAYIT", look: look, size: 9.5)
-                            if p.systemIssues > 0 { IssueBadge(count: p.systemIssues, look: look) }
-                            Spacer(minLength: 0)
-                        }
-                        Text(Money.text(p.todayCents))
-                            .font(look.number(30)).foregroundStyle(look.text)
-                            .minimumScaleFactor(0.5).lineLimit(1)
-                            .padding(.top, 2)
-                        Text(p.count == 1 ? "1 payment" : "\(p.count) payments")
-                            .font(.system(size: 11.5)).foregroundStyle(look.text2)
-                        Spacer(minLength: 4)
-                        WeekBars(values: p.weekCents, look: look, height: 24, days: false, now: content.now)
-                        VersusYesterday(payit: p, look: look, size: 10.5, short: true).padding(.top, 5)
-                    }
-                    .padding(11)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                    .lookPanel(look)
-                }
-                if let s = content.stress {
-                    VStack(spacing: 4) {
-                        Caption(text: "STRESS", look: look, size: 9.5)
-                        Spacer(minLength: 0)
-                        StressGauge(reading: s, look: look, size: 56)
-                        Spacer(minLength: 0)
-                        Text(s.word).font(look.label(12)).foregroundStyle(look.text)
-                    }
-                    .padding(.vertical, 11).padding(.horizontal, 6)
-                    .frame(width: 84)
-                    .frame(maxHeight: .infinity)
-                    .lookPanel(look)
-                }
+                if let w = content.weather { weather(w) }
+                if let p = content.payit { payit(p) }
+                if let s = content.stress { stress(s) }
             }
             .padding(10)
         }
+    }
+
+    private func weather(_ w: WeatherSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Caption(text: "WEATHER", color: look.color(.weather), look: look, size: 8.5)
+            Spacer(minLength: 2)
+            WeatherIcon(code: w.code, day: w.isDay, size: 24)
+            Text(Temp.text(w.temp)).font(look.number(34)).foregroundStyle(look.tint(forTemperature: w)).lineLimit(1).minimumScaleFactor(0.7)
+            Text(WeatherSnapshot.word(w.code)).font(look.label(10.5)).foregroundStyle(look.text2).lineLimit(1).minimumScaleFactor(0.7)
+            if let hi = w.hi, let lo = w.lo {
+                HiLo(hi: hi, lo: lo, look: look, size: 10.5).padding(.top, 2)
+            }
+        }
+        .padding(11)
+        .frame(width: 98, alignment: .leading)
+        .frame(maxHeight: .infinity)
+        .lookPanel(look)
+    }
+
+    private func payit(_ p: PayitSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Caption(text: "PAYIT", color: look.color(.payit), look: look, size: 8.5)
+                if p.systemIssues > 0 { IssueBadge(count: p.systemIssues, look: look) }
+                Spacer(minLength: 0)
+                if !content.live, let at = content.updatedAt {
+                    Text(at.formatted(date: .omitted, time: .shortened)).font(look.label(8)).foregroundStyle(look.muted)
+                }
+            }
+            Text(Money.text(p.todayCents))
+                .font(look.number(29)).foregroundStyle(look.text)
+                .minimumScaleFactor(0.5).lineLimit(1)
+                .padding(.top, 3)
+            Spacer(minLength: 4)
+            HStack(spacing: 0) {
+                StatCell(caption: "PAYMENTS", value: "\(p.count)", color: look.color(.payments), look: look, size: 16).padding(.trailing, 6)
+                Separator(look: look)
+                StatCell(caption: "VS YDAY", value: Helpers.percent(p), color: Helpers.tone(p, look), look: look, size: 16).padding(.leading, 8)
+            }
+            if let paying = p.subsPaying {
+                HStack(spacing: 5) {
+                    Text("PLUS").font(look.label(8.5)).tracking(0.6).foregroundStyle(look.color(.plus))
+                    Text("\(paying) paying" + (p.subsMonthCents.map { " · \(Money.compact($0))" } ?? ""))
+                        .font(look.number(10.5, .medium)).foregroundStyle(look.color(.plus)).lineLimit(1).minimumScaleFactor(0.7)
+                }
+                .padding(.top, 6)
+            }
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .lookPanel(look)
+    }
+
+    private func stress(_ s: StressReading) -> some View {
+        VStack(spacing: 0) {
+            Caption(text: "STRESS", color: look.tint(forStress: s.level), look: look, size: 8.5)
+            Spacer(minLength: 0)
+            StressGauge(reading: s, look: look, size: 54)
+            Spacer(minLength: 0)
+            Text(s.word).font(look.label(11.5)).foregroundStyle(look.text).lineLimit(1).minimumScaleFactor(0.7)
+        }
+        .padding(.vertical, 11).padding(.horizontal, 6)
+        .frame(width: 80)
+        .frame(maxHeight: .infinity)
+        .lookPanel(look)
     }
 }
 
@@ -233,90 +260,143 @@ private struct LargeLayout: View {
 
     private func weather(_ w: WeatherSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: 10) {
-                WeatherIcon(code: w.code, day: w.isDay, look: look, size: 34)
-                Text(Temp.text(w.temp)).font(look.number(46)).foregroundStyle(look.text).lineLimit(1).fixedSize()
+            SectionHeader(title: "WEATHER", color: look.color(.weather), look: look) {
+                HStack(spacing: 8) {
+                    if let rain = w.rainChance, rain >= 30 {
+                        Label("\(rain)%", systemImage: "drop.fill").font(look.label(10)).foregroundStyle(look.color(.weather))
+                    }
+                    if let hi = w.hi, let lo = w.lo { HiLo(hi: hi, lo: lo, look: look, size: 10.5) }
+                }
+            }
+            HStack(alignment: .center, spacing: 8) {
+                WeatherIcon(code: w.code, day: w.isDay, size: 28)
+                Text(Temp.text(w.temp)).font(look.number(38)).foregroundStyle(look.tint(forTemperature: w)).lineLimit(1).fixedSize()
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(WeatherSnapshot.word(w.code)).font(look.label(13)).foregroundStyle(look.text).lineLimit(1).minimumScaleFactor(0.7)
+                    Text(WeatherSnapshot.word(w.code)).font(look.label(12)).foregroundStyle(look.text).lineLimit(1).minimumScaleFactor(0.7)
                     if let feels = w.feels, abs(feels - w.temp) >= 2 {
-                        Text("Feels \(Temp.text(feels))").font(.system(size: 11)).foregroundStyle(look.text2)
+                        Text("Feels \(Temp.text(feels))").font(.system(size: 10.5)).foregroundStyle(look.text2)
                     }
                 }
                 Spacer(minLength: 0)
-                VStack(alignment: .trailing, spacing: 1) {
-                    if let hi = w.hi, let lo = w.lo {
-                        Text("H \(Temp.text(hi))  L \(Temp.text(lo))").font(look.number(12, .medium)).foregroundStyle(look.text)
-                    }
-                    if let rain = w.rainChance, rain >= 30 {
-                        Label("\(rain)%", systemImage: "drop.fill").font(.system(size: 11, weight: .medium)).foregroundStyle(look.cool)
-                    }
-                }
             }
-            Spacer(minLength: 6)
+            .padding(.top, 2)
+            Spacer(minLength: 4)
             HStack(spacing: 0) {
                 ForEach(Array(w.hours.prefix(6).enumerated()), id: \.offset) { index, h in
-                    VStack(spacing: 3) {
-                        Text(index == 0 ? "Now" : Clock.hour(h.hour)).font(look.label(10)).foregroundStyle(look.muted)
-                        WeatherIcon(code: h.code, day: (6..<20).contains(h.hour), look: look, size: 15)
-                        Text(Temp.text(h.temp)).font(look.number(12.5, .medium)).foregroundStyle(look.text)
+                    VStack(spacing: 2) {
+                        Text(index == 0 ? "Now" : Clock.hour(h.hour)).font(look.label(9)).foregroundStyle(look.muted)
+                        WeatherIcon(code: h.code, day: (6..<20).contains(h.hour), size: 14)
+                        Text(Temp.text(h.temp)).font(look.number(12, .medium)).foregroundStyle(look.text)
                     }
                     .frame(maxWidth: .infinity)
                 }
             }
         }
-        .padding(12)
+        .padding(11)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .lookPanel(look, radius: 18)
     }
 
     private func payit(_ p: PayitSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                Caption(text: "PAYIT", look: look, size: 10)
-                if p.systemIssues > 0 { IssueBadge(count: p.systemIssues, look: look) }
-                Spacer(minLength: 0)
-                VersusYesterday(payit: p, look: look, size: 11)
+            SectionHeader(title: "PAYIT", color: look.color(.payit), look: look) {
+                HStack(spacing: 6) {
+                    if p.systemIssues > 0 { IssueBadge(count: p.systemIssues, look: look) }
+                    if content.live {
+                        Label("LIVE", systemImage: "circle.fill").font(look.label(8.5)).foregroundStyle(look.good)
+                            .labelStyle(DotLabel())
+                    } else if let at = content.updatedAt {
+                        Text("AS OF " + at.formatted(date: .omitted, time: .shortened).uppercased()).font(look.label(8.5)).foregroundStyle(look.muted)
+                    }
+                }
             }
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(Money.text(p.todayCents))
-                    .font(look.number(34)).foregroundStyle(look.text)
-                    .minimumScaleFactor(0.5).lineLimit(1)
-                Text(p.count == 1 ? "1 payment" : "\(p.count) payments").font(.system(size: 12)).foregroundStyle(look.text2)
-                Spacer(minLength: 0)
-            }
-            Spacer(minLength: 4)
-            WeekBars(values: p.weekCents, look: look, height: 30, days: true, now: content.now)
-            if let paying = p.subsPaying {
-                Text("PayIt Plus: \(paying) paying" + (p.subsMonthCents.map { " · \(Money.text($0)) this month" } ?? ""))
-                    .font(.system(size: 11)).foregroundStyle(look.text2).lineLimit(1).minimumScaleFactor(0.8)
-                    .padding(.top, 5)
-            }
+            Spacer(minLength: 5)
+            grid([
+                Stat("TODAY", Money.text(p.todayCents), look.color(.payit)),
+                Stat("PAYMENTS", "\(p.count)", look.color(.payments)),
+                Stat("VS YESTERDAY", Helpers.percent(p), Helpers.tone(p, look)),
+            ])
+            Spacer(minLength: 6)
+            grid([
+                Stat("7 DAYS", Money.compact(p.weekTotalCents), look.color(.week)),
+                Stat("PLUS PAYING", p.subsPaying.map(String.init) ?? "–", look.color(.plus)),
+                Stat("PLUS THIS MONTH", p.subsMonthCents.map(Money.compact) ?? "–", look.color(.plus)),
+            ])
         }
-        .padding(12)
+        .padding(11)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .lookPanel(look, radius: 18)
     }
 
+    private struct Stat {
+        let caption: String, value: String, color: Color
+        init(_ caption: String, _ value: String, _ color: Color) { self.caption = caption; self.value = value; self.color = color }
+    }
+
+    private func grid(_ stats: [Stat]) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(stats.enumerated()), id: \.offset) { index, s in
+                if index > 0 { Separator(look: look) }
+                StatCell(caption: s.caption, value: s.value, color: s.color, look: look, size: 21)
+                    .padding(.leading, index > 0 ? 9 : 0)
+            }
+        }
+    }
+
     private func stress(_ s: StressReading) -> some View {
-        HStack(spacing: 14) {
-            StressGauge(reading: s, look: look, size: 58)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Caption(text: "STRESS", look: look, size: 10)
-                    Text(s.word).font(look.label(14)).foregroundStyle(look.text).lineLimit(1)
+        let tint = look.tint(forStress: s.level)
+        return HStack(spacing: 12) {
+            if look == .graphite {
+                VStack(spacing: 1) {
+                    Text(s.number ?? s.word).font(look.number(s.number == nil ? 18 : 34)).foregroundStyle(tint).lineLimit(1).minimumScaleFactor(0.5)
+                    Text(s.number == nil ? "of 5" : "/ 100").font(look.label(8.5)).foregroundStyle(look.muted)
                 }
-                Text(content.wellness?.headline ?? s.source)
-                    .font(.system(size: 12)).foregroundStyle(look.text2).lineLimit(2)
-                if let steps = content.wellness?.steps, steps > 0 {
-                    Label("\(Int(steps).formatted()) steps", systemImage: "figure.walk")
-                        .font(.system(size: 11)).foregroundStyle(look.muted)
+                .frame(width: 66)
+                VStack(alignment: .leading, spacing: 5) {
+                    SectionHeader(title: "STRESS", color: tint, look: look) {
+                        Text(s.word.uppercased()).font(look.label(9.5)).foregroundStyle(tint)
+                    }
+                    Meter(level: s.level, look: look).frame(height: 12)
+                    Text(content.wellness?.headline ?? s.source)
+                        .font(.system(size: 11.5)).foregroundStyle(look.text2).lineLimit(1)
+                    if let steps = content.wellness?.steps, steps > 0 {
+                        Label("\(Int(steps).formatted()) steps", systemImage: "figure.walk")
+                            .font(.system(size: 10.5)).foregroundStyle(look.muted)
+                    }
+                }
+            } else {
+                StressGauge(reading: s, look: look, size: 56)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Caption(text: "STRESS", color: tint, look: look, size: 10)
+                        Text(s.word).font(look.label(14)).foregroundStyle(look.text).lineLimit(1)
+                    }
+                    Text(content.wellness?.headline ?? s.source)
+                        .font(.system(size: 12)).foregroundStyle(look.text2).lineLimit(2)
+                    if let steps = content.wellness?.steps, steps > 0 {
+                        Label("\(Int(steps).formatted()) steps", systemImage: "figure.walk")
+                            .font(.system(size: 11)).foregroundStyle(look.muted)
+                    }
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12).padding(.vertical, 10)
+        .padding(.horizontal, 12).padding(.vertical, 9)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .lookPanel(look, radius: 18)
+    }
+}
+
+/// Shared by the medium and large layouts.
+private enum Helpers {
+    static func percent(_ p: PayitSnapshot) -> String {
+        guard let change = p.versusYesterday else { return "–" }
+        return "\(change >= 0 ? "+" : "−")\(Int((abs(change) * 100).rounded()))%"
+    }
+
+    static func tone(_ p: PayitSnapshot, _ look: WidgetLook) -> Color {
+        guard let change = p.versusYesterday else { return look.muted }
+        return change >= 0 ? look.good : look.bad
     }
 }
 
@@ -342,25 +422,91 @@ private struct LockScreenLayout: View {
 
 private struct Caption: View {
     let text: String
+    let color: Color
     let look: WidgetLook
     var size: CGFloat = 10
 
     var body: some View {
-        Text(text).font(look.label(size)).tracking(look == .graphite ? 0.6 : 1.1).foregroundStyle(look.accent)
+        Text(text).font(look.label(size)).tracking(look == .graphite ? 0.6 : 1.1).foregroundStyle(color)
+    }
+}
+
+/// The title of a panel: a colour dot, the name, and something on the right.
+private struct SectionHeader<Trailing: View>: View {
+    let title: String
+    let color: Color
+    let look: WidgetLook
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 5, height: 5)
+            Caption(text: title, color: color, look: look, size: 9)
+            Spacer(minLength: 4)
+            trailing()
+        }
+    }
+}
+
+/// "● LIVE": a label with its dot ahead of the text.
+private struct DotLabel: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 3) {
+            configuration.icon.font(.system(size: 4))
+            configuration.title
+        }
+    }
+}
+
+/// A caption over a number.
+private struct StatCell: View {
+    let caption: String
+    let value: String
+    let color: Color
+    let look: WidgetLook
+    var size: CGFloat = 20
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(caption).font(look.label(8)).tracking(look == .graphite ? 0.5 : 0.8).foregroundStyle(look.muted).lineLimit(1).minimumScaleFactor(0.7)
+            Text(value).font(look.number(size)).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct Separator: View {
+    let look: WidgetLook
+
+    var body: some View {
+        Rectangle().fill(Color.white.opacity(0.12)).frame(width: 0.6).padding(.vertical, 2)
+    }
+}
+
+private struct HiLo: View {
+    let hi: Double
+    let lo: Double
+    let look: WidgetLook
+    let size: CGFloat
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("H\(Temp.text(hi))").foregroundStyle(look.hiColor)
+            Text("L\(Temp.text(lo))").foregroundStyle(look.loColor)
+        }
+        .font(look.number(size, .medium))
     }
 }
 
 private struct WeatherIcon: View {
     let code: Int
     let day: Bool
-    let look: WidgetLook
     let size: CGFloat
 
     var body: some View {
         Image(systemName: WeatherSnapshot.symbol(code, day: day))
-            .symbolRenderingMode(look.weatherSymbols)
+            .symbolRenderingMode(.multicolor)
             .font(.system(size: size))
-            .foregroundStyle(look == .graphite ? look.accent : look.text)
             .frame(minWidth: size * 1.1)
     }
 }
@@ -376,7 +522,7 @@ private struct VersusYesterday: View {
         if let change = payit.versusYesterday {
             let up = change >= 0
             let percent = Int((abs(change) * 100).rounded())
-            Label(short ? "\(percent)% vs yesterday" : "\(percent)% \(up ? "ahead of" : "behind") yesterday", systemImage: up ? "arrow.up.right" : "arrow.down.right")
+            Label(short ? "\(percent)% vs yday" : "\(percent)% \(up ? "ahead of" : "behind") yesterday", systemImage: up ? "arrow.up.right" : "arrow.down.right")
                 .font(.system(size: size, weight: .medium))
                 .foregroundStyle(up ? look.good : look.bad)
                 .lineLimit(1).minimumScaleFactor(0.7)
@@ -391,43 +537,6 @@ private struct IssueBadge: View {
     var body: some View {
         Label("\(count)", systemImage: "exclamationmark.triangle.fill")
             .font(.system(size: 10, weight: .semibold)).foregroundStyle(look.warn)
-    }
-}
-
-/// Seven bars, the last (today) in colour; with the weekday under each.
-private struct WeekBars: View {
-    let values: [Double]
-    let look: WidgetLook
-    let height: CGFloat
-    let days: Bool
-    let now: Date
-
-    var body: some View {
-        let top = max(values.max() ?? 0, 1)
-        VStack(spacing: 3) {
-            HStack(alignment: .bottom, spacing: 5) {
-                ForEach(Array(values.enumerated()), id: \.offset) { index, value in
-                    RoundedRectangle(cornerRadius: look == .graphite ? 1.5 : 3.5, style: .continuous)
-                        .fill(index == values.count - 1 ? AnyShapeStyle(look.good) : AnyShapeStyle(look.text.opacity(0.26)))
-                        .frame(height: max(3, height * value / top))
-                }
-            }
-            .frame(height: height, alignment: .bottom)
-            if days {
-                HStack(spacing: 5) {
-                    ForEach(Array(values.indices), id: \.self) { index in
-                        Text(letter(daysAgo: values.count - 1 - index))
-                            .font(look.label(8.5)).foregroundStyle(index == values.count - 1 ? look.text2 : look.muted)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-            }
-        }
-    }
-
-    private func letter(daysAgo: Int) -> String {
-        let date = Calendar.current.date(byAdding: .day, value: -daysAgo, to: now) ?? now
-        return String(date.formatted(.dateTime.weekday(.narrow)))
     }
 }
 
@@ -521,6 +630,12 @@ enum Money {
         f.maximumFractionDigits = dollars >= 100 ? 0 : 2
         f.minimumFractionDigits = f.maximumFractionDigits
         return f.string(from: dollars as NSNumber) ?? "$0"
+    }
+
+    /// Like `text`, but "$14.3k" from $10,000 up, so it fits in a small cell.
+    static func compact(_ cents: Double) -> String {
+        let dollars = cents / 100
+        return dollars >= 10_000 ? String(format: "$%.1fk", dollars / 1000) : text(cents)
     }
 }
 
