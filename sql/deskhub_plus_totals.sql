@@ -13,7 +13,9 @@
 --
 -- This changes the production database: it adds a function and one permission.
 -- Apply it with:
---   supabase db query --linked -f sql/deskhub_plus_totals.sql
+--   supabase --workdir .supabase-link db query --linked -f "$PWD/sql/deskhub_plus_totals.sql"
+-- (from the desk-hub folder; the full path matters, the tool reads -f relative to --workdir)
+-- Applied to the production PayIt project on 2026-10-20.
 --
 -- To remove it:
 --   drop function public.deskhub_plus_totals(uuid[], timestamptz);
