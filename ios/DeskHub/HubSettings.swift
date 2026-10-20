@@ -5,7 +5,10 @@ import Security
 @MainActor
 final class HubSettings: ObservableObject {
     @Published var hubAddress: String {
-        didSet { UserDefaults.standard.set(hubAddress, forKey: "hubAddress") }
+        didSet {
+            UserDefaults.standard.set(hubAddress, forKey: "hubAddress")
+            Shared.hubAddress = hubAddress
+        }
     }
     @Published var voiceToken: String {
         didSet { Keychain.set(voiceToken, account: "voiceToken") }
@@ -14,6 +17,8 @@ final class HubSettings: ObservableObject {
     init() {
         hubAddress = UserDefaults.standard.string(forKey: "hubAddress") ?? "http://deskhub.local:8080"
         voiceToken = Keychain.get(account: "voiceToken") ?? ""
+        // The widget reads it from the App Group; the property observer doesn't run during init.
+        Shared.hubAddress = hubAddress
     }
 
     /// The hub's address as a URL, accepting "deskhub.local:8080" without a scheme.

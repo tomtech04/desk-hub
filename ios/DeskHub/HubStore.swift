@@ -1,4 +1,5 @@
 import Foundation
+import WidgetKit
 import SwiftUI
 
 /// The hub's data on the phone, kept fresh, plus the things the phone can do to it. Talks to the
@@ -61,11 +62,23 @@ final class HubStore: ObservableObject {
             dashboard = next
             updatedAt = Date()
             status = .ok
+            shareWithWidget(data)
         } catch let error as DecodingError {
             status = .offline("The hub sent something this app couldn't read (\(Self.describe(error))).")
         } catch {
             status = .offline(error.localizedDescription)
         }
+    }
+
+    /// Hands the widget the PayIt numbers just fetched, and the sign-in it needs to fetch them itself.
+    private func shareWithWidget(_ data: Data) {
+        if let base = settings.baseURL {
+            Shared.hubCookie = HTTPCookieStorage.shared.cookies(for: base)?.first { $0.name == "hub_session" }?.value
+        }
+        guard let snapshot = PayitSnapshot.parse(dashboard: data) else { return }
+        let changed = !snapshot.sameNumbers(as: Shared.payit)
+        Shared.payit = snapshot
+        if changed { WidgetCenter.shared.reloadAllTimelines() }
     }
 
     // MARK: Sign-in (only when the hub has HUB_PASSWORD set)
@@ -84,6 +97,7 @@ final class HubStore: ObservableObject {
     }
 
     func signOut() async {
+        Shared.hubCookie = nil
         _ = try? await call("POST", "api/logout")
         await refresh()
     }

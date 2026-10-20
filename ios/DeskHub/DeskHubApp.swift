@@ -19,6 +19,7 @@ struct DeskHubApp: App {
                 .environmentObject(appDelegate.transcriber)
                 .environmentObject(appDelegate.health)
                 .preferredColorScheme(.dark)
+                .onOpenURL { appDelegate.nav.open($0) }
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -26,6 +27,7 @@ struct DeskHubApp: App {
                 appDelegate.hub.startRefreshing()
                 appDelegate.outbox.process()
                 Task { await appDelegate.health.refresh() }
+                appDelegate.health.ensureReminder()
             case .background:
                 appDelegate.hub.stopRefreshing()
             default:
@@ -106,6 +108,8 @@ final class AppNav: ObservableObject {
 
     // `-startTab mail` etc. on launch (used by the simulator screenshots).
     @Published var tab = Tab(rawValue: UserDefaults.standard.string(forKey: "startTab") ?? "") ?? .today
+    /// A page of the More tab to open, e.g. from the widget ("payit").
+    @Published var morePage: String?
     @Published var wantsRecording = false
     @Published var wantsNote = false
     // `-openCheckin YES` on launch opens the check-in (the simulator screenshots).
@@ -123,6 +127,20 @@ final class AppNav: ObservableObject {
 
     func checkIn() {
         wantsCheckIn = true
+    }
+
+    /// `deskhub://payit` from the widget.
+    func open(_ url: URL) {
+        guard url.scheme == "deskhub" else { return }
+        switch url.host {
+        case "payit":
+            morePage = "payit"
+            tab = .more
+        case "checkin":
+            checkIn()
+        default:
+            break
+        }
     }
 }
 

@@ -168,160 +168,6 @@ struct StressRing: View {
     }
 }
 
-// MARK: Check-in
-
-/// "How was today?": mood, stress, energy, what it was about, and a note (typed or said).
-struct CheckInSheet: View {
-    @EnvironmentObject private var health: HealthMonitor
-    @EnvironmentObject private var transcriber: Transcriber
-    @Environment(\.dismiss) private var dismiss
-    @StateObject private var recorder = PhoneRecorder()
-    @State private var mood = 4.0
-    @State private var stress = 3
-    @State private var energy = 3
-    @State private var feelings: Set<String> = []
-    @State private var about: Set<String> = []
-    @State private var note = ""
-    @State private var listening = false
-    @State private var transcribing = false
-    @State private var saving = false
-
-    private var evening: Bool { Calendar.current.component(.hour, from: Date()) >= 17 }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    if let day = health.today, let stress = day.stress {
-                        Label {
-                            Text("By your watch: \(HealthStory.headline(day).lowercased()).").foregroundStyle(G.text2)
-                        } icon: {
-                            Image(systemName: "applewatch").foregroundStyle(G.stress(stress.score))
-                        }
-                        .font(.system(size: 14))
-                    }
-                    section("How do you feel?") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(CheckIn.moods[Int(mood)]).font(.system(size: 22, weight: .semibold)).foregroundStyle(moodColor)
-                            Slider(value: $mood, in: 1...7, step: 1).tint(moodColor)
-                            HStack { Text("Very unpleasant"); Spacer(); Text("Very pleasant") }.font(G.mono(10)).foregroundStyle(G.muted)
-                        }
-                    }
-                    section("Stress") { scale($stress, CheckIn.stressWords, color: G.amber) }
-                    section("Energy") { scale($energy, CheckIn.energyWords, color: G.mint) }
-                    section("Feelings") { chips(CheckIn.feelingChoices, $feelings) }
-                    section("About") { chips(CheckIn.aboutChoices, $about) }
-                    section("Anything on your mind?") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            TextField("Optional. Goes to your journal, and reminders become tasks.", text: $note, axis: .vertical)
-                                .font(.system(size: 16)).lineLimit(2...6)
-                                .padding(12)
-                                .background(Color(hex: 0x0F1115), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            Button { listening ? stopListening() : startListening() } label: {
-                                Label(listening ? "Stop" : transcribing ? "Transcribing…" : "Say it instead", systemImage: listening ? "stop.fill" : "mic.fill")
-                            }
-                            .buttonStyle(GraphiteButton(primary: false))
-                            .disabled(transcribing)
-                        }
-                    }
-                }
-                .padding(20)
-            }
-            .graphitePage()
-            .navigationTitle(evening ? "How was today?" : "How are you doing?")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Later") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button(saving ? "Saving…" : "Save", action: save).disabled(saving || listening || transcribing) }
-            }
-        }
-        .tint(G.text)
-    }
-
-    private var moodColor: Color {
-        mood <= 2 ? G.coral : mood <= 3 ? G.amber : mood < 5 ? G.text2 : G.mint
-    }
-
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(text: title)
-            content()
-        }
-    }
-
-    private func scale(_ value: Binding<Int>, _ words: [String], color: Color) -> some View {
-        HStack(spacing: 6) {
-            ForEach(1...5, id: \.self) { n in
-                Button { value.wrappedValue = n } label: {
-                    Text(words[n])
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(value.wrappedValue == n ? G.bg : G.title)
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                        .frame(maxWidth: .infinity, minHeight: 38)
-                        .background(value.wrappedValue == n ? color : G.panel, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(value.wrappedValue == n ? Color.clear : Color(hex: 0x2A2F38), lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private func chips(_ options: [String], _ selection: Binding<Set<String>>) -> some View {
-        FlowLayout(spacing: 8) {
-            ForEach(options, id: \.self) { option in
-                let on = selection.wrappedValue.contains(option)
-                Button {
-                    if on { selection.wrappedValue.remove(option) } else { selection.wrappedValue.insert(option) }
-                } label: {
-                    Text(option)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(on ? G.bg : G.title)
-                        .padding(.horizontal, 12).frame(height: 34)
-                        .background(on ? G.text : G.panel, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(on ? Color.clear : Color(hex: 0x2A2F38), lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private func startListening() {
-        transcriber.prepareInBackground()
-        Task {
-            do {
-                try await recorder.start()
-                listening = true
-            } catch {
-                note = error.localizedDescription
-            }
-        }
-    }
-
-    private func stopListening() {
-        listening = false
-        let audio = recorder.stop()
-        guard Double(audio.samples.count) > audio.sampleRate * 0.7 else { return }
-        transcribing = true
-        Task {
-            let text = (try? await transcriber.transcribe(samples: audio.samples, sampleRate: audio.sampleRate)) ?? ""
-            if !text.isEmpty { note = note.isEmpty ? text : note + " " + text }
-            transcribing = false
-        }
-    }
-
-    private func save() {
-        saving = true
-        let checkin = CheckIn(at: Date().timeIntervalSince1970 * 1000, mood: Int(mood), stress: stress, energy: energy,
-                              feelings: CheckIn.feelingChoices.filter(feelings.contains), about: CheckIn.aboutChoices.filter(about.contains),
-                              note: note.trimmingCharacters(in: .whitespacesAndNewlines))
-        Task {
-            await health.add(checkin, evening: evening)
-            saving = false
-            dismiss()
-        }
-    }
-}
-
 // MARK: Health page (More)
 
 struct HealthPage: View {
@@ -451,6 +297,12 @@ struct HealthPage: View {
             Toggle("Remind me every evening", isOn: $health.checkinOn).tint(G.pink).foregroundStyle(G.text)
             if health.checkinOn {
                 DatePicker("At", selection: checkinTime, displayedComponents: .hourAndMinute).foregroundStyle(G.text)
+                if health.notificationsOff {
+                    Text("Notifications are off for Desk Hub, so the reminder can't show up. Turn them on in Settings > Notifications > Desk Hub.")
+                        .font(.system(size: 12)).foregroundStyle(G.amber)
+                } else {
+                    Text("Tap it and you can say how the day went, or tap it in.").font(.system(size: 12)).foregroundStyle(G.muted)
+                }
             }
             Toggle("Ask when stress looks high", isOn: $health.nudges).tint(G.pink).foregroundStyle(G.text)
             Text("At most twice a day, after your heart rate has been up for a while when you weren't moving.")

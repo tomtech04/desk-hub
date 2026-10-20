@@ -1,5 +1,6 @@
 import Foundation
 import HealthKit
+import UIKit
 import UserNotifications
 
 /// Watches the day through Apple Health (what the Apple Watch records), estimates stress against
@@ -24,6 +25,8 @@ final class HealthMonitor: ObservableObject {
     @Published var checkinMinutes: Int {
         didSet { defaults.set(checkinMinutes, forKey: Key.checkinMinutes); scheduleCheckin() }
     }
+    /// True when notifications are switched off for the app, so no reminder can show up.
+    @Published private(set) var notificationsOff = false
     @Published var nudges: Bool {
         didSet { defaults.set(nudges, forKey: Key.nudges) }
     }
@@ -49,7 +52,7 @@ final class HealthMonitor: ObservableObject {
         self.log = log
         let saved = UserDefaults.standard
         checkinOn = saved.object(forKey: Key.checkinOn) as? Bool ?? true
-        checkinMinutes = saved.object(forKey: Key.checkinMinutes) as? Int ?? 21 * 60
+        checkinMinutes = saved.object(forKey: Key.checkinMinutes) as? Int ?? 18 * 60
         nudges = saved.object(forKey: Key.nudges) as? Bool ?? true
         if Self.demo {
             status = .demo
@@ -72,6 +75,7 @@ final class HealthMonitor: ObservableObject {
             day.retell()
             today = day
         }
+        ensureReminder()
         guard defaults.bool(forKey: Key.enabled) else { return }
         guard HKHealthStore.isHealthDataAvailable() else { status = .unavailable; return }
         status = .ready
@@ -89,8 +93,7 @@ final class HealthMonitor: ObservableObject {
             status = .ready
             log.add("Connected to Apple Health")
             observe()
-            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
-            scheduleCheckin()
+            ensureReminder()
             await refresh(force: true)
         } catch {
             status = .failed(error.localizedDescription)
@@ -103,7 +106,6 @@ final class HealthMonitor: ObservableObject {
         today = nil
         hours = []
         store.disableAllBackgroundDelivery { _, _ in }
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["checkin"])
         log.add("Disconnected from Apple Health")
     }
 
@@ -221,19 +223,38 @@ final class HealthMonitor: ObservableObject {
 
     // MARK: Notifications
 
-    /// The evening check-in reminder, every day at the chosen time.
+    /// Makes sure the evening reminder is set up, asking for notification permission the first time
+    /// the app is open. It doesn't need Apple Health: a check-in works without it.
+    func ensureReminder() {
+        guard !Self.demo else { return }
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+            if settings.authorizationStatus == .notDetermined, checkinOn, UIApplication.shared.applicationState == .active {
+                _ = try? await center.requestAuthorization(options: [.alert, .sound])
+            }
+            let now = await center.notificationSettings().authorizationStatus
+            notificationsOff = now == .denied
+            if notificationsOff, checkinOn { log.add("Notifications are off for Desk Hub, so there's no evening reminder") }
+            scheduleCheckin()
+        }
+    }
+
+    /// The evening check-in reminder, every day at the chosen time (6 PM unless changed).
     func scheduleCheckin() {
         let center = UNUserNotificationCenter.current()
         center.removePendingNotificationRequests(withIdentifiers: ["checkin"])
-        guard checkinOn, !Self.demo, defaults.bool(forKey: Key.enabled) else { return }
+        guard checkinOn, !Self.demo else { return }
         let content = UNMutableNotificationContent()
         content.title = "How was today?"
-        content.body = "A minute to check in. It goes in your journal and tonight's recap."
+        content.body = "Tap to say how it went, or tap it in. Takes a minute."
         content.sound = .default
         var when = DateComponents()
         when.hour = checkinMinutes / 60
         when.minute = checkinMinutes % 60
         center.add(UNNotificationRequest(identifier: "checkin", content: content, trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: true)))
+        let at = Calendar.current.date(from: when).map { $0.formatted(date: .omitted, time: .shortened) } ?? "the chosen time"
+        log.add("Evening check-in reminder set for \(at) every day")
     }
 
     /// A gentle question when a stretch of raised heart rate while still has just ended:

@@ -10,6 +10,8 @@ A private iPhone app for the hub: the one place to see what's going on with your
 - **More:** PayIt in detail (by hour, last 7 days, payment methods, subscriptions), the schedule, systems and alerts, Apple Health (the day by hour, activity, check-ins, reminder settings), the ring, the hub connection, and the full hub page.
 - **The ring:** paired straight to the app. Hold the button, speak, let go: the recording comes over Bluetooth, Parakeet turns it into text on the phone, and the text goes to the hub's `/api/voice`, the same request the Pebble app's webhook made. It works with the app in the background, and if the hub can't be reached the note waits on the phone and is sent later.
 - **Ring clicks:** a click, double click or triple click can play, pause or skip music in Apple Music or Spotify (More → Ring & voice notes → Ring buttons). Out of the box a double click plays and pauses and a triple click skips to the next track. The Pebble app has these settings too but leaves them empty on iPhone, because iOS won't let one app press play in another; this app goes through Apple Music's own player or Spotify's web API instead.
+- **PayIt widget:** today's sales, how they compare with yesterday at this time, the week as bars and PayIt Plus, on the home screen (small and medium) and the lock screen. It asks the hub itself every 15 minutes or so, and the app hands it fresh numbers whenever you use it. Away from your home Wi-Fi it shows the last numbers it had, marked with the time. Tapping it opens PayIt.
+- **Evening check-in:** a reminder at 6 PM (change it in More → Health) that opens a check-in. Talk for a minute with the questions on screen (how you feel, how stressed, how much energy, what it was about, anything to do), or tap it in. What you say is turned into text on the phone, read for mood, stress, energy, feelings and topics, and filled into the form for you to check; anything it only guessed is marked. Your words go to the hub like a voice note, so "remind me to…" becomes a task.
 
 Nothing is published anywhere. You build it from this repo and install it on your own phone.
 
@@ -50,7 +52,9 @@ With a free Apple ID the app stops opening after 7 days; plug in and press Run a
 4. Hold the button and speak. The note shows under **Recent notes** and pops up on the hub.
 5. Once notes arrive, **delete the Pebble app**. While both are installed, whichever gets to the ring first takes the recording.
 6. **Ring clicks:** More → Ring & voice notes → **Ring buttons**. Pick Apple Music or Spotify. Apple Music needs nothing more than the permission iOS asks for. Spotify needs a one-time setup, because Spotify only lets an app control playback through its web API, and only for Premium accounts: make an app at developer.spotify.com/dashboard (Web API), add the redirect URI `deskhub://spotify-callback`, add your own account under User Management, paste its Client ID into the app and tap **Connect Spotify**. Nothing secret is stored on the phone (the sign-in uses PKCE). **Try it without the ring** has buttons to check the music side before you click the ring.
-7. **Apple Health:** tap **Connect Apple Health** on Today and allow everything iOS lists, then allow notifications. The evening reminder is at 9 PM; change it or turn off the "stress looks high" questions in More → Health.
+7. **PayIt widget:** press and hold the home screen, tap the **+** (or Edit → Add Widget), choose **Desk Hub → PayIt**, pick a size and Add. It needs the hub address from step 1, and one visit to the app on your home Wi-Fi.
+8. **Evening check-in:** allow notifications when iOS asks. The reminder is at 6 PM; More → Health has the time and an off switch. The first time you talk, the speech model has to be downloaded (step 2).
+9. **Apple Health:** tap **Connect Apple Health** on Today and allow everything iOS lists, then allow notifications. The evening reminder is at 9 PM; change it or turn off the "stress looks high" questions in More → Health.
 
 ## Apple Health and the stress estimate
 
@@ -67,6 +71,9 @@ Read: heart rate, resting heart rate, HRV, steps, active energy, exercise minute
 **If Xcode won't sign the app after this update** with an error about HealthKit, your Apple ID's free team can't use it: either join the Apple Developer Program, or remove the `entitlements:` block from `project.yml` and rerun `setup.sh` (everything else keeps working; Health stays off).
 
 ## Good to know
+
+- **The widget can only reach the hub on your home network** (or wherever its address works). On iPhone, the widget and the app share the hub's address and your sign-in through an App Group, which free Apple IDs are allowed to use. If the widget stays on "No numbers yet", open the app once on the home Wi-Fi.
+- **Spoken check-ins are read on the phone.** The words come from Parakeet, then mood, stress and energy come from what you said: numbers ("stress was a 4", "7 out of 10") and phrases ("exhausted", "wasn't a bad day") first, and Apple's on-device language model only for a level you didn't say, marked "my guess". Feelings and topics come only from words you said, so nothing is tagged that you didn't mention. Without Apple Intelligence it still works, just with the keyword rules alone.
 
 - The first time a ring syncs with this app, recordings still on it are cleared, as the Pebble app does when pairing. Sync anything you need in the Pebble app first.
 - **Firmware updates** come from Core Devices' server, which answers only to a signed-in Core Devices account (a request without one gets a 401). Only the Pebble app can sign in, so this app can't fetch or install updates. If the ring ever needs one, reinstall the Pebble app for that, then delete it again.

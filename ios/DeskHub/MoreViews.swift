@@ -10,6 +10,7 @@ struct MoreView: View {
     @EnvironmentObject private var hub: HubStore
     @EnvironmentObject private var ring: RingController
     @EnvironmentObject private var health: HealthMonitor
+    @EnvironmentObject private var nav: AppNav
     // `-morePage payit` on launch, for the simulator screenshots.
     @State private var path: [Page] = UserDefaults.standard.string(forKey: "morePage").flatMap(Page.init(rawValue:)).map { [$0] } ?? []
 
@@ -43,6 +44,18 @@ struct MoreView: View {
                 case .connection: ConnectionView()
                 case .web: HubView().navigationTitle("Hub").navigationBarTitleDisplayMode(.inline)
                 }
+            }
+        }
+        .onChange(of: nav.morePage) { _, name in
+            guard let name, let page = Page(rawValue: name) else { return }
+            path = [page]
+            nav.morePage = nil
+        }
+        .onAppear {
+            // A widget tap that launched the app arrives before this view exists.
+            if let name = nav.morePage, let page = Page(rawValue: name) {
+                path = [page]
+                nav.morePage = nil
             }
         }
     }

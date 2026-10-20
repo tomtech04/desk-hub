@@ -25,6 +25,7 @@ targets:
     platform: iOS
     sources:
       - path: DeskHub
+      - path: Shared
     configFiles:
       Debug: Config/App.xcconfig
       Release: Config/App.xcconfig
@@ -32,6 +33,7 @@ targets:
       - package: FluidAudio
       - framework: RingKit/build/XCFrameworks/release/RingKit.xcframework
         embed: true
+      - target: DeskHubWidget
     # HealthKit, and iOS waking the app when the watch syncs new heart data.
     entitlements:
       path: DeskHub/DeskHub.entitlements
@@ -39,6 +41,8 @@ targets:
         com.apple.developer.healthkit: true
         com.apple.developer.healthkit.access: []
         com.apple.developer.healthkit.background-delivery: true
+        # Shared with the widget: where the hub is and the last PayIt numbers.
+        com.apple.security.application-groups: [group.$(DESKHUB_BUNDLE_ID)]
     info:
       path: DeskHub/Info.plist
       properties:
@@ -46,6 +50,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        DeskHubAppGroup: group.$(DESKHUB_BUNDLE_ID)
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
@@ -69,6 +74,39 @@ targets:
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         # The ring library ships no Intel simulator slice; the simulator needs an Apple silicon Mac.
         EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+
+  # The PayIt widget for the home and lock screens.
+  DeskHubWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: DeskHubWidget
+      - path: Shared
+    configFiles:
+      Debug: Config/App.xcconfig
+      Release: Config/App.xcconfig
+    entitlements:
+      path: DeskHubWidget/DeskHubWidget.entitlements
+      properties:
+        com.apple.security.application-groups: [group.$(DESKHUB_BUNDLE_ID)]
+    info:
+      path: DeskHubWidget/Info.plist
+      properties:
+        CFBundleDisplayName: PayIt
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        DeskHubAppGroup: group.$(DESKHUB_BUNDLE_ID)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        NSLocalNetworkUsageDescription: The PayIt widget reads today's numbers from your hub on your home network.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(DESKHUB_BUNDLE_ID).widget
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        SKIP_INSTALL: YES
 
 schemes:
   DeskHub:

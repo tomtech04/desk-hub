@@ -3,3 +3,5 @@ DeskHub/Info.plist
 DeskHub/DeskHub.entitlements
 Config/Team.xcconfig
 build/
+DeskHubWidget/Info.plist
+DeskHubWidget/DeskHubWidget.entitlements
