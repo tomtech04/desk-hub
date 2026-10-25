@@ -16,6 +16,16 @@ final class RingController: ObservableObject {
         didSet { UserDefaults.standard.set(lifetimeRecordings, forKey: Key.lifetime) }
     }
 
+    /// Whether this app connects to the ring itself. Off by default: the Pebble app keeps the ring
+    /// and posts each note to the hub's webhook, because two apps taking turns with one ring is
+    /// what made it flaky.
+    @Published var inApp: Bool {
+        didSet {
+            UserDefaults.standard.set(inApp, forKey: "ring.inApp")
+            if inApp { start() } else { stop() }
+        }
+    }
+
     fileprivate let outbox: VoiceOutbox
     fileprivate let log: RingLog
     fileprivate let buttons: RingButtons
@@ -34,6 +44,7 @@ final class RingController: ObservableObject {
         self.log = log
         self.buttons = buttons
         let saved = UserDefaults.standard
+        inApp = saved.bool(forKey: "ring.inApp")
         pairedId = saved.string(forKey: "ring.paired")
         batteryMilliVolts = saved.object(forKey: Key.battery) as? Int
         lifetimeRecordings = saved.object(forKey: Key.lifetime) as? Int
@@ -81,13 +92,19 @@ final class RingController: ObservableObject {
 
     /// Starts listening for the ring's recordings; safe to call again.
     func start() {
-        guard !Self.demo else { return }
+        guard !Self.demo, inApp else { return }
         if ring == nil {
             let made = IndexRing(listener: Listener(controller: self))
             ring = made
             pairedId = made.pairedRingId
         }
         ring?.start()
+    }
+
+    /// Lets go of the ring so the Pebble app can have it.
+    func stop() {
+        ring?.stop()
+        status = "The Pebble app has the ring"
     }
 
     /// Called once iOS has bonded with the ring.

@@ -23,6 +23,8 @@ struct Dashboard: Decodable {
     var settings: HubConfig?
     var desk: DeskInfo?
     var signedIn: Bool?
+    /// The hub has a voice token set, so the Pebble app's webhook can post ring notes to it.
+    var voiceReady: Bool?
 }
 
 /// One data source on the hub (PayIt, mail, calendar, weather) and how its last fetch went.

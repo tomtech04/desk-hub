@@ -80,6 +80,7 @@ struct MoreView: View {
     }
 
     private var ringLine: String {
+        guard ring.inApp else { return "Pebble app has the ring" }
         guard ring.pairedId != nil else { return "Not paired" }
         return ring.batteryPercent.map { "\(ring.status) · \($0)% battery" } ?? ring.status
     }

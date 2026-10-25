@@ -3,6 +3,7 @@ import SwiftUI
 /// The ring, the speech model, and the ring's notes on their way to the hub.
 struct RingSettingsView: View {
     @EnvironmentObject private var ring: RingController
+    @EnvironmentObject private var hub: HubStore
     @EnvironmentObject private var outbox: VoiceOutbox
     @EnvironmentObject private var settings: HubSettings
     @EnvironmentObject private var transcriber: Transcriber
@@ -11,30 +12,43 @@ struct RingSettingsView: View {
 
     var body: some View {
         Form {
-            Section {
-                if ring.pairedId != nil {
-                    LabeledContent("Status", value: ring.status)
-                    if let firmware = ring.firmware { LabeledContent("Firmware", value: firmware) }
-                    if let battery = ring.batteryPercent { LabeledContent("Battery", value: "\(battery)%") }
-                    NavigationLink("Ring buttons") { RingButtonsView() }
-                    Button("Restart ring sync") { ring.restartSync() }
-                    Button("Forget this ring", role: .destructive) { confirmForget = true }
-                } else {
-                    Text("Pair your Index 01 and its voice notes come straight here, get transcribed on this iPhone, and go to the hub. No Pebble app needed.")
-                        .foregroundStyle(.secondary)
-                    Button("Pair ring") { pairing = true }
-                }
-            } header: {
-                Text("Ring")
-            } footer: {
-                if ring.pairedId != nil {
-                    VStack(alignment: .leading, spacing: 6) {
-                        if ring.batteryPercent != nil {
-                            Text("Battery is an estimate. It can't be charged; Pebble rates it for 12 to 15 hours of recording, about two years of short notes.")
+            if ring.inApp {
+                Section {
+                    if ring.pairedId != nil {
+                        LabeledContent("Status", value: ring.status)
+                        if let firmware = ring.firmware { LabeledContent("Firmware", value: firmware) }
+                        if let battery = ring.batteryPercent { LabeledContent("Battery", value: "\(battery)%") }
+                        NavigationLink("Ring buttons") { RingButtonsView() }
+                        Button("Restart ring sync") { ring.restartSync() }
+                        Button("Forget this ring", role: .destructive) { confirmForget = true }
+                    } else {
+                        Text("Pair your Index 01 and its voice notes come straight here, get transcribed on this iPhone, and go to the hub. No Pebble app needed.")
+                            .foregroundStyle(.secondary)
+                        Button("Pair ring") { pairing = true }
+                    }
+                } header: {
+                    Text("Ring")
+                } footer: {
+                    if ring.pairedId != nil {
+                        VStack(alignment: .leading, spacing: 6) {
+                            if ring.batteryPercent != nil {
+                                Text("Battery is an estimate. It can't be charged; Pebble rates it for 12 to 15 hours of recording, about two years of short notes.")
+                            }
+                            Text("Ring firmware updates come from Core Devices' server, which only answers to a signed-in Pebble account, so they still go through the Pebble app. Install it when an update is due, then delete it again.")
                         }
-                        Text("Ring firmware updates come from Core Devices' server, which only answers to a signed-in Pebble account, so they still go through the Pebble app. Install it when an update is due, then delete it again.")
                     }
                 }
+
+            } else {
+                pebbleSections
+            }
+
+            Section {
+                Toggle("Connect the ring in this app instead", isOn: $ring.inApp)
+            } header: {
+                Text("Advanced")
+            } footer: {
+                Text("Pairs the ring to this app: notes are transcribed on this iPhone and clicks can control the Music app. While both apps are installed, whichever reaches the ring first takes the recording, which is why this is off.")
             }
 
             Section {
@@ -47,7 +61,7 @@ struct RingSettingsView: View {
 
             Section {
                 if outbox.clips.isEmpty {
-                    Text("Hold the ring's button, speak, and let go. Each note shows up here and on the hub.")
+                    Text(ring.inApp ? "Hold the ring's button, speak, and let go. Each note shows up here and on the hub." : "Notes you record in this app show up here. Ring notes go to your journal on the hub.")
                         .foregroundStyle(.secondary)
                 }
                 ForEach(outbox.clips) { clip in
@@ -75,6 +89,41 @@ struct RingSettingsView: View {
             Button("Forget", role: .destructive) { ring.forget() }
         } message: {
             Text("Recordings stop coming to this app. To pair it with another phone, also forget it in Settings > Bluetooth.")
+        }
+    }
+
+    // MARK: The Pebble app has the ring
+
+    private var webhookURL: String {
+        (Shared.baseURL(settings.hubAddress)?.appendingPathComponent("api/voice").absoluteString) ?? "Set the hub address first"
+    }
+
+    private var hubReady: String {
+        guard let d = hub.dashboard else { return "Unknown" }
+        return d.voiceReady == true ? "Yes" : "No: set HUB_VOICE_TOKEN"
+    }
+
+    @ViewBuilder private var pebbleSections: some View {
+        Section {
+            Text("Your ring stays with the Pebble app. It sends every voice note to your hub's webhook and the hub files it in your journal. This app doesn't touch the ring, so the two can't fight over it.")
+                .foregroundStyle(.secondary)
+            LabeledContent("Hub takes ring notes", value: hubReady)
+        } header: {
+            Text("Ring")
+        }
+
+        Section {
+            LabeledContent("URL") {
+                Text(webhookURL).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
+            }
+            Button("Copy URL") { UIPasteboard.general.string = webhookURL }
+            if !settings.voiceToken.isEmpty {
+                Button("Copy token") { UIPasteboard.general.string = settings.voiceToken }
+            }
+        } header: {
+            Text("Pebble app webhook")
+        } footer: {
+            Text("In the Pebble app open your ring, then Settings, then Webhook. Paste the URL, and put the token in the Authorization header (it's HUB_VOICE_TOKEN in the hub's .env). The hub can only be reached on your home Wi-Fi, so a note recorded away from home can't be delivered until you're back.")
         }
     }
 

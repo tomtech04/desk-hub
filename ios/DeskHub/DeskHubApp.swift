@@ -54,8 +54,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         if launchOptions?[.bluetoothCentrals] != nil { log.add("Woken in the background by the ring") }
-        // Bluetooth starts only once a ring is paired, so there's no Bluetooth prompt before then.
-        if ring.pairedId != nil, !RingController.demo {
+        // Bluetooth starts only when this app has been told to take the ring (the Pebble app has it
+        // otherwise) and one is paired, so there's no Bluetooth prompt before then.
+        if ring.inApp, ring.pairedId != nil, !RingController.demo {
             ring.start()
             transcriber.prepareInBackground()
         }
