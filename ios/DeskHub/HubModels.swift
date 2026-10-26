@@ -25,6 +25,44 @@ struct Dashboard: Decodable {
     var signedIn: Bool?
     /// The hub has a voice token set, so the Pebble app's webhook can post ring notes to it.
     var voiceReady: Bool?
+    /// Claude chats on the Mac, as the Desk Hub Mac app reports them.
+    var claude: ClaudeInfo?
+}
+
+struct ClaudeInfo: Decodable {
+    var chats: [ClaudeChat]?
+    var syncedAt: Double?
+    /// The Mac has reported in the last 3 minutes.
+    var online: Bool?
+    /// The Mac is connected, so tapping a chat can open it there.
+    var listening: Bool?
+}
+
+struct ClaudeChat: Decodable, Identifiable, Equatable {
+    enum Kind: Int, Comparable {
+        case needs, new, running, read
+        static func < (a: Kind, b: Kind) -> Bool { a.rawValue < b.rawValue }
+    }
+
+    var id: String
+    var title: String
+    var project: String?
+    /// "needs", "running" or "done".
+    var state: String
+    /// What it's waiting for, or what it's doing.
+    var detail: String?
+    /// The last thing Claude said, for finished chats.
+    var preview: String?
+    var since: Double
+    var unread: Bool?
+
+    var kind: Kind {
+        switch state {
+        case "needs": return .needs
+        case "running": return .running
+        default: return unread == true ? .new : .read
+        }
+    }
 }
 
 /// One data source on the hub (PayIt, mail, calendar, weather) and how its last fetch went.

@@ -95,7 +95,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 @MainActor
 final class AppNav: ObservableObject {
     enum Tab: String {
-        case today, tasks, journal, mail, more
+        case today, tasks, journal, claude, more
     }
 
     // `-startTab mail` etc. on launch (used by the simulator screenshots).
@@ -130,6 +130,8 @@ final class AppNav: ObservableObject {
             tab = .more
         case "checkin":
             checkIn()
+        case "claude":
+            tab = .claude
         default:
             break
         }
@@ -138,6 +140,7 @@ final class AppNav: ObservableObject {
 
 struct RootView: View {
     @EnvironmentObject private var nav: AppNav
+    @EnvironmentObject private var hub: HubStore
 
     var body: some View {
         TabView(selection: $nav.tab) {
@@ -150,14 +153,29 @@ struct RootView: View {
             JournalView()
                 .tabItem { Label("Journal", systemImage: "mic") }
                 .tag(AppNav.Tab.journal)
-            MailView()
-                .tabItem { Label("Mail", systemImage: "envelope") }
-                .tag(AppNav.Tab.mail)
+            ClaudeBoardView()
+                .tabItem { Label("Claude", systemImage: "asterisk") }
+                .tag(AppNav.Tab.claude)
+                .badge(claudeBadge)
             MoreView()
                 .tabItem { Label("More", systemImage: "square.grid.2x2") }
                 .tag(AppNav.Tab.more)
         }
         .tint(G.text)
         .sheet(isPresented: $nav.wantsCheckIn) { CheckInSheet() }
+        // A Claude chat that just finished or needs you takes over the screen while the app is open.
+        .overlay {
+            if let call = hub.claudeCall {
+                ClaudeTakeover(call: call)
+                    .id(call.id)
+                    .transition(.opacity.combined(with: .scale(scale: 1.04)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.35), value: hub.claudeCall)
+    }
+
+    /// Chats waiting on you, plus finished ones you haven't opened.
+    private var claudeBadge: Int {
+        (hub.dashboard?.claudeLive ?? []).filter { $0.kind != .running }.count
     }
 }

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Desk Hub</string>
+    <key>CFBundleExecutable</key>
+    <string>DeskHub</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <!-- Kept from Claude Status, the menu bar app this grew out of, so the permissions and settings it was given carry over. -->
+    <key>CFBundleIdentifier</key>
+    <string>com.tomasnavedo.claude-status</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Desk Hub</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Desk Hub sends your Claude chats to your hub on your home network, so the desk and your phone can show them.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Desk Hub records the notes you say into "Record a note".</string>
+</dict>
+</plist>

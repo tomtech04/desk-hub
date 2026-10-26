@@ -9,10 +9,8 @@ struct MailView: View {
     @State private var opened = false
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        ScrollView {
                 VStack(spacing: 14) {
-                    ScreenHeader("Mail")
                     if let d = hub.dashboard {
                         digest(d)
                         if let error = d.mail?.error {
@@ -29,11 +27,12 @@ struct MailView: View {
                 .padding(.bottom, 28)
             }
             .refreshable { await hub.refresh() }
-            .graphiteRoot()
+            .graphitePage()
+            .navigationTitle("Mail")
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(item: $open) { MailDetailSheet(message: $0) }
             .onAppear(perform: openIfAsked)
             .onChange(of: hub.updatedAt) { _, _ in openIfAsked() }
-        }
     }
 
     /// `-openMail p1` on launch, for the simulator screenshots.

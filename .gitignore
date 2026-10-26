@@ -4,3 +4,5 @@ data/*.json
 .DS_Store
 .supabase-link/
 data/mail-push/
+mac/.build/
+mac/build/

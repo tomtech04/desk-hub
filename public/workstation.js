@@ -14,7 +14,8 @@ export function createWorkstation(h) {
 
   const NAV = [
     ['today', 'Today', 'home', 'var(--g-home)'], ['inbox', 'Inbox', 'mail', 'var(--g-mail)'], ['tasks', 'Tasks', 'tasks', 'var(--g-tasks)'], ['journal', 'Journal', 'journal', 'var(--g-journal)'],
-    ['calendar', 'Calendar', 'schedule', 'var(--g-cal)'], ['payit', 'PayIt', 'payit', 'var(--g-money)'], ['focus', 'Focus', 'focus', 'var(--g-focus)'], ['settings', 'Settings', 'settings', 'var(--g-home)'],
+    ['claude', 'Claude', 'claude', 'var(--g-mail)'], ['calendar', 'Calendar', 'schedule', 'var(--g-cal)'], ['payit', 'PayIt', 'payit', 'var(--g-money)'], ['focus', 'Focus', 'focus', 'var(--g-focus)'],
+    ['settings', 'Settings', 'settings', 'var(--g-home)'],
   ];
   const DESK_VIEWS = [['home', 'Home', 'home'], ['focus', 'Focus', 'focus'], ['schedule', 'Schedule', 'schedule'], ['journal', 'Journal', 'journal']];
   const store = (k, fallback) => { try { return JSON.parse(localStorage.getItem(k)) ?? fallback; } catch { return fallback; } };
@@ -143,7 +144,7 @@ export function createWorkstation(h) {
 
   function side() {
     const D = h.D, d = D.desk || {};
-    const counts = { inbox: mailInbox().length, tasks: dueNow().length };
+    const counts = { inbox: mailInbox().length, tasks: dueNow().length, claude: h.claudeLive().filter((c) => h.chatKind(c) !== 'running').length };
     const awake = D.mode === 'day';
     const dt = deskTimer();
     const run = localActive() ? `<button class="w-run" data-ws="go" data-view="focus">
@@ -179,7 +180,8 @@ export function createWorkstation(h) {
       payit: ['PayIt', `Live · updated ${D.payit?.updatedAt ? hm(D.payit.updatedAt) : '—'}`],
       focus: ['Focus', 'Runs here or on your desk'],
       settings: ['Settings', 'This computer and your desk'],
-    }[st.view];
+      claude: ['Claude', 'Your chats on this Mac · click one to open it'],
+    }[st.view] || ['Desk Hub', ''];
     return `<h1>${title}</h1><span class="w-sub">${esc(sub)}</span><span class="grow"></span>
       <span class="w-sync ${D.desk?.online ? '' : 'off'}"><i></i>${D.desk?.online ? 'Synced with desk' : 'Desk offline'}</span>
       <button class="w-bell ${alerts.length ? 'has' : ''}" data-ws="alerts">${icon('bell')}${alerts.length}</button>`;
@@ -253,6 +255,11 @@ export function createWorkstation(h) {
     for (const s of D.payit?.data?.systems || []) if (s.status !== 'up') out.push({ id: `sys:${s.system}:${s.status}`, kind: 'PayIt · system', icon: 'payit', bg: 'var(--g-bad)', title: `${s.system.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())} is ${s.status}`, body: s.detail || '', acts: [['Open PayIt', 'data-ws="go" data-view="payit"', true]] });
     for (const m of mailInbox()) if (m.priority === 'urgent') out.push({ id: `mail:${m.id}`, kind: `Mail · urgent · ${m.account}`, icon: 'mail', bg: 'var(--g-mail)', title: m.subject || m.from, body: `${m.from}: ${m.summary}`,
       acts: [['Draft reply', `data-ws="mail-draft" data-id="${esc(m.id)}"`, true], ['Make task', `data-ws="mail-task" data-id="${esc(m.id)}"`], ['Open', `data-ws="mail-open" data-id="${esc(m.id)}"`]] });
+    for (const c of h.claudeLive().filter((x) => h.chatKind(x) !== 'running')) {
+      const waiting = c.state === 'needs';
+      out.push({ id: `claude:${c.id}:${c.since}`, kind: `Claude · ${waiting ? 'needs you' : 'done'}${c.project ? ` · ${c.project}` : ''}`, icon: 'claude', bg: waiting ? 'var(--g-focus)' : 'var(--g-money)',
+        title: c.title, body: waiting ? c.detail : c.preview, acts: [['Open on Mac', `data-act="claude-open" data-id="${esc(c.id)}"`, true], ['See all', 'data-ws="go" data-view="claude"']] });
+    }
     for (const t of h.suggestedTodos()) out.push({ id: `sugg:${t.id}`, kind: 'Suggested from email', icon: 'tasks', bg: 'var(--g-tasks)', title: t.text, body: t.source?.why || [t.source?.from, t.source?.subject].filter(Boolean).join(' · '),
       acts: [['Keep', `data-act="sugg-keep" data-id="${t.id}"`, true], ['Not real', `data-act="sugg-dismiss" data-id="${t.id}"`]] });
     return out.filter((n) => !st.dismissed[n.id]);
@@ -715,10 +722,17 @@ export function createWorkstation(h) {
     payit: '<div class="w-payview" data-r="v-pay" data-s="pay"></div>',
     focus: '<div class="w-focusview"><div data-r="v-timer"></div><div class="w-fside" data-r="v-fside" data-s="fside"></div></div>',
     settings: '<div class="w-setview" data-r="v-set"></div>',
+    claude: '<div class="w-claudeview" data-r="v-claude" data-s="claude"></div>',
   };
   const VIEW = {
     today() { patch('v-left', todayLeft()); patch('v-ttasks', todayTasks()); patch('v-needs', todayNeeds()); patch('v-note', noteCard()); },
     inbox, tasks, journal, calendar, payit, focus, settings,
+    claude() {
+      const b = h.claudeBoard();
+      patch('v-claude', `<div class="w-colh"><b>Claude</b><span class="cb-live ${b.liveCls}"><i></i>${esc(b.liveText)}</span>
+          ${b.fresh ? '<button class="w-btn" data-act="claude-readall">Mark all read</button>' : ''}</div>
+        ${b.sum ? `<div class="cb-sum">${esc(b.sum)}</div>` : ''}${b.body}`);
+    },
   };
 
   // ---------------------------------------------------------------------------
@@ -1004,7 +1018,7 @@ export function createWorkstation(h) {
     if (k === '/') { e.preventDefault(); openPalette(); return; }
     if (k === 'r') { e.preventDefault(); startRec(); return; }
     if (k === 'n') { e.preventDefault(); if (!['today', 'tasks'].includes(st.view)) go('today'); $('[data-k="newtask"]')?.focus(); return; }
-    if (/^[1-8]$/.test(k)) { go(NAV[Number(k) - 1][0]); return; }
+    if (/^[1-9]$/.test(k)) { go(NAV[Number(k) - 1][0]); return; }
     const move = (list, cur, set) => { const i = list.findIndex((x) => x.id === cur), next = list[Math.min(list.length - 1, Math.max(0, i + (k === 'j' ? 1 : -1)))]; if (next) { set(next.id); render(); root.querySelector('.sel')?.scrollIntoView({ block: 'nearest' }); } };
     if (st.view === 'inbox') {
       if (k === 'j' || k === 'k') move(mailList(), st.mailSel, selectMail);

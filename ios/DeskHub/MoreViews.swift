@@ -4,7 +4,7 @@ import SwiftUI
 /// PayIt, the schedule, your systems, the ring, and the hub connection.
 struct MoreView: View {
     enum Page: String, Hashable {
-        case payit, schedule, systems, health, ring, connection, web
+        case mail, payit, schedule, systems, health, ring, connection, web
     }
 
     @EnvironmentObject private var hub: HubStore
@@ -24,6 +24,7 @@ struct MoreView: View {
                         .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 4, trailing: 4))
                 }
                 Section {
+                    link(.mail, "envelope.fill", G.mail, "Mail", mailLine)
                     link(.payit, "creditcard.fill", G.money, "PayIt", Fmt.money(hub.dashboard?.payit?.data?.today?.grossCents) + " today")
                     link(.schedule, "calendar", G.cal, "Schedule", "\(hub.dashboard?.events.count ?? 0) events coming up")
                     link(.systems, "server.rack", G.white, "Systems", systemsLine)
@@ -50,6 +51,7 @@ struct MoreView: View {
                 case .ring: RingSettingsView()
                 case .connection: ConnectionView()
                 case .web: HubView().navigationTitle("Hub").navigationBarTitleDisplayMode(.inline)
+                case .mail: MailView()
                 }
             }
         }
@@ -65,6 +67,13 @@ struct MoreView: View {
                 nav.morePage = nil
             }
         }
+    }
+
+    private var mailLine: String {
+        guard let d = hub.dashboard else { return "—" }
+        let unread = (d.mail?.data?.accounts ?? []).reduce(0) { $0 + ($1.unread ?? 0) }
+        let urgent = d.urgentMail.count
+        return urgent > 0 ? "\(unread) unread · \(urgent) urgent" : "\(unread) unread"
     }
 
     private var systemsLine: String {

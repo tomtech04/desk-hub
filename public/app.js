@@ -438,6 +438,23 @@ function chatTile(c) {
   </button>`;
 }
 
+/** The board's pieces, shared by the desk screen and the workstation: tiles for what needs a look, then Earlier. */
+function claudeBoard() {
+  const c = D.claude || { chats: [], online: false, syncedAt: null };
+  const live = claudeLive(c.online ? c.chats : []);
+  const earlier = (c.chats || []).filter((x) => chatKind(x) === 'read').sort((a, b) => b.since - a.since);
+  const n = (k) => live.filter((x) => chatKind(x) === k).length;
+  const sum = [n('needs') && `${n('needs')} need${n('needs') === 1 ? 's' : ''} you`, n('new') && `${n('new')} new`, n('running') && `${n('running')} working`].filter(Boolean).join(' · ');
+  const [liveCls, liveText] = !c.syncedAt ? ['off', 'Waiting for your Mac'] : !c.online ? ['away', `Mac away since ${hm(c.syncedAt)}`]
+    : c.listening ? ['on', 'Live from your Mac'] : ['on', "Live · taps can't reach your Mac"];
+  const quiet = `<section class="card cb-quiet">${icon('claude')}<b>${c.syncedAt ? 'All quiet' : 'Nothing from your Mac yet'}</b>
+    <p>${c.syncedAt ? 'Nothing is running. Chats you start on your Mac show up here, and anything that finishes or needs you takes over the screen.' : 'Claude Status, the menu bar app on your Mac, sends your chats here whenever it can reach the hub.'}</p></section>`;
+  const body = `${live.length ? `<div class="cb-grid">${live.map(chatTile).join('')}</div>` : quiet}
+    ${earlier.length && c.online ? `<section class="card cb-earlier"><div class="ch plain"><span class="title">Earlier</span><span class="meta">${earlier.length}</span></div>
+      ${earlier.slice(0, 12).map((x) => chatLine(x, true)).join('')}</section>` : ''}`;
+  return { liveCls, liveText, sum, fresh: n('new'), needs: n('needs'), body };
+}
+
 /** A calendar event as one line: when, what, where. Tap for the details sheet. */
 function eventLine(e) {
   const live = !e.allDay && e.start <= Date.now() && e.end > Date.now();
@@ -693,24 +710,12 @@ const VIEWS = {
 
   // The Claude board: what's going on in your chats right now, big enough to read from your chair.
   claude() {
-    const c = D.claude || { chats: [], online: false, syncedAt: null };
-    const live = claudeLive(c.online ? c.chats : []);
-    const earlier = (c.chats || []).filter((x) => chatKind(x) === 'read').sort((a, b) => b.since - a.since);
-    const n = (k) => live.filter((x) => chatKind(x) === k).length;
-    const sum = [n('needs') && `${n('needs')} need${n('needs') === 1 ? 's' : ''} you`, n('new') && `${n('new')} new`, n('running') && `${n('running')} working`].filter(Boolean).join(' · ');
-    const [liveCls, liveText] = !c.syncedAt ? ['off', 'Waiting for your Mac'] : !c.online ? ['away', `Mac away since ${hm(c.syncedAt)}`]
-      : c.listening ? ['on', 'Live from your Mac'] : ['on', "Live · taps can't reach your Mac"];
-    const quiet = `<section class="card cb-quiet">${icon('claude')}<b>${c.syncedAt ? 'All quiet' : 'Nothing from your Mac yet'}</b>
-      <p>${c.syncedAt ? 'Nothing is running. Chats you start on your Mac show up here, and anything that finishes or needs you takes over the screen.' : 'Claude Status, the menu bar app on your Mac, sends your chats here whenever it can reach the hub.'}</p></section>`;
+    const b = claudeBoard();
     return `<div class="page vcb">
-      <div class="ph"><h1>Claude</h1><span class="cb-live ${liveCls}"><i></i>${esc(liveText)}</span>
-        ${n('new') ? '<button class="btn secondary small" data-act="claude-readall">Mark all read</button>' : ''}</div>
-      ${sum ? `<div class="cb-sum">${esc(sum)}</div>` : ''}
-      <div class="scroll">
-        ${live.length ? `<div class="cb-grid">${live.map(chatTile).join('')}</div>` : quiet}
-        ${earlier.length && c.online ? `<section class="card cb-earlier"><div class="ch plain"><span class="title">Earlier</span><span class="meta">${earlier.length}</span></div>
-          ${earlier.slice(0, 12).map((x) => chatLine(x, true)).join('')}</section>` : ''}
-      </div>
+      <div class="ph"><h1>Claude</h1><span class="cb-live ${b.liveCls}"><i></i>${esc(b.liveText)}</span>
+        ${b.fresh ? '<button class="btn secondary small" data-act="claude-readall">Mark all read</button>' : ''}</div>
+      ${b.sum ? `<div class="cb-sum">${esc(b.sum)}</div>` : ''}
+      <div class="scroll">${b.body}</div>
     </div>`;
   },
 
@@ -2022,7 +2027,7 @@ setInterval(idleHome, 10e3);
 // #open=weather, and #sky=<warm>,<day> (each 0..1) to pin the backdrop while
 // trying looks out. Combine with &.
 const WS = createWorkstation({
-  get D() { return D; }, T, PHASES, SRC_ICON,
+  get D() { return D; }, T, PHASES, SRC_ICON, claudeBoard, claudeLive, chatKind,
   api, load, render, toast, icon, esc, money, hm, ago, wx, dayStart, clock12, dueLabel, tagColor, emailDoc, barChart, ring, mountClocks, patchSettings, ringOff,
   realTodos, suggestedTodos, todoSort, fmtLeft, tLeft, tTotal, phaseMinutes, dialMax, dialPresets, dialSet, saveT, timerStart, timerReset,
 });

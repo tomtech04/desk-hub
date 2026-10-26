@@ -17,9 +17,14 @@ final class HubStore: ObservableObject {
     @Published private(set) var updatedAt: Date?
     /// A short message about the last action that didn't work, shown as a banner.
     @Published var problem: String?
+    /// A Claude chat that just finished or started waiting on you, shown full screen while the app is open.
+    @Published private(set) var claudeCall: ClaudeCall?
 
     private let settings: HubSettings
     private var timer: Timer?
+    private var events: Task<Void, Never>?
+    private var claudeSeen: [String: String]?
+    private var claudeLater: [String: Date] = [:]
 
     init(settings: HubSettings) {
         self.settings = settings
@@ -33,11 +38,14 @@ final class HubStore: ObservableObject {
             Task { @MainActor in await self?.refresh() }
         }
         Task { await refresh() }
+        listen()
     }
 
     func stopRefreshing() {
         timer?.invalidate()
         timer = nil
+        events?.cancel()
+        events = nil
     }
 
     func refresh() async {
@@ -62,6 +70,7 @@ final class HubStore: ObservableObject {
             dashboard = next
             updatedAt = Date()
             status = .ok
+            watchClaude(next.claude)
             shareWithWidget(data)
         } catch let error as DecodingError {
             status = .offline("The hub sent something this app couldn't read (\(Self.describe(error))).")
@@ -244,6 +253,92 @@ final class HubStore: ObservableObject {
         await act("POST", "api/alerts/\(alert.id)/dismiss")
     }
 
+    // MARK: Claude
+
+    /// Asks the Mac to open the chat (through the Desk Hub app's connection to the hub).
+    func openOnMac(_ chat: ClaudeChat) async {
+        if claudeCall?.chat.id == chat.id { claudeCall = nil }
+        do {
+            let (data, code) = try await call("POST", "api/claude/open", ["id": chat.id])
+            let delivered = (try? JSONDecoder().decode(OpenReply.self, from: data))?.delivered ?? 0
+            if code != 200 { problem = (try? JSONDecoder().decode(ErrorReply.self, from: data))?.error ?? "The hub answered with an error (\(code))." }
+            else if delivered == 0 { problem = "Your Mac didn't pick that up. Make sure Desk Hub is open on it and the Mac is awake." }
+        } catch {
+            problem = error.localizedDescription
+        }
+        await refresh()
+    }
+
+    func markAllClaudeRead() async {
+        await act("POST", "api/claude/read", ["all": true])
+    }
+
+    /// "Later" on a chat waiting for you: it comes back in 5 minutes if it's still waiting.
+    func later(_ call: ClaudeCall) {
+        if call.chat.kind == .needs { claudeLater[call.chat.id] = Date() }
+        if claudeCall == call { claudeCall = nil }
+    }
+
+    /// Notices a chat that just finished, or started waiting on you, and shows it. After a fresh
+    /// launch only a waiting chat is shown (a finished one only right as it finishes).
+    private func watchClaude(_ info: ClaudeInfo?) {
+        let chats = info?.online == true ? info?.chats ?? [] : []
+        let now = Dictionary(chats.map { ($0.id, "\($0.state)|\($0.since)") }, uniquingKeysWith: { a, _ in a })
+        for chat in chats where claudeSeen?[chat.id] != now[chat.id] {
+            let was = claudeSeen?[chat.id]
+            if chat.kind == .needs, claudeLater[chat.id] == nil { show(chat) }
+            else if chat.kind == .new, let was, !was.hasPrefix("done") { show(chat) }
+        }
+        for chat in chats {
+            guard let later = claudeLater[chat.id] else { continue }
+            if chat.kind != .needs { claudeLater[chat.id] = nil }
+            else if Date().timeIntervalSince(later) > 300 { claudeLater[chat.id] = nil; show(chat) }
+        }
+        claudeSeen = now
+        // The chat moved on (answered on the Mac, or closed).
+        if let call = claudeCall, !chats.contains(where: { $0.id == call.chat.id && $0.kind == call.chat.kind }) { claudeCall = nil }
+    }
+
+    private func show(_ chat: ClaudeChat) {
+        // Waiting on you outranks finished.
+        if claudeCall?.chat.kind == .needs, chat.kind != .needs { return }
+        let call = ClaudeCall(chat: chat, at: Date())
+        claudeCall = call
+        guard chat.kind != .needs else { return }
+        Task {
+            try? await Task.sleep(for: .seconds(ClaudeCall.doneSeconds))
+            if claudeCall == call { claudeCall = nil }
+        }
+    }
+
+    /// The hub tells open screens when something changes; this listens so the app updates at once
+    /// instead of on its next 30-second refresh. Reconnects on its own.
+    private func listen() {
+        events?.cancel()
+        events = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, let base = self.settings.baseURL,
+                      let url = URL(string: "api/events", relativeTo: base.appendingPathComponent("/")) else { return }
+                var request = URLRequest(url: url, timeoutInterval: 90)
+                request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                await Self.stream(request) { [weak self] message in
+                    if message.contains("\"claude\"") || message.contains("journal.entry") { Task { await self?.refresh() } }
+                }
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
+    nonisolated private static func stream(_ request: URLRequest, onMessage: @escaping @MainActor @Sendable (String) -> Void) async {
+        guard let (bytes, response) = try? await URLSession.shared.bytes(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+        do {
+            for try await line in bytes.lines where line.hasPrefix("data:") {
+                await onMessage(String(line.dropFirst(5)))
+            }
+        } catch {}
+    }
+
     // MARK: Plumbing
 
     /// Runs an action, reports a failure as `problem`, and refreshes either way.
@@ -306,6 +401,15 @@ final class HubStore: ObservableObject {
 }
 
 private struct SignInHint: Decodable { var canSignIn: Bool? }
+private struct OpenReply: Decodable { var delivered: Int? }
+
+/// A Claude chat shown full screen: waiting on you (until you act) or just finished (12 seconds).
+struct ClaudeCall: Identifiable, Equatable {
+    static let doneSeconds = 12.0
+    let chat: ClaudeChat
+    let at: Date
+    var id: String { "\(chat.id)|\(at.timeIntervalSince1970)" }
+}
 private struct ErrorReply: Decodable { var error: String? }
 
 struct HubError: LocalizedError {
@@ -331,6 +435,17 @@ extension Dashboard {
     var urgentMail: [MailMessage] { allMail.filter(\.isUrgent) }
 
     var events: [CalEvent] { (calendar?.data?.events ?? []).sorted { $0.start < $1.start } }
+
+    /// Claude chats worth a look: waiting on you, then finished and not opened yet, then working.
+    var claudeLive: [ClaudeChat] {
+        guard claude?.online == true else { return [] }
+        return (claude?.chats ?? []).filter { $0.kind != .read }.sorted { ($0.kind, -$0.since) < ($1.kind, -$1.since) }
+    }
+
+    var claudeEarlier: [ClaudeChat] {
+        guard claude?.online == true else { return [] }
+        return (claude?.chats ?? []).filter { $0.kind == .read }.sorted { $0.since > $1.since }
+    }
 
     /// What's still ahead today (or happening now).
     var upNext: [CalEvent] {

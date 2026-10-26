@@ -276,6 +276,13 @@ html.wsmode .ws:not([hidden]) { display: grid; height: 100%; grid-template-colum
 /* ---------- PayIt ---------- */
 .w-payview { overflow-y: auto; padding: 16px 22px 22px; display: flex; flex-direction: column; gap: 12px; }
 .w-payview > * { flex: none; }
+/* Claude: the same board as the desk, three tiles across. */
+.w-claudeview { overflow-y: auto; padding: 16px 22px 22px; display: flex; flex-direction: column; gap: 12px; }
+.w-claudeview > * { flex: none; }
+.w-claudeview .w-colh .cb-live { margin: 0 auto 0 10px; }
+.w-claudeview .cb-sum { margin: 0; font-size: 16px; }
+.w-claudeview .cb-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.w-claudeview .cb-tile { min-height: 180px; }
 .w-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
 .w-kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
 .w-kpi.hero { background: var(--hero-payit); border-color: #1C5550; } .w-kpi.hero .w-kick { color: #8FE6CF; } .w-kpi.hero span { color: #C3E6DE; }

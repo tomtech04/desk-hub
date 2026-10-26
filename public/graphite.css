@@ -255,7 +255,7 @@ i.today, em.today { color: var(--amber); } i.overdue, em.overdue { color: var(--
 .cb-foot em { font-style: normal; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cb-tile.opening .cb-foot em { color: var(--text); animation: pulse 1s ease-in-out infinite; }
 /* Waiting on you: full width, amber, breathing. Finished and unread: mint. */
-.cb-tile.needs { grid-column: 1 / 3; min-height: 172px; border-color: rgba(255,181,71,.6); background: linear-gradient(180deg, rgba(255,181,71,.10), rgba(255,181,71,0) 70%), var(--panel); }
+.cb-tile.needs { grid-column: 1 / -1; min-height: 172px; border-color: rgba(255,181,71,.6); background: linear-gradient(180deg, rgba(255,181,71,.10), rgba(255,181,71,0) 70%), var(--panel); }
 .cb-tile.needs::after { content: ''; position: absolute; inset: -1px; border-radius: inherit; border: 2px solid var(--amber); animation: pulse 1.8s ease-in-out infinite; pointer-events: none; }
 .cb-tile.new { border-color: rgba(110,240,180,.55); background: linear-gradient(180deg, rgba(110,240,180,.08), rgba(110,240,180,0) 70%), var(--panel); }
 .cb-earlier { gap: 0; } .cb-earlier .ch { margin-bottom: 6px; }

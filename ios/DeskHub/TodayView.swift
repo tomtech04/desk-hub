@@ -4,6 +4,7 @@ import SwiftUI
 /// mail, PayIt, your systems and the journal, on one page.
 struct TodayView: View {
     @EnvironmentObject private var hub: HubStore
+    @EnvironmentObject private var nav: AppNav
     @State private var openMail: MailMessage?
     @State private var openEvent: CalEvent?
     @State private var signingIn = false
@@ -18,6 +19,11 @@ struct TodayView: View {
                         StatusBanner(signingIn: $signingIn)
                         if let d = hub.dashboard {
                             HeroCard(d: d).id("hero")
+                            if !d.claudeLive.isEmpty {
+                                Button { nav.tab = .claude } label: { ClaudeTodayCard(d: d) }
+                                    .buttonStyle(PressScale())
+                                    .id("claude")
+                            }
                             NeedsYouCard(d: d, openMail: $openMail).id("needs")
                             UpNextCard(d: d, openEvent: $openEvent).id("schedule")
                             TodayTasksCard(d: d).id("tasks")
@@ -409,7 +415,7 @@ struct MailDigestCard: View {
                 Text("No digest yet today.").font(.system(size: 15)).foregroundStyle(G.text2)
                 Button("Write it now") { Task { await hub.runDigest() } }.buttonStyle(GraphiteButton(primary: false))
             }
-            Button { nav.tab = .mail } label: {
+            Button { nav.morePage = "mail"; nav.tab = .more } label: {
                 Text("Open mail").font(.system(size: 14, weight: .medium)).foregroundStyle(G.text2)
             }
             .buttonStyle(.plain)

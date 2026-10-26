@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Push code from this Mac to the Pi and restart the hub. Never copies .env or data/,
-# or the iPhone app (ios/), which the Pi doesn't run.
+# or the iPhone and Mac apps (ios/, mac/), which the Pi doesn't run.
 #   bash scripts/deploy.sh pi@deskhub.local
 set -euo pipefail
 TARGET="${1:?usage: deploy.sh user@host}"
 DIR="${2:-desk-hub}"
 
 rsync -az --delete \
-  --exclude node_modules --exclude .env --exclude data --exclude .git --exclude .claude --exclude .DS_Store --exclude /ios \
+  --exclude node_modules --exclude .env --exclude data --exclude .git --exclude .claude --exclude .DS_Store --exclude /ios --exclude /mac \
   "$(cd "$(dirname "$0")/.." && pwd)/" "$TARGET:$DIR/"
 
 # The service runs as this user with Restart=always, so stopping its process restarts it on
