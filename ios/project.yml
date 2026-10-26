@@ -147,3 +147,12 @@ schemes:
       config: Debug
     archive:
       config: Release
+  # The watch app on its own: building it for the watch registers the watch with your team.
+  DeskHubWatch:
+    build:
+      targets:
+        DeskHubWatch: all
+    run:
+      config: Debug
+    archive:
+      config: Release
