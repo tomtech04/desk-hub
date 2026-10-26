@@ -62,6 +62,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         }
         outbox.process()
         UNUserNotificationCenter.current().delegate = self
+        WatchLink.shared.hub = hub
+        WatchLink.shared.start()
         health.start()
         styleBars()
         return true

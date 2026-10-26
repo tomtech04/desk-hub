@@ -832,6 +832,27 @@ const routes = {
     return { ok: true };
   },
 
+  // What the Apple Watch app shows, and nothing else: Claude chats, PayIt today, and focus.
+  'GET /api/watch': () => {
+    const p = sources.payit?.get()?.data, systems = p?.systems || [];
+    const today = startOfDay();
+    const focusToday = state.focusLog.filter((f) => f.at >= today);
+    return {
+      now: Date.now(),
+      claude: claudeSnapshot(),
+      payit: p ? {
+        grossCents: p.today.grossCents, count: p.today.count, declined: p.today.declined,
+        yesterdaySameTimeCents: p.yesterdaySameTimeCents ?? null, profitCents: p.profit?.todayCents ?? null,
+        down: systems.filter((x) => x.status === 'down').length, degraded: systems.filter((x) => x.status !== 'up' && x.status !== 'down').length,
+      } : null,
+      focus: {
+        todayMinutes: focusToday.reduce((n, f) => n + f.minutes, 0), todaySessions: focusToday.length,
+        focusMinutes: state.settings.focusMinutes, shortBreak: state.settings.shortBreak, longBreak: state.settings.longBreak,
+        desk: { online: Date.now() - desk.at < 75e3, timer: desk.timer },
+      },
+    };
+  },
+
   'GET /api/dashboard': ({ req }) => ({ ...dashboard(), kiosk: client(req).kiosk, signedIn: Boolean(sessionOf(req)) }),
 
   'POST /api/todos': ({ body }) => {
@@ -858,7 +879,7 @@ const routes = {
 
   'POST /api/focus': ({ body }) => {
     const minutes = Math.max(1, Math.min(240, Math.round(Number(body.minutes) || 0)));
-    state.focusLog.push({ at: Date.now(), minutes, label: String(body.label || '').slice(0, 60) || null, where: body.where === 'desk' ? 'desk' : body.where === 'here' ? 'here' : null });
+    state.focusLog.push({ at: Date.now(), minutes, label: String(body.label || '').slice(0, 60) || null, where: ['desk', 'here', 'watch'].includes(body.where) ? body.where : null });
     state.focusLog = state.focusLog.slice(-2000); save(); return { ok: true };
   },
 

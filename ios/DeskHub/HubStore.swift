@@ -83,6 +83,7 @@ final class HubStore: ObservableObject {
     private func shareWithWidget(_ data: Data) {
         if let base = settings.baseURL {
             Shared.hubCookie = HTTPCookieStorage.shared.cookies(for: base)?.first { $0.name == "hub_session" }?.value
+            WatchLink.shared.share(address: base.absoluteString, cookie: Shared.hubCookie)
         }
         var changed = false
         if let snapshot = PayitSnapshot.parse(dashboard: data) {
@@ -340,6 +341,11 @@ final class HubStore: ObservableObject {
     }
 
     // MARK: Plumbing
+
+    /// A hub call made for the Apple Watch (see WatchLink), with this phone's sign-in.
+    func relay(_ method: String, _ path: String, body: Data?) async -> (Data, Int)? {
+        try? await call(method, path, raw: body)
+    }
 
     /// Runs an action, reports a failure as `problem`, and refreshes either way.
     @discardableResult
