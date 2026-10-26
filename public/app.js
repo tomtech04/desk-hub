@@ -52,6 +52,9 @@ const ICONS = {
   snow: '<path d="M7 15a5 5 0 1 1 .9-9.9A6 6 0 0 1 19 7a4 4 0 0 1-1 8zM8 19h0M12 21h0M16 19h0"/>',
   storm: '<path d="M7 15a5 5 0 1 1 .9-9.9A6 6 0 0 1 19 7a4 4 0 0 1-1 8zM12 14l-2 4h4l-2 4"/>',
   heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  claude: '<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/>',
+  hand: '<path d="M8 12.5V6a1.5 1.5 0 0 1 3 0v5M11 10.5V4.5a1.5 1.5 0 0 1 3 0v6M14 10.5V6a1.5 1.5 0 0 1 3 0v8a7 7 0 0 1-7 7 6 6 0 0 1-5.3-3.2L3.3 15a1.5 1.5 0 0 1 2.6-1.5L8 16"/>',
+  dots: '<path d="M6 12h.01M12 12h.01M18 12h.01"/>',
 };
 const icon = (name, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24">${ICONS[name]}</svg>`;
 
@@ -144,7 +147,8 @@ async function api(method, url, body) {
 
 let D = null; // last dashboard snapshot
 let view = 'home';
-const ui = { taskFilter: 'open', chartSel: {}, schedDay: 0, drawer: 'alerts', reading: null, taskOpen: null, jTab: 'today', jQuery: '', jDays: null, jOpen: null, entering: true, sysOpen: false };
+const ui = { taskFilter: 'open', chartSel: {}, schedDay: 0, drawer: 'alerts', reading: null, taskOpen: null, jTab: 'today', jQuery: '', jDays: null, jOpen: null, entering: true, sysOpen: false,
+  call: null, callLater: {}, claudeOpening: null };
 
 async function load() {
   try {
@@ -152,6 +156,7 @@ async function load() {
     applySky();
     syncMode();
     handleAlerts();
+    watchClaude();
     watchJournal();
     listenForEvents();
     render();
@@ -394,6 +399,45 @@ function taskLine(t) {
   </div>`;
 }
 
+// Claude chats on the Mac (from the Claude Status menu bar app). Each project keeps its own colour,
+// so chats are easy to tell apart at a glance. Tapping a chat anywhere on the desk opens it on the Mac.
+const CLAUDE_GLYPH = { needs: 'hand', running: 'dots', done: 'check' };
+const PROJECT_COLORS = ['#8AB4FF', '#6EF0B4', '#C59CFF', '#FFB547', '#FF9DB0', '#5EE6E6', '#FF9354', '#B9E66E'];
+const projectColor = (name) => { let h = 7; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) >>> 0; return PROJECT_COLORS[h % PROJECT_COLORS.length]; };
+const claudeChats = () => (D?.claude?.online ? D.claude.chats : []);
+/** needs | new (finished, not opened yet) | running | read */
+const chatKind = (c) => (c.state === 'done' ? (c.unread ? 'new' : 'read') : c.state);
+const KIND_RANK = { needs: 0, new: 1, running: 2, read: 3 };
+/** What deserves a look: waiting on you, then finished and unread, then working. Newest first within each. */
+const claudeLive = (chats = claudeChats()) => chats.filter((c) => chatKind(c) !== 'read')
+  .sort((a, b) => KIND_RANK[chatKind(a)] - KIND_RANK[chatKind(b)] || b.since - a.since);
+const agoMs = (ms) => ago(new Date(ms).toISOString());
+const forHow = (c) => { const a = agoMs(c.since); return c.state === 'running' ? (a === 'now' ? 'just started' : `for ${a}`) : a === 'now' ? 'just now' : `${a} ago`; };
+
+/** One chat as a row: status glyph, title, project and what it's doing (or said last), and how long. */
+function chatLine(c, withPreview = false) {
+  const k = chatKind(c);
+  const info = k === 'needs' ? c.detail || 'Needs you' : k === 'running' ? c.detail || 'Working' : withPreview || k === 'new' ? c.preview || 'Finished' : 'Finished';
+  return `<div class="cc ${k}" style="--pc:${projectColor(c.project)}" data-act="claude-open" data-id="${esc(c.id)}">
+    <span class="cc-glyph">${icon(CLAUDE_GLYPH[c.state])}</span>
+    <div class="cc-t"><b>${esc(c.title)}</b><span>${c.project ? `<i>${esc(c.project)}</i>` : ''}<em>${esc(info)}</em></span></div>
+    <span class="cc-age">${k === 'new' ? '<s>New</s>' : agoMs(c.since)}</span></div>`;
+}
+
+/** One chat as a tile on the Claude board. */
+function chatTile(c) {
+  const k = chatKind(c);
+  const opening = ui.claudeOpening?.id === c.id;
+  const line = k === 'needs' ? c.detail || 'Waiting on you' : k === 'running' ? c.detail || 'Working' : c.preview || 'Finished';
+  return `<button class="cb-tile ${k} ${opening ? 'opening' : ''}" style="--pc:${projectColor(c.project)}" data-act="claude-open" data-id="${esc(c.id)}">
+    <div class="cb-top"><span class="cb-proj">${esc(c.project || 'Claude')}</span><span class="cb-badge">${{ needs: 'Needs you', new: 'New', running: 'Working' }[k]}</span></div>
+    <b class="cb-title">${esc(c.title)}</b>
+    <div class="cb-line">${icon(CLAUDE_GLYPH[c.state])}<span>${esc(line)}</span></div>
+    ${k === 'running' ? '<div class="cb-run"><i></i></div>' : ''}
+    <div class="cb-foot"><span>${esc(forHow(c))}</span><em>${opening ? 'Opening on your Mac…' : 'Tap to open on your Mac'}</em></div>
+  </button>`;
+}
+
 /** A calendar event as one line: when, what, where. Tap for the details sheet. */
 function eventLine(e) {
   const live = !e.allDay && e.start <= Date.now() && e.end > Date.now();
@@ -573,8 +617,11 @@ const VIEWS = {
     const hasTimer = T.running || T.remaining != null;
     const dollars = (c) => `$${Math.round(c / 100).toLocaleString('en-US')}`;
     const today = new Date();
+    // While Claude chats are working, waiting or unread, they share Up next's row (so nothing else on Home shrinks).
+    const chats = claudeLive();
+    const waiting = chats.filter((c) => c.state === 'needs').length, fresh = chats.filter((c) => chatKind(c) === 'new').length;
 
-    return `<div class="page vh">
+    return `<div class="page vh ${chats.length ? 'has-claude' : ''}">
       <section class="hero tap" data-act="weather">
         <i class="hero-ring"></i><i class="hero-ring two"></i>
         <div class="hero-top">
@@ -622,6 +669,12 @@ const VIEWS = {
         ${events.length ? events.map(eventLine).join('') : D.calendar?.configured === false ? notConfigured('Calendar', 'Add CALENDAR_FEEDS (Canvas / Google ICS links) to .env') : '<div class="empty">Nothing in the next few days.</div>'}
       </section>
 
+      ${chats.length ? `<section class="card h-claude tap ${waiting ? 'needs' : fresh ? 'fresh' : ''}" data-act="go" data-view="claude">
+        <div class="ch">${icon('claude')}<span class="title">Claude</span><span class="meta ${waiting ? 'warn' : fresh ? 'good' : ''}">${waiting ? `${waiting} need${waiting === 1 ? 's' : ''} you` : fresh ? `${fresh} new` : `${chats.length} working`}</span></div>
+        ${chats.slice(0, 3).map((c) => chatLine(c)).join('')}
+        ${chats.length > 3 ? `<div class="cc-more">+${chats.length - 3} more</div>` : ''}
+      </section>` : ''}
+
       <section class="card h-tasks tap" data-act="go" data-view="tasks">
         <div class="ch">${icon('tasks')}<span class="title">To do</span>${toReview ? `<span class="meta violet">${toReview} to review</span>` : '<span class="meta"></span>'}<button class="mini-btn" data-act="todo-add" aria-label="Add task">${icon('plus')}</button></div>
         ${todos.length ? todos.map(taskLine).join('') : '<div class="empty center">Nothing left open. Nice.</div>'}
@@ -635,6 +688,29 @@ const VIEWS = {
           <div class="hm-foot">${accounts.map((a) => `<span>${esc(a.name)}<b>${a.unread}</b></span>`).join('')}</div>`
           : D.mail?.configured === false ? notConfigured('Mail', 'Add MAIL_1_USER / MAIL_1_PASS to .env') : `<div class="empty">${esc(D.mail?.error || 'Loading…')}</div>`}
       </section>
+    </div>`;
+  },
+
+  // The Claude board: what's going on in your chats right now, big enough to read from your chair.
+  claude() {
+    const c = D.claude || { chats: [], online: false, syncedAt: null };
+    const live = claudeLive(c.online ? c.chats : []);
+    const earlier = (c.chats || []).filter((x) => chatKind(x) === 'read').sort((a, b) => b.since - a.since);
+    const n = (k) => live.filter((x) => chatKind(x) === k).length;
+    const sum = [n('needs') && `${n('needs')} need${n('needs') === 1 ? 's' : ''} you`, n('new') && `${n('new')} new`, n('running') && `${n('running')} working`].filter(Boolean).join(' · ');
+    const [liveCls, liveText] = !c.syncedAt ? ['off', 'Waiting for your Mac'] : !c.online ? ['away', `Mac away since ${hm(c.syncedAt)}`]
+      : c.listening ? ['on', 'Live from your Mac'] : ['on', "Live · taps can't reach your Mac"];
+    const quiet = `<section class="card cb-quiet">${icon('claude')}<b>${c.syncedAt ? 'All quiet' : 'Nothing from your Mac yet'}</b>
+      <p>${c.syncedAt ? 'Nothing is running. Chats you start on your Mac show up here, and anything that finishes or needs you takes over the screen.' : 'Claude Status, the menu bar app on your Mac, sends your chats here whenever it can reach the hub.'}</p></section>`;
+    return `<div class="page vcb">
+      <div class="ph"><h1>Claude</h1><span class="cb-live ${liveCls}"><i></i>${esc(liveText)}</span>
+        ${n('new') ? '<button class="btn secondary small" data-act="claude-readall">Mark all read</button>' : ''}</div>
+      ${sum ? `<div class="cb-sum">${esc(sum)}</div>` : ''}
+      <div class="scroll">
+        ${live.length ? `<div class="cb-grid">${live.map(chatTile).join('')}</div>` : quiet}
+        ${earlier.length && c.online ? `<section class="card cb-earlier"><div class="ch plain"><span class="title">Earlier</span><span class="meta">${earlier.length}</span></div>
+          ${earlier.slice(0, 12).map((x) => chatLine(x, true)).join('')}</section>` : ''}
+      </div>
     </div>`;
   },
 
@@ -953,6 +1029,10 @@ const VIEWS = {
           row('Return to Home', st.homeAfter ? 'When the desk screen has been left on another page' : 'The desk screen stays on whatever page you leave it', step('homeAfter', st.homeAfter ? `after ${st.homeAfter} min` : 'Never')),
           row('Sounds', '', toggle('chime')),
         ])}
+        ${group('Claude', [
+          row('Rest on Claude while you work', 'While chats are running, the desk returns to the Claude board instead of Home', toggle('claudeBoard')),
+          row('Full-screen alerts', 'A chat that finishes or needs you takes over the desk screen', toggle('claudeTakeover')),
+        ])}
         ${group('Evening and morning', [
           row('Wind down', 'Desk screen dims and puts mail and PayIt away', toggle('windDown')),
           row('Wind down starts', '', time('windDownAt')),
@@ -1086,12 +1166,12 @@ function renderMorning() {
 const WIND_VIEWS = ['home', 'tasks', 'journal', 'settings'];
 const winding = () => KIOSK && D?.phase === 'winddown' && ui.windOverride !== new Date().toDateString();
 
-const NAV = [['home', 'Home'], ['focus', 'Focus'], ['tasks', 'To do'], ['payit', 'PayIt'], ['mail', 'Mail'], ['journal', 'Journal'], ['schedule', 'Schedule'], ['settings', 'Settings']];
+const NAV = [['home', 'Home'], ['focus', 'Focus'], ['tasks', 'To do'], ['payit', 'PayIt'], ['mail', 'Mail'], ['claude', 'Claude'], ['journal', 'Journal'], ['schedule', 'Schedule'], ['settings', 'Settings']];
 
 function renderRail() {
   const urgentMail = (D?.mail?.data?.accounts || []).flatMap((a) => a.messages).filter((m) => m.priority === 'urgent' && !m.hidden).length;
   const openToday = (D?.todos || []).filter((t) => !t.done && !t.suggested && t.due && t.due < dayStart(1)).length;
-  const badge = { mail: urgentMail, tasks: openToday + (D ? suggestedTodos().length : 0) };
+  const badge = { mail: urgentMail, tasks: openToday + (D ? suggestedTodos().length : 0), claude: claudeLive().filter((c) => chatKind(c) !== 'running').length };
   const nav = winding() ? NAV.filter(([k]) => WIND_VIEWS.includes(k)) : NAV;
   $('#rail').innerHTML = nav.map(([k, label]) => `<button class="${view === k ? 'on' : ''}" data-act="go" data-view="${k}" data-sec="${k}">
       <span class="pill">${icon(k)}${badge[k] ? `<span class="badge">${badge[k]}</span>` : ''}</span><em>${label}</em></button>`).join('');
@@ -1140,6 +1220,7 @@ function render() {
   reportDesk();
   renderMorning();
   renderLock();
+  renderCall();
   if (!$('#drawer').hidden) renderDrawer();
 }
 
@@ -1162,7 +1243,7 @@ function emailDoc(html) {
 // Sheets: panels that slide up from the bottom over a scrim (#drawer).
 // ---------------------------------------------------------------------------
 
-const SRC_ICON = { payit: 'payit', mail: 'mail', calendar: 'schedule', tasks: 'tasks', journal: 'journal', voice: 'journal', system: 'settings', focus: 'focus' };
+const SRC_ICON = { payit: 'payit', mail: 'mail', calendar: 'schedule', tasks: 'tasks', journal: 'journal', voice: 'journal', system: 'settings', focus: 'focus', claude: 'claude' };
 const sheet = (inner, cls = '') => { $('#drawer').innerHTML = `<div class="sheet ${cls}" data-stop><i class="grab"></i>${inner}</div>`; };
 const sheetHead = (title, extra = '') => `<div class="sh-head"><b>${title}</b>${extra}<button class="sq-btn big" data-act="close-drawer" aria-label="Close">${icon('x')}</button></div>`;
 function showDrawer() {
@@ -1344,6 +1425,7 @@ function listenForEvents() {
   events.onmessage = (e) => {
     let ev; try { ev = JSON.parse(e.data); } catch { return; }
     if (ev.type.startsWith('desk.')) return deskEvent(ev);
+    if (ev.type === 'claude') return load(); // a chat started, finished or is waiting on you
     if (ev.type !== 'journal.entry') return;
     noteEvent(ev);
     WS.onEvent(ev);
@@ -1468,6 +1550,115 @@ function showLogin(canSignIn) {
 }
 
 // ---------------------------------------------------------------------------
+// Claude on the desk: a chat that finishes or starts waiting on you takes over
+// the screen for a moment. Waiting outranks finished; a finished one steps
+// aside on its own after 12 seconds. Animations are transform and opacity only,
+// so the Pi keeps them smooth.
+// ---------------------------------------------------------------------------
+
+const takeoverOn = () => KIOSK && D?.settings.claudeTakeover !== false;
+const CALL_DONE_MS = 12e3, CALL_REMIND_MS = 5 * 60e3;
+let claudeSeen = null; // id -> "state|since" in the last snapshot
+let callTimer = null, closeTimer = null;
+const callChat = () => (ui.call ? claudeChats().find((x) => x.id === ui.call.id) : null);
+
+function watchClaude() {
+  const chats = claudeChats();
+  const now = new Map(chats.map((c) => [c.id, `${c.state}|${c.since}`]));
+  if (takeoverOn()) {
+    for (const c of chats) {
+      const was = claudeSeen?.get(c.id);
+      if (was === now.get(c.id)) continue;
+      // After a reload a chat already waiting on you still gets its moment; a finished one only right as it finishes.
+      if (c.state === 'needs' && !ui.callLater[c.id]) showCall(c);
+      else if (c.state === 'done' && c.unread && was && !was.startsWith('done')) showCall(c);
+    }
+    // "Later" on a chat that's still waiting brings it back after 5 minutes, like the Mac's reminders.
+    for (const c of chats) {
+      const later = ui.callLater[c.id];
+      if (later && c.state !== 'needs') delete ui.callLater[c.id];
+      else if (later && Date.now() - later > CALL_REMIND_MS) { delete ui.callLater[c.id]; showCall(c); }
+    }
+  }
+  claudeSeen = now;
+  renderCall();
+}
+
+function showCall(c) {
+  const kind = c.state === 'needs' ? 'needs' : 'done';
+  if (D.mode !== 'day' || (kind === 'done' && T.lock && T.running)) return;
+  if (ui.call?.kind === 'needs' && kind === 'done' && callChat()?.state === 'needs') return;
+  ui.call = { id: c.id, kind, at: Date.now() };
+  chime(kind === 'needs' ? 'alert' : 'done');
+  clearTimeout(callTimer);
+  if (kind === 'done') callTimer = setTimeout(() => { if (ui.call?.id === c.id && ui.call.kind === 'done') closeCall(); }, CALL_DONE_MS);
+}
+
+function renderCall() {
+  const el = $('#claudecall');
+  const call = ui.call, c = callChat();
+  // The chat moved on (you answered it on the Mac, or it closed): ease the screen away.
+  if (!call || !c || (call.kind === 'needs' ? c.state !== 'needs' : c.state !== 'done')) { if (call || !el.hidden) closeCall(); return; }
+  if (!takeoverOn() || D.mode !== 'day') { closeCall(true); return; }
+  const key = `${call.id}|${call.kind}|${call.at}`;
+  if (el.dataset.key === key && !el.hidden && !el.classList.contains('leaving')) return; // rebuilding would restart its animations
+
+  clearTimeout(closeTimer);
+  // The dimmed backdrop stays put when one alert replaces another; only the content swaps.
+  if (el.hidden || el.classList.contains('leaving') || !$('.ca-stage', el)) el.innerHTML = '<div class="ca-scrim"></div><div class="ca-stage"></div>';
+  el.className = `claudecall ${call.kind}`;
+  el.style.setProperty('--pc', projectColor(c.project));
+  const others = claudeLive().filter((x) => x.id !== c.id && chatKind(x) !== 'running').length;
+  const left = Math.max(0, CALL_DONE_MS - (Date.now() - call.at));
+  const R = 92, LEN = (2 * Math.PI * R).toFixed(1);
+  $('.ca-stage', el).innerHTML = `<div class="ca-bloom"></div>
+    ${others ? `<div class="ca-more">+${others} more on the board</div>` : ''}
+    <div class="ca-orb">
+      <i class="ca-ripple"></i><i class="ca-ripple two"></i>
+      ${call.kind === 'done' ? `<svg class="ca-count" viewBox="0 0 200 200"><circle cx="100" cy="100" r="${R}" style="--len:${LEN};animation-duration:${left}ms"/></svg>` : ''}
+      <span class="ca-core">${call.kind === 'done' ? '<svg class="ca-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>' : icon('hand', 'i ca-hand')}</span>
+    </div>
+    <div class="ca-kicker">${call.kind === 'needs' ? 'Claude needs you' : 'Claude is done'}</div>
+    <div class="ca-proj">${esc(c.project || 'Claude')}</div>
+    <h1 class="ca-title">${esc(c.title)}</h1>
+    <p class="ca-text">${esc(call.kind === 'needs' ? c.detail || 'Waiting on you' : c.preview || 'Finished')}</p>
+    <div class="ca-acts">
+      <button class="ca-open" data-act="claude-open" data-id="${esc(c.id)}">Open on Mac ${icon('arrow')}</button>
+      <button class="ca-later" data-act="call-later" data-id="${esc(c.id)}">${call.kind === 'needs' ? 'Later' : 'Close'}</button>
+    </div>`;
+  el.dataset.key = key;
+  el.hidden = false;
+}
+
+function closeCall(immediate = false) {
+  ui.call = null;
+  clearTimeout(callTimer);
+  const el = $('#claudecall');
+  if (el.hidden) return;
+  el.dataset.key = '';
+  if (immediate) { el.hidden = true; el.innerHTML = ''; return; }
+  el.classList.add('leaving');
+  clearTimeout(closeTimer);
+  closeTimer = setTimeout(() => { el.hidden = true; el.classList.remove('leaving'); el.innerHTML = ''; }, 420);
+}
+
+/** Opens a chat on the Mac (through Claude Status's connection to the hub). */
+async function openOnMac(id) {
+  if (!id) return;
+  ui.claudeOpening = { id, at: Date.now() };
+  if (ui.call?.id === id) closeCall();
+  render();
+  try {
+    const r = await api('POST', '/api/claude/open', { id });
+    if (!r.delivered) toast({ level: 'warn', source: 'claude', title: "Your Mac didn't pick that up", body: 'Make sure Claude Status is running and the Mac is awake, then tap again.' });
+  } catch (err) {
+    toast({ level: 'warn', source: 'claude', title: "Couldn't open that chat", body: err.message });
+  }
+  setTimeout(() => { if (ui.claudeOpening?.id === id) { ui.claudeOpening = null; render(); } }, 3500);
+  load();
+}
+
+// ---------------------------------------------------------------------------
 // Alerts -> toasts
 // ---------------------------------------------------------------------------
 
@@ -1475,7 +1666,7 @@ let seenAlerts = null;
 function handleAlerts() {
   const ids = new Set(D.alerts.map((a) => a.id));
   if (seenAlerts) {
-    const fresh = D.alerts.filter((a) => !seenAlerts.has(a.id) && (a.source !== 'voice' || ringOff()));
+    const fresh = D.alerts.filter((a) => !seenAlerts.has(a.id) && (a.source !== 'voice' || ringOff()) && !(takeoverOn() && /^claude(done)?:/.test(a.id)));
     // During wind-down only real problems interrupt; everything else waits for morning.
     if (winding() || (T.lock && T.running && T.phase === 'focus')) fresh.splice(0, fresh.length, ...fresh.filter((a) => a.level !== 'info'));
     if (fresh.length && D.mode === 'day') {
@@ -1539,6 +1730,9 @@ document.addEventListener('click', async (e) => {
   try {
     switch (act) {
       case 'go': go(el.dataset.view); break;
+      case 'claude-open': openOnMac(el.dataset.id); break;
+      case 'claude-readall': await api('POST', '/api/claude/read', { all: true }); load(); break;
+      case 'call-later': ui.callLater[el.dataset.id] = Date.now(); closeCall(); break;
       case 'chart': ui.chartSel[el.dataset.id] = Number(el.dataset.i); render(); break;
       case 'sys-fold': ui.sysOpen = !ui.sysOpen; render(); break;
       case 't-start': if (T.phase === 'focus') startFocus(); else timerStart(); break;
@@ -1813,10 +2007,12 @@ function idleHome() {
   if (!KIOSK || !D || !minutes || Date.now() - lastTouch < minutes * 60e3) return;
   if (!$('#keyboard').hidden || T.lock || (view === 'focus' && T.running)) return;
   const sheetOpen = !$('#drawer').hidden;
-  if (view === 'home' && !sheetOpen) return;
+  // While Claude chats are working or waiting on you, the board is where the desk rests.
+  const rest = D.settings.claudeBoard !== false && !winding() && claudeLive().length ? 'claude' : 'home';
+  if (view === rest && !sheetOpen) return;
   $('#drawer').hidden = true;
   Object.assign(ui, { taskOpen: null, taskFilter: 'open', jTab: 'today', jQuery: '', jOpen: null });
-  go('home');
+  go(rest);
 }
 setInterval(idleHome, 10e3);
 

@@ -179,3 +179,20 @@ export function taskFromEmail(id) {
         subtasks: ['Add the uncertainty analysis section', 'Re-check figures against the new rubric', 'Submit on Canvas by 11:59pm Thursday'] }
     : { text: m.action || m.subject, due: '', tag: '', why: m.from, from: m.from, subject: m.subject, subtasks: [] };
 }
+
+// Claude chats as the Claude Status app on the Mac reports them: one waiting on you, two working,
+// one finished that you haven't opened, and a couple from earlier.
+export function claude() {
+  const ago = (min) => Date.now() - min * 60e3;
+  return [
+    { id: 'c1', title: 'Fix payout rounding', project: 'Checkout', state: 'needs', detail: 'Wants to use Bash', since: ago(3) },
+    { id: 'c2', title: 'Desk Hub widget', project: 'Desk Hub', state: 'running', detail: 'Editing files', since: ago(12) },
+    { id: 'c3', title: 'Lab 2 outline', project: 'School', state: 'running', detail: 'Using the browser', since: ago(26) },
+    { id: 'c4', title: 'Onboarding video edits', project: 'Checkout', state: 'done', detail: '', since: ago(4), unread: true,
+      preview: 'The new cut is 27 seconds and the captions now match the voiceover.' },
+    { id: 'c5', title: 'Weekly planning', project: 'School', state: 'done', detail: '', since: ago(95), unread: false,
+      preview: 'Your week is mapped out: two labs, one problem set, and a free Saturday.' },
+    { id: 'c6', title: 'Trip planner', project: 'Trips', state: 'done', detail: '', since: ago(180), unread: false,
+      preview: 'Three route options are ready; the coastal one is the cheapest.' },
+  ];
+}

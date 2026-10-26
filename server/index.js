@@ -64,6 +64,8 @@ const DEFAULT_STATE = {
     morningBrief: true,
     focusLock: true,
     emailTasks: true,
+    claudeBoard: true, // while chats are running, the desk rests on the Claude board instead of Home
+    claudeTakeover: true, // a chat that finishes or needs you takes over the desk screen
   },
 };
 
@@ -322,13 +324,32 @@ const dayToMs = (ymd) => { const [y, mo, d] = ymd.split('-').map(Number); return
 // What the desk screen is showing and its focus timer, as it last reported (kept in memory only).
 let desk = { view: 'home', timer: null, at: 0 };
 
+// Claude chats on the Mac, pushed by its Claude Status menu bar app (in memory only: they're live).
+// The app sends on every change and once a minute; after 3 quiet minutes the Mac counts as away.
+let claude = DEMO ? { chats: demo.claude(), at: Date.now() } : { chats: [], at: 0 };
+const CLAUDE_STATES = ['needs', 'running', 'done'];
+// The Mac also keeps a connection open here, so a tap on the desk can open a chat on it.
+const macListeners = new Set();
+function toMac(command) {
+  const line = `data: ${JSON.stringify(command)}\n\n`;
+  let delivered = 0;
+  for (const res of macListeners) { try { res.write(line); delivered++; } catch { macListeners.delete(res); } }
+  return delivered;
+}
+function claudeSnapshot() {
+  const at = DEMO ? Date.now() : claude.at;
+  return { chats: claude.chats, syncedAt: at || null, online: Date.now() - at < 3 * 60e3, listening: DEMO || macListeners.size > 0 };
+}
+
 // Live events for open screens (Server-Sent Events): a voice note arriving, then what was done with it.
 const streams = new Set();
 function emit(event) {
   const line = `data: ${JSON.stringify(event)}\n\n`;
   for (const res of streams) { try { res.write(line); } catch { streams.delete(res); } }
 }
-setInterval(() => { for (const res of streams) { try { res.write(': ping\n\n'); } catch { streams.delete(res); } } }, 25e3);
+setInterval(() => {
+  for (const set of [streams, macListeners]) for (const res of set) { try { res.write(': ping\n\n'); } catch { set.delete(res); } }
+}, 25e3);
 
 async function handleVoice({ text, recordedAt, trigger, source = 'ring' }) {
   const id = `v${recordedAt}`;
@@ -487,6 +508,13 @@ function buildAlerts(snap) {
   const sys = systemStats();
   if (sys.tempC > 75) add(`temp:${Math.round(sys.tempC / 5)}`, 'warn', 'system', `Pi is running hot (${sys.tempC.toFixed(0)}°C)`);
 
+  // A chat waiting on you is a real interruption; a finished one is a quiet note for 10 minutes.
+  const cl = claudeSnapshot();
+  if (cl.online) for (const c of cl.chats) {
+    if (c.state === 'needs') add(`claude:${c.id}:${c.since}`, 'warn', 'claude', `${c.title} needs you`, c.detail);
+    else if (c.state === 'done' && now - c.since < 10 * 60e3) add(`claudedone:${c.id}:${c.since}`, 'info', 'claude', `${c.title} is done`, c.preview || c.project);
+  }
+
   if (state.digest?.day === localDay() && state.digest.headline) add(`digest:${state.digest.day}`, 'info', 'mail', 'Your email digest is ready', state.digest.headline);
   if (state.recap?.day === localDay() && state.recap.headline) add(`recap:${state.recap.day}`, 'info', 'journal', 'Your day recap is ready', state.recap.headline);
   const toReview = state.todos.filter((t) => t.suggested).length;
@@ -542,6 +570,7 @@ function dashboard() {
       return { day, score: h?.stress?.score ?? null, steps: h?.steps ?? null, mood: h?.checkins?.at(-1)?.mood ?? null };
     }),
     desk: { ...desk, online: Date.now() - desk.at < 75e3 },
+    claude: claudeSnapshot(),
     voiceReady: Boolean(VOICE_TOKEN),
     claudeReady: Boolean(MCP_TOKEN),
     aiEnabled: DEMO || aiEnabled(),
@@ -752,7 +781,57 @@ async function mailPush(req, res) {
   }
 }
 
+// The Mac's Claude Status app posts its chats here, with the same token as the mail sync
+// (it reads it from ~/.deskhub/mail-sync.json on the Mac).
+async function claudePush(req, res) {
+  if (!pushTokenOk(req.headers.authorization)) return send(res, 401, { error: pushEnabled ? 'wrong token' : 'HUB_MAIL_TOKEN is not set on the hub' });
+  let body;
+  try { body = await readBody(req, 256e3); } catch (err) { return send(res, 400, { error: err.message }); }
+  const str = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+  const chats = (Array.isArray(body.chats) ? body.chats : []).slice(0, 60)
+    .filter((c) => c && CLAUDE_STATES.includes(c.state) && c.id)
+    .map((c) => ({ id: str(c.id, 80), title: str(c.title, 120) || 'Untitled chat', project: str(c.project, 60), state: c.state,
+      detail: str(c.detail, 160), preview: str(c.preview, 300), since: Number(c.since) || Date.now(), unread: c.state === 'done' && c.unread === true }));
+  const changed = JSON.stringify(chats) !== JSON.stringify(claude.chats);
+  claude = { chats, at: Date.now() };
+  // Open screens redraw at once instead of on their next 20-second refresh.
+  if (changed) emit({ type: 'claude' });
+  return send(res, 200, { ok: true, chats: chats.length });
+}
+
+// The Mac's connection for taps on the desk: { type: 'open', id }, { type: 'read', ids }, { type: 'readAll' }.
+function claudeListen(req, res) {
+  if (!pushTokenOk(req.headers.authorization)) return send(res, 401, { error: 'wrong token' });
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.write(': connected\n\n');
+  macListeners.add(res);
+  emit({ type: 'claude' });
+  req.on('close', () => { macListeners.delete(res); emit({ type: 'claude' }); });
+}
+
+/** Marks chats read here right away (so the desk updates at once) and tells the Mac, which owns the list. */
+function claudeMarkRead(ids) {
+  let changed = false;
+  for (const c of claude.chats) if (c.unread && ids.includes(c.id)) { c.unread = false; changed = true; }
+  if (changed) emit({ type: 'claude' });
+}
+
 const routes = {
+  // Tapping a chat on the desk opens it on the Mac.
+  'POST /api/claude/open': ({ body }) => {
+    const id = String(body.id || '');
+    if (!claude.chats.some((c) => c.id === id)) return [404, { error: 'That chat is no longer open' }];
+    const delivered = DEMO ? 1 : toMac({ type: 'open', id });
+    if (delivered) claudeMarkRead([id]);
+    return { ok: true, delivered };
+  },
+  'POST /api/claude/read': ({ body }) => {
+    const ids = body.all ? claude.chats.filter((c) => c.unread).map((c) => c.id) : [].concat(body.ids || []).map(String);
+    claudeMarkRead(ids);
+    toMac(body.all ? { type: 'readAll' } : { type: 'read', ids });
+    return { ok: true };
+  },
+
   'GET /api/dashboard': ({ req }) => ({ ...dashboard(), kiosk: client(req).kiosk, signedIn: Boolean(sessionOf(req)) }),
 
   'POST /api/todos': ({ body }) => {
@@ -985,6 +1064,8 @@ http.createServer(async (req, res) => {
       if (url.pathname === '/api/voice' && req.method === 'POST') return voice(req, res);
       if (url.pathname === '/api/health' && req.method === 'POST') return health(req, res);
       if (url.pathname === '/api/mail/push' && req.method === 'POST') return mailPush(req, res);
+      if (url.pathname === '/api/claude/push' && req.method === 'POST') return claudePush(req, res);
+      if (url.pathname === '/api/claude/listen' && req.method === 'GET') return claudeListen(req, res);
       // /api/notify can also be reached with its own bearer token (scripts, webhooks).
       const viaNotifyToken = url.pathname === '/api/notify' && NOTIFY_TOKEN && req.headers.authorization === `Bearer ${NOTIFY_TOKEN}`;
       if (!viaNotifyToken && !allowed(req)) return send(res, 401, { error: 'sign in required', canSignIn: Boolean(HUB_PASSWORD) });
