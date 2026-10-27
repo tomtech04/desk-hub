@@ -6,3 +6,10 @@ data/*.json
 data/mail-push/
 mac/.build/
 mac/build/
+.env.*
+!.env.example
+ios/build/
+ios/Config/Team.xcconfig
+*.p12
+*.mobileprovision
+*.pem.key
